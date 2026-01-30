@@ -1,6 +1,11 @@
-use std::{collections::HashMap, ffi::OsString, process::Command};
+use std::{collections::HashMap, ffi::OsString, path::PathBuf, process::Command};
 
 use clap::{Parser, Subcommand};
+use figment::{
+    Figment,
+    providers::{Env, Serialized},
+};
+use serde::{Deserialize, Serialize};
 
 #[derive(Parser)]
 #[command(bin_name = "nbrew", version)]
@@ -20,8 +25,69 @@ enum Commands {
     External(Vec<OsString>),
 }
 
+#[derive(Serialize, Deserialize)]
+struct HomebrewConfig {
+    prefix: PathBuf,
+}
+
+impl Default for HomebrewConfig {
+    fn default() -> Self {
+        #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+        let prefix = PathBuf::from("/usr/local");
+
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let prefix = PathBuf::from("/opt/homebrew");
+
+        #[cfg(target_os = "linux")]
+        let prefix = PathBuf::from("/home/linuxbrew/.linuxbrew");
+
+        Self { prefix }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+struct NeobrewConfig {
+    prefix: PathBuf,
+}
+
+impl Default for NeobrewConfig {
+    fn default() -> Self {
+        #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+        let prefix = PathBuf::from("/usr/local");
+
+        #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+        let prefix = PathBuf::from("/opt/homebrew");
+
+        #[cfg(target_os = "linux")]
+        let prefix = PathBuf::from("/home/linuxbrew/.linuxbrew");
+
+        Self { prefix }
+    }
+}
+
+struct Config {
+    homebrew: HomebrewConfig,
+    neobrew: NeobrewConfig,
+}
+
+impl Config {
+    fn parse() -> Self {
+        Self {
+            homebrew: Figment::from(Serialized::defaults(HomebrewConfig::default()))
+                .merge(Env::prefixed("HOMEBREW_"))
+                .extract()
+                .unwrap(),
+            neobrew: Figment::from(Serialized::defaults(NeobrewConfig::default()))
+                .merge(Env::prefixed("NEOBREW_"))
+                .extract()
+                .unwrap(),
+        }
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
+    let config = Config::parse();
 
     match &cli.command {
         Commands::Install { packages } => println!("Install packages: {packages:?}"),
