@@ -1,11 +1,41 @@
 use std::{collections::HashMap, ffi::OsString, path::PathBuf, process::Command};
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
+use enum_dispatch::enum_dispatch;
 use figment::{
     Figment,
     providers::{Env, Serialized},
 };
 use serde::{Deserialize, Serialize};
+
+#[enum_dispatch(Internal)]
+trait Runner {
+    fn run(&self, config: &Config);
+}
+
+#[derive(Args)]
+struct Install {
+    #[arg(value_name = "FORMULA|CASK")]
+    packages: Vec<String>,
+}
+
+impl Runner for Install {
+    fn run(&self, config: &Config) {
+        println!("Install packages: {:?}", self.packages);
+    }
+}
+
+#[derive(Args)]
+struct Uninstall {
+    #[arg(value_name = "FORMULA|CASK")]
+    packages: Vec<String>,
+}
+
+impl Runner for Uninstall {
+    fn run(&self, config: &Config) {
+        println!("Uninstall packages: {:?}", self.packages);
+    }
+}
 
 #[derive(Parser)]
 #[command(bin_name = "nbrew", version)]
@@ -14,12 +44,17 @@ struct Cli {
     command: Commands,
 }
 
+#[enum_dispatch]
+#[derive(Subcommand)]
+enum Internal {
+    Install(Install),
+    Uninstall(Uninstall),
+}
+
 #[derive(Subcommand)]
 enum Commands {
-    Install {
-        #[arg(value_name = "FORMULA|CASK")]
-        packages: Vec<String>,
-    },
+    #[command(flatten)]
+    Internal(Internal),
 
     #[command(external_subcommand)]
     External(Vec<OsString>),
@@ -90,7 +125,7 @@ fn main() {
     let config = Config::parse();
 
     match &cli.command {
-        Commands::Install { packages } => println!("Install packages: {packages:?}"),
+        Commands::Internal(cmd) => cmd.run(&config),
 
         Commands::External(args) => match Command::new("brew")
             .args(args)
