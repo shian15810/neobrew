@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ffi::OsString, io, process::ExitStatus};
+use std::{collections::HashMap, ffi::OsString, io, process::ExitStatus, sync::Arc};
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -8,7 +8,7 @@ use tokio::process::Command;
 
 use crate::{
     commands::{install::Install, uninstall::Uninstall},
-    context::config::Config,
+    context::Context,
 };
 
 mod install;
@@ -40,7 +40,7 @@ pub enum Internal {
 #[async_trait]
 #[enum_dispatch(Internal)]
 pub trait Runner {
-    async fn run(&self, config: &Config) -> Result<()>;
+    async fn run(&self, context: Arc<Context>) -> Result<()>;
 }
 
 pub async fn run_external(args: &Vec<OsString>) -> io::Result<ExitStatus> {

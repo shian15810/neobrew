@@ -1,8 +1,10 @@
+use std::sync::Arc;
+
 use anyhow::Result;
 use async_trait::async_trait;
 use clap::Args;
 
-use crate::{commands::Runner, context::config::Config};
+use crate::{commands::Runner, context::Context};
 
 #[derive(Args)]
 pub struct Install {
@@ -12,7 +14,7 @@ pub struct Install {
 
 #[async_trait]
 impl Runner for Install {
-    async fn run(&self, config: &Config) -> Result<()> {
+    async fn run(&self, context: Arc<Context>) -> Result<()> {
         println!("Install packages: {:?}", self.packages);
 
         Ok(())

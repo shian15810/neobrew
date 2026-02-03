@@ -1,7 +1,9 @@
+use std::sync::Arc;
+
 use clap::Parser;
 use neobrew::{
     commands::{Cli, Commands, Runner, run_external},
-    context::config::Config,
+    context::Context,
 };
 use proc_exit::prelude::*;
 
@@ -14,11 +16,11 @@ async fn main() {
 
 async fn run() -> proc_exit::ExitResult {
     let cli = Cli::parse();
-    let config = Config::parse().with_code(proc_exit::sysexits::CONFIG_ERR)?;
+    let context = Arc::new(Context::new());
 
     match &cli.command {
         Commands::Internal(cmd) => cmd
-            .run(&config)
+            .run(context)
             .await
             .with_code(proc_exit::sysexits::SOFTWARE_ERR),
 
