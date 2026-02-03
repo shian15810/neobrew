@@ -1,12 +1,7 @@
-use std::{
-    collections::HashMap,
-    ffi::OsString,
-    io,
-    path::PathBuf,
-    process::{Command, ExitStatus},
-};
+use std::{collections::HashMap, ffi::OsString, io, path::PathBuf, process::ExitStatus};
 
 use anyhow::Result;
+use async_trait::async_trait;
 use clap::{Args, Parser, Subcommand};
 use enum_dispatch::enum_dispatch;
 use figment::{
@@ -15,10 +10,12 @@ use figment::{
 };
 use proc_exit::prelude::*;
 use serde::{Deserialize, Serialize};
+use tokio::process::Command;
 
+#[async_trait]
 #[enum_dispatch(Internal)]
 trait Runner {
-    fn run(&self, config: &Config) -> Result<()>;
+    async fn run(&self, config: &Config) -> Result<()>;
 }
 
 #[derive(Args)]
@@ -27,8 +24,9 @@ struct Install {
     packages: Vec<String>,
 }
 
+#[async_trait]
 impl Runner for Install {
-    fn run(&self, config: &Config) -> Result<()> {
+    async fn run(&self, config: &Config) -> Result<()> {
         println!("Install packages: {:?}", self.packages);
 
         Ok(())
@@ -41,8 +39,9 @@ struct Uninstall {
     packages: Vec<String>,
 }
 
+#[async_trait]
 impl Runner for Uninstall {
-    fn run(&self, config: &Config) -> Result<()> {
+    async fn run(&self, config: &Config) -> Result<()> {
         println!("Uninstall packages: {:?}", self.packages);
 
         Ok(())
@@ -132,7 +131,7 @@ impl Config {
     }
 }
 
-fn run_brew(args: &Vec<OsString>) -> io::Result<ExitStatus> {
+async fn run_brew(args: &Vec<OsString>) -> io::Result<ExitStatus> {
     Command::new("brew")
         .args(args)
         .envs(HashMap::from([
@@ -145,19 +144,21 @@ fn run_brew(args: &Vec<OsString>) -> io::Result<ExitStatus> {
             ("HOMEBREW_NO_INSTALL_UPGRADE", "1"),
         ]))
         .status()
+        .await
 }
 
-fn run() -> proc_exit::ExitResult {
+async fn run() -> proc_exit::ExitResult {
     let cli = Cli::parse();
     let config = Config::parse().with_code(proc_exit::sysexits::CONFIG_ERR)?;
 
     match &cli.command {
         Commands::Internal(cmd) => cmd
             .run(&config)
+            .await
             .with_code(proc_exit::sysexits::SOFTWARE_ERR),
 
         Commands::External(args) => {
-            let exit_status = run_brew(args).to_sysexits()?;
+            let exit_status = run_brew(args).await.to_sysexits()?;
 
             proc_exit::Code::from_status(exit_status).ok()?;
             proc_exit::Code::SUCCESS.ok()
@@ -165,8 +166,9 @@ fn run() -> proc_exit::ExitResult {
     }
 }
 
-fn main() {
-    let result = run();
+#[tokio::main]
+async fn main() {
+    let result = run().await;
 
     proc_exit::exit(result);
 }
