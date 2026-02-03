@@ -1,16 +1,24 @@
-use std::{collections::HashMap, ffi::OsString, path::PathBuf, process::Command};
+use std::{
+    collections::HashMap,
+    ffi::OsString,
+    io,
+    path::PathBuf,
+    process::{Command, ExitStatus},
+};
 
+use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
 use enum_dispatch::enum_dispatch;
 use figment::{
     Figment,
     providers::{Env, Serialized},
 };
+use proc_exit::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[enum_dispatch(Internal)]
 trait Runner {
-    fn run(&self, config: &Config);
+    fn run(&self, config: &Config) -> Result<()>;
 }
 
 #[derive(Args)]
@@ -20,8 +28,10 @@ struct Install {
 }
 
 impl Runner for Install {
-    fn run(&self, config: &Config) {
+    fn run(&self, config: &Config) -> Result<()> {
         println!("Install packages: {:?}", self.packages);
+
+        Ok(())
     }
 }
 
@@ -32,8 +42,10 @@ struct Uninstall {
 }
 
 impl Runner for Uninstall {
-    fn run(&self, config: &Config) {
+    fn run(&self, config: &Config) -> Result<()> {
         println!("Uninstall packages: {:?}", self.packages);
+
+        Ok(())
     }
 }
 
@@ -106,45 +118,55 @@ struct Config {
 }
 
 impl Config {
-    fn parse() -> Self {
-        Self {
-            homebrew: Figment::from(Serialized::defaults(HomebrewConfig::default()))
-                .merge(Env::prefixed("HOMEBREW_"))
-                .extract()
-                .unwrap(),
-            neobrew: Figment::from(Serialized::defaults(NeobrewConfig::default()))
-                .merge(Env::prefixed("NEOBREW_"))
-                .extract()
-                .unwrap(),
-        }
+    fn parse() -> Result<Self> {
+        let homebrew = Figment::new()
+            .merge(Serialized::defaults(HomebrewConfig::default()))
+            .merge(Env::prefixed("HOMEBREW_"))
+            .extract()?;
+        let neobrew = Figment::new()
+            .merge(Serialized::defaults(NeobrewConfig::default()))
+            .merge(Env::prefixed("NEOBREW_"))
+            .extract()?;
+
+        Ok(Self { homebrew, neobrew })
+    }
+}
+
+fn run_brew(args: &Vec<OsString>) -> io::Result<ExitStatus> {
+    Command::new("brew")
+        .args(args)
+        .envs(HashMap::from([
+            ("HOMEBREW_NO_ANALYTICS", "1"),
+            ("HOMEBREW_NO_AUTOREMOVE", "1"),
+            ("HOMEBREW_NO_AUTO_UPDATE", "1"),
+            ("HOMEBREW_NO_ENV_HINTS", "1"),
+            ("HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK", "1"),
+            ("HOMEBREW_NO_INSTALL_CLEANUP", "1"),
+            ("HOMEBREW_NO_INSTALL_UPGRADE", "1"),
+        ]))
+        .status()
+}
+
+fn run() -> proc_exit::ExitResult {
+    let cli = Cli::parse();
+    let config = Config::parse().with_code(proc_exit::sysexits::CONFIG_ERR)?;
+
+    match &cli.command {
+        Commands::Internal(cmd) => cmd
+            .run(&config)
+            .with_code(proc_exit::sysexits::SOFTWARE_ERR),
+
+        Commands::External(args) => {
+            let exit_status = run_brew(args).to_sysexits()?;
+
+            proc_exit::Code::from_status(exit_status).ok()?;
+            proc_exit::Code::SUCCESS.ok()
+        },
     }
 }
 
 fn main() {
-    let cli = Cli::parse();
-    let config = Config::parse();
+    let result = run();
 
-    match &cli.command {
-        Commands::Internal(cmd) => cmd.run(&config),
-
-        Commands::External(args) => match Command::new("brew")
-            .args(args)
-            .envs(HashMap::from([
-                ("HOMEBREW_NO_ANALYTICS", "1"),
-                ("HOMEBREW_NO_AUTOREMOVE", "1"),
-                ("HOMEBREW_NO_AUTO_UPDATE", "1"),
-                ("HOMEBREW_NO_ENV_HINTS", "1"),
-                ("HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK", "1"),
-                ("HOMEBREW_NO_INSTALL_CLEANUP", "1"),
-                ("HOMEBREW_NO_INSTALL_UPGRADE", "1"),
-            ]))
-            .status()
-        {
-            Ok(status) => std::process::exit(status.code().unwrap_or(1)),
-            Err(e) => {
-                eprintln!("Failed to execute brew: {e}");
-                std::process::exit(1);
-            },
-        },
-    }
+    proc_exit::exit(result);
 }
