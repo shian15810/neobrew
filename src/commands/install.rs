@@ -3,8 +3,9 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 use clap::Args;
+use futures::future;
 
-use crate::{commands::Runner, context::Context};
+use crate::{commands::Runner, context::Context, package::Package};
 
 #[derive(Args)]
 pub struct Install {
@@ -16,6 +17,13 @@ pub struct Install {
 impl Runner for Install {
     async fn run(&self, context: Arc<Context>) -> Result<()> {
         println!("Install packages: {:?}", self.packages);
+
+        let resolvers = self
+            .packages
+            .iter()
+            .map(|package| Package::resolve(package, &context));
+
+        let packages = future::join_all(resolvers).await;
 
         Ok(())
     }
