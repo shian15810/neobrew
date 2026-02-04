@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ffi::OsString, io, process::ExitStatus, sync::Arc};
+use std::{collections::HashMap, ffi::OsString, io, process::ExitStatus};
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -40,7 +40,7 @@ pub enum Internal {
 #[async_trait]
 #[enum_dispatch(Internal)]
 pub trait Runner {
-    async fn run(&self, context: Arc<Context>) -> Result<()>;
+    async fn run(&self, context: &Context) -> Result<()>;
 }
 
 pub async fn run_external(args: &Vec<OsString>) -> io::Result<ExitStatus> {
