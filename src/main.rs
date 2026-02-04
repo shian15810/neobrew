@@ -13,6 +13,8 @@ async fn main() {
 }
 
 async fn run() -> proc_exit::ExitResult {
+    color_eyre::install().with_code(proc_exit::sysexits::SOFTWARE_ERR)?;
+
     let cli = Cli::parse();
     let context = Context::new();
 

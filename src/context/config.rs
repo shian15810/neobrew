@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::Result;
+use color_eyre::eyre::Result;
 use figment::{
     Figment,
     providers::{Env, Serialized},

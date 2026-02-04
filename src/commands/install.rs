@@ -1,6 +1,6 @@
-use anyhow::Result;
 use async_trait::async_trait;
 use clap::Args;
+use color_eyre::eyre::Result;
 use futures::future;
 
 use crate::{commands::Runner, context::Context, package::Package};
@@ -16,12 +16,12 @@ impl Runner for Install {
     async fn run(&self, context: &Context) -> Result<()> {
         println!("Install packages: {:?}", self.packages);
 
-        let resolvers = self
+        let package_resolvers = self
             .packages
             .iter()
-            .map(|package| Package::resolve(package, &context));
+            .map(|package| Package::resolve(package, context));
 
-        let packages = future::join_all(resolvers).await;
+        let packages = future::join_all(package_resolvers).await;
 
         Ok(())
     }

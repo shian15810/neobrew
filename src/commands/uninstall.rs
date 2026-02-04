@@ -1,6 +1,6 @@
-use anyhow::Result;
 use async_trait::async_trait;
 use clap::Args;
+use color_eyre::eyre::Result;
 
 use crate::{commands::Runner, context::Context};
 

@@ -1,4 +1,4 @@
-use anyhow::Result;
+use color_eyre::eyre::Result;
 use once_cell::sync::OnceCell as OnceLock;
 use reqwest::Client;
 

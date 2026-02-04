@@ -1,4 +1,4 @@
-use anyhow::Result;
+use color_eyre::eyre::{Result, eyre};
 use futures::future;
 use serde::Deserialize;
 
@@ -23,7 +23,7 @@ impl Package {
         match (formula_res, cask_res) {
             (Ok(formula), _) => Ok(Self::Formula(formula)),
             (Err(_), Ok(cask)) => Ok(Self::Cask(cask)),
-            (Err(formula_err), Err(cask_err)) => Err(anyhow::anyhow!("")),
+            (Err(formula_err), Err(cask_err)) => Err(eyre!("")),
         }
     }
 }
