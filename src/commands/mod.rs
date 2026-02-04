@@ -1,7 +1,7 @@
 use std::{ffi::OsString, io, process::ExitStatus};
 
 use async_trait::async_trait;
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use color_eyre::eyre::Result;
 use enum_dispatch::enum_dispatch;
 use tokio::process::Command;
@@ -9,6 +9,7 @@ use tokio::process::Command;
 use crate::{
     commands::{install::Install, uninstall::Uninstall},
     context::Context,
+    package::ResolutionStrategy,
 };
 
 mod install;
@@ -41,6 +42,25 @@ pub enum Internal {
 #[enum_dispatch(Internal)]
 pub trait Runner {
     async fn run(&self, context: &Context) -> Result<()>;
+}
+
+#[derive(Args)]
+struct Resolution {
+    #[arg(long, alias = "formulae", conflicts_with = "cask")]
+    formula: bool,
+
+    #[arg(long, alias = "casks", conflicts_with = "formula")]
+    cask: bool,
+}
+
+impl Resolution {
+    fn strategy(&self) -> ResolutionStrategy {
+        match (self.formula, self.cask) {
+            (true, _) => ResolutionStrategy::FormulaOnly,
+            (_, true) => ResolutionStrategy::CaskOnly,
+            _ => ResolutionStrategy::Both,
+        }
+    }
 }
 
 pub async fn run_external(args: &Vec<OsString>) -> io::Result<ExitStatus> {

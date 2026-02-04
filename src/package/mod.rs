@@ -1,8 +1,9 @@
 use color_eyre::eyre::{Result, eyre};
-use futures::future;
-use serde::Deserialize;
 
-use crate::context::Context;
+use crate::{
+    context::Context,
+    package::{cask::Cask, formula::Formula},
+};
 
 mod cask;
 mod formula;
@@ -13,67 +14,39 @@ pub enum Package {
 }
 
 impl Package {
-    pub async fn resolve(package: &str, context: &Context) -> Result<Self> {
-        let (formula_res, cask_res) = future::join(
-            Formula::load(package, context),
-            Cask::load(package, context),
-        )
-        .await;
+    pub async fn resolve(
+        package: &str,
+        context: &Context,
+        strategy: &ResolutionStrategy,
+    ) -> Result<Self> {
+        match strategy {
+            ResolutionStrategy::FormulaOnly => {
+                Ok(Self::Formula(Formula::load(package, context).await?))
+            },
+            ResolutionStrategy::CaskOnly => Ok(Self::Cask(Cask::load(package, context).await?)),
+            ResolutionStrategy::Both => {
+                if let Ok(formula) = Formula::load(package, context).await {
+                    return Ok(Self::Formula(formula));
+                }
 
-        match (formula_res, cask_res) {
-            (Ok(formula), _) => Ok(Self::Formula(formula)),
-            (Err(_), Ok(cask)) => Ok(Self::Cask(cask)),
-            (Err(formula_err), Err(cask_err)) => Err(eyre!("")),
+                if let Ok(cask) = Cask::load(package, context).await {
+                    return Ok(Self::Cask(cask));
+                }
+
+                Err(eyre!(
+                    "No available formula or cask with the name \"{package}\"."
+                ))
+            },
         }
     }
 }
 
+pub enum ResolutionStrategy {
+    FormulaOnly,
+    CaskOnly,
+    Both,
+}
+
 trait Loader: Sized {
     async fn load(package: &str, context: &Context) -> Result<Self>;
-}
-
-#[derive(Deserialize)]
-struct Formula {
-    name: String,
-    dependencies: Vec<String>,
-}
-
-impl Loader for Formula {
-    async fn load(package: &str, context: &Context) -> Result<Self> {
-        let formula_url = format!("https://formulae.brew.sh/api/formula/{package}.json");
-
-        let formula = context
-            .client()
-            .get(&formula_url)
-            .send()
-            .await?
-            .error_for_status()?
-            .json::<Self>()
-            .await?;
-
-        Ok(formula)
-    }
-}
-
-#[derive(Deserialize)]
-struct Cask {
-    token: String,
-    name: Vec<String>,
-}
-
-impl Loader for Cask {
-    async fn load(package: &str, context: &Context) -> Result<Self> {
-        let cask_url = format!("https://formulae.brew.sh/api/cask/{package}.json");
-
-        let cask = context
-            .client()
-            .get(&cask_url)
-            .send()
-            .await?
-            .error_for_status()?
-            .json::<Self>()
-            .await?;
-
-        Ok(cask)
-    }
 }
