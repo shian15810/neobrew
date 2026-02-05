@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
-use color_eyre::eyre::Result;
-use moka::future::Cache;
+use color_eyre::eyre::{Result, eyre};
 use serde::Deserialize;
 
 use super::Loader;
@@ -13,11 +12,7 @@ pub struct Cask {
     name: Vec<String>,
 }
 
-impl Loader for Cask {
-    fn registry(context: &Context) -> &Cache<String, Arc<Self>> {
-        context.cask_registry()
-    }
-
+impl Cask {
     async fn fetch(package: &str, context: &Context) -> Result<Arc<Self>> {
         let cask_url = format!("https://formulae.brew.sh/api/cask/{package}.json");
 
@@ -31,5 +26,15 @@ impl Loader for Cask {
             .await?;
 
         Ok(Arc::new(cask))
+    }
+}
+
+impl Loader for Cask {
+    async fn load(package: &str, context: &Context) -> Result<Arc<Self>> {
+        context
+            .cask_registry()
+            .try_get_with(package.to_string(), Self::fetch(package, context))
+            .await
+            .map_err(|e| eyre!(e))
     }
 }

@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use color_eyre::eyre::{Result, eyre};
-use moka::future::Cache;
 
 pub use self::{cask::Cask, formula::Formula};
 use crate::context::Context;
@@ -50,15 +49,6 @@ impl Package {
     }
 }
 
-trait Loader: Send + Sync + 'static {
-    fn registry(context: &Context) -> &Cache<String, Arc<Self>>;
-
-    async fn fetch(package: &str, context: &Context) -> Result<Arc<Self>>;
-
-    async fn load(package: &str, context: &Context) -> Result<Arc<Self>> {
-        Self::registry(context)
-            .try_get_with(package.to_string(), Self::fetch(package, context))
-            .await
-            .map_err(|e| eyre!(e))
-    }
+trait Loader {
+    async fn load(package: &str, context: &Context) -> Result<Arc<Self>>;
 }

@@ -1,17 +1,11 @@
 use std::sync::Arc;
 
-use color_eyre::eyre::Result;
+use color_eyre::eyre::{Result, eyre};
 use futures::future;
-use moka::future::Cache;
 use serde::Deserialize;
 
 use super::Loader;
 use crate::context::Context;
-
-pub struct Formula {
-    name: String,
-    dependencies: Vec<Arc<Self>>,
-}
 
 #[derive(Deserialize)]
 struct RawFormula {
@@ -19,12 +13,17 @@ struct RawFormula {
     dependencies: Vec<String>,
 }
 
-impl Loader for Formula {
-    fn registry(context: &Context) -> &Cache<String, Arc<Self>> {
-        context.formula_registry()
-    }
+pub struct Formula {
+    name: String,
+    dependencies: Vec<Arc<Self>>,
+}
 
-    async fn fetch(package: &str, context: &Context) -> Result<Arc<Self>> {
+impl Formula {
+    async fn fetch_with_stack(
+        package: &str,
+        context: &Context,
+        stack: Vec<String>,
+    ) -> Result<Arc<Self>> {
         let formula_url = format!("https://formulae.brew.sh/api/formula/{package}.json");
 
         let raw_formula: RawFormula = context
@@ -40,11 +39,45 @@ impl Loader for Formula {
 
         let dependencies = dependencies
             .iter()
-            .map(|dependency| Self::load(dependency, context));
+            .map(|dependency| Self::load_with_stack(dependency, context, stack.clone()));
         let dependencies = future::try_join_all(dependencies).await?;
 
         let formula = Self { name, dependencies };
 
         Ok(Arc::new(formula))
+    }
+
+    async fn load_with_stack(
+        package: &str,
+        context: &Context,
+        mut stack: Vec<String>,
+    ) -> Result<Arc<Self>> {
+        let package = package.to_string();
+
+        if stack.contains(&package) {
+            stack.push(package);
+
+            return Err(eyre!(
+                "Circular dependency detected: {}",
+                stack.join(" -> ")
+            ));
+        }
+
+        stack.push(package.clone());
+
+        context
+            .formula_registry()
+            .try_get_with(
+                package.clone(),
+                Self::fetch_with_stack(&package, context, stack),
+            )
+            .await
+            .map_err(|e| eyre!(e))
+    }
+}
+
+impl Loader for Formula {
+    async fn load(package: &str, context: &Context) -> Result<Arc<Self>> {
+        Self::load_with_stack(package, context, Vec::new()).await
     }
 }
