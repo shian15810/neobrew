@@ -6,11 +6,8 @@ use color_eyre::eyre::Result;
 use enum_dispatch::enum_dispatch;
 use tokio::process::Command;
 
-use crate::{
-    commands::{install::Install, uninstall::Uninstall},
-    context::Context,
-    package::ResolutionStrategy,
-};
+use self::{install::Install, uninstall::Uninstall};
+use crate::{context::Context, package::ResolutionStrategy};
 
 mod install;
 mod uninstall;
@@ -63,7 +60,7 @@ impl Resolution {
     }
 }
 
-pub async fn run_external(args: &Vec<OsString>) -> io::Result<ExitStatus> {
+pub async fn run_external(args: &[OsString]) -> io::Result<ExitStatus> {
     Command::new("brew")
         .args(args)
         .env("HOMEBREW_NO_ANALYTICS", "1")

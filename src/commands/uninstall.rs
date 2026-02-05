@@ -19,8 +19,6 @@ pub struct Uninstall {
 #[async_trait]
 impl Runner for Uninstall {
     async fn run(&self, context: &Context) -> Result<()> {
-        println!("Uninstall packages: {:?}", self.packages);
-
         Ok(())
     }
 }

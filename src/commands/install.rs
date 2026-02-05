@@ -21,10 +21,7 @@ pub struct Install {
 #[async_trait]
 impl Runner for Install {
     async fn run(&self, context: &Context) -> Result<()> {
-        println!("Install packages: {:?}", self.packages);
-
         let strategy = self.resolution.strategy();
-
         let package_resolvers = self
             .packages
             .iter()

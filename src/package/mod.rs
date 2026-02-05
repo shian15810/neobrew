@@ -1,16 +1,22 @@
+use std::sync::Arc;
+
 use color_eyre::eyre::{Result, eyre};
 
-use crate::{
-    context::Context,
-    package::{cask::Cask, formula::Formula},
-};
+use self::{cask::Cask, formula::Formula};
+use crate::context::Context;
 
-mod cask;
-mod formula;
+pub mod cask;
+pub mod formula;
 
 pub enum Package {
-    Formula(Formula),
-    Cask(Cask),
+    Formula(Arc<Formula>),
+    Cask(Arc<Cask>),
+}
+
+pub enum ResolutionStrategy {
+    FormulaOnly,
+    CaskOnly,
+    Both,
 }
 
 impl Package {
@@ -23,7 +29,9 @@ impl Package {
             ResolutionStrategy::FormulaOnly => {
                 Ok(Self::Formula(Formula::load(package, context).await?))
             },
+
             ResolutionStrategy::CaskOnly => Ok(Self::Cask(Cask::load(package, context).await?)),
+
             ResolutionStrategy::Both => {
                 if let Ok(formula) = Formula::load(package, context).await {
                     return Ok(Self::Formula(formula));
@@ -41,12 +49,6 @@ impl Package {
     }
 }
 
-pub enum ResolutionStrategy {
-    FormulaOnly,
-    CaskOnly,
-    Both,
-}
-
 trait Loader: Sized {
-    async fn load(package: &str, context: &Context) -> Result<Self>;
+    async fn load(package: &str, context: &Context) -> Result<Arc<Self>>;
 }
