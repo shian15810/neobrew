@@ -5,7 +5,8 @@ use futures::future;
 use moka::future::Cache;
 use serde::Deserialize;
 
-use crate::{context::Context, package::Loader};
+use super::Loader;
+use crate::context::Context;
 
 pub struct Formula {
     name: String,

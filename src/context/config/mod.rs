@@ -5,8 +5,10 @@ use figment::{
 };
 use serde::{Serialize, de::DeserializeOwned};
 
-pub mod homebrew_config;
-pub mod neobrew_config;
+pub use self::{homebrew_config::HomebrewConfig, neobrew_config::NeobrewConfig};
+
+mod homebrew_config;
+mod neobrew_config;
 
 #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
 const DEFAULT_PREFIX: &str = "/usr/local";

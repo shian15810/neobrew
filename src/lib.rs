@@ -1,13 +1,13 @@
 use clap::Parser;
 use proc_exit::prelude::*;
 
-use crate::{
+use self::{
     commands::{Cli, Commands, Runner, run_external},
     context::Context,
 };
 
-pub mod commands;
-pub mod context;
+mod commands;
+mod context;
 mod package;
 
 pub async fn run() -> proc_exit::ExitResult {

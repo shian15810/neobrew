@@ -4,7 +4,8 @@ use color_eyre::eyre::Result;
 use moka::future::Cache;
 use serde::Deserialize;
 
-use crate::{context::Context, package::Loader};
+use super::Loader;
+use crate::context::Context;
 
 #[derive(Deserialize)]
 pub struct Cask {

@@ -3,11 +3,8 @@ use clap::Args;
 use color_eyre::eyre::Result;
 use futures::future;
 
-use crate::{
-    commands::{Resolution, Runner},
-    context::Context,
-    package::Package,
-};
+use super::{Resolution, Runner};
+use crate::{context::Context, package::Package};
 
 #[derive(Args)]
 pub struct Uninstall {

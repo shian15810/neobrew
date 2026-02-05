@@ -3,11 +3,11 @@ use std::sync::Arc;
 use color_eyre::eyre::{Result, eyre};
 use moka::future::Cache;
 
-use self::{cask::Cask, formula::Formula};
+pub use self::{cask::Cask, formula::Formula};
 use crate::context::Context;
 
-pub mod cask;
-pub mod formula;
+mod cask;
+mod formula;
 
 pub enum ResolutionStrategy {
     FormulaOnly,

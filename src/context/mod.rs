@@ -4,8 +4,8 @@ use color_eyre::eyre::Result;
 use moka::future::Cache;
 use once_cell::sync::OnceCell as OnceLock;
 
-use self::config::{Config, homebrew_config::HomebrewConfig, neobrew_config::NeobrewConfig};
-use crate::package::{cask::Cask, formula::Formula};
+use self::config::{Config, HomebrewConfig, NeobrewConfig};
+use crate::package::{Cask, Formula};
 
 mod config;
 
