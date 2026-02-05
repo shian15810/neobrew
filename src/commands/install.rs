@@ -22,12 +22,12 @@ pub struct Install {
 impl Runner for Install {
     async fn run(&self, context: &Context) -> Result<()> {
         let strategy = self.resolution.strategy();
-        let package_resolvers = self
+
+        let packages = self
             .packages
             .iter()
             .map(|package| Package::resolve(package, context, &strategy));
-
-        let packages = future::join_all(package_resolvers).await;
+        let packages = future::try_join_all(packages).await?;
 
         Ok(())
     }

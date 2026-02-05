@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
-use color_eyre::eyre::{Result, eyre};
+use color_eyre::eyre::Result;
 use futures::future;
+use moka::future::Cache;
 use serde::Deserialize;
 
 use crate::{context::Context, package::Loader};
@@ -17,12 +18,16 @@ struct RawFormula {
     dependencies: Vec<String>,
 }
 
-impl Formula {
-    async fn fetch(name: String, context: &Context) -> Result<Arc<Self>> {
-        let formula_url = format!("https://formulae.brew.sh/api/formula/{name}.json");
+impl Loader for Formula {
+    fn registry(context: &Context) -> &Cache<String, Arc<Self>> {
+        context.formula_registry()
+    }
+
+    async fn fetch(package: &str, context: &Context) -> Result<Arc<Self>> {
+        let formula_url = format!("https://formulae.brew.sh/api/formula/{package}.json");
 
         let raw_formula: RawFormula = context
-            .client()
+            .http_client()
             .get(&formula_url)
             .send()
             .await?
@@ -30,26 +35,15 @@ impl Formula {
             .json()
             .await?;
 
-        let dependencies = raw_formula
-            .dependencies
+        let RawFormula { name, dependencies } = raw_formula;
+
+        let dependencies = dependencies
             .iter()
-            .map(|dep| Self::load(dep, context));
+            .map(|dependency| Self::load(dependency, context));
         let dependencies = future::try_join_all(dependencies).await?;
 
         let formula = Self { name, dependencies };
 
         Ok(Arc::new(formula))
-    }
-}
-
-impl Loader for Formula {
-    async fn load(package: &str, context: &Context) -> Result<Arc<Self>> {
-        let name = package.to_string();
-
-        context
-            .formula_registry()
-            .try_get_with(name.clone(), Self::fetch(name, context))
-            .await
-            .map_err(|e| eyre!(e))
     }
 }

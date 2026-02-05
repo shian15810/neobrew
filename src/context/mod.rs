@@ -3,7 +3,6 @@ use std::sync::Arc;
 use color_eyre::eyre::Result;
 use moka::future::Cache;
 use once_cell::sync::OnceCell as OnceLock;
-use reqwest::Client;
 
 use self::config::{Config, homebrew_config::HomebrewConfig, neobrew_config::NeobrewConfig};
 use crate::package::{cask::Cask, formula::Formula};
@@ -14,10 +13,10 @@ type FormulaRegistry = Cache<String, Arc<Formula>>;
 type CaskRegistry = Cache<String, Arc<Cask>>;
 
 pub struct Context {
-    client: OnceLock<Client>,
-
     homebrew_config: OnceLock<HomebrewConfig>,
     neobrew_config: OnceLock<NeobrewConfig>,
+
+    http_client: OnceLock<reqwest::Client>,
 
     formula_registry: OnceLock<FormulaRegistry>,
     cask_registry: OnceLock<CaskRegistry>,
@@ -26,18 +25,14 @@ pub struct Context {
 impl Context {
     pub fn new() -> Self {
         Self {
-            client: OnceLock::new(),
-
             homebrew_config: OnceLock::new(),
             neobrew_config: OnceLock::new(),
+
+            http_client: OnceLock::new(),
 
             formula_registry: OnceLock::new(),
             cask_registry: OnceLock::new(),
         }
-    }
-
-    pub fn client(&self) -> &Client {
-        self.client.get_or_init(Client::new)
     }
 
     fn homebrew_config(&self) -> Result<&HomebrewConfig> {
@@ -46,6 +41,10 @@ impl Context {
 
     fn neobrew_config(&self) -> Result<&NeobrewConfig> {
         self.neobrew_config.get_or_try_init(NeobrewConfig::load)
+    }
+
+    pub fn http_client(&self) -> &reqwest::Client {
+        self.http_client.get_or_init(reqwest::Client::new)
     }
 
     pub fn formula_registry(&self) -> &FormulaRegistry {

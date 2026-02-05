@@ -1,18 +1,32 @@
+use clap::Parser;
+use proc_exit::prelude::*;
+
+use crate::{
+    commands::{Cli, Commands, Runner, run_external},
+    context::Context,
+};
+
 pub mod commands;
 pub mod context;
 mod package;
 
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+pub async fn run() -> proc_exit::ExitResult {
+    color_eyre::install().with_code(proc_exit::sysexits::SOFTWARE_ERR)?;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+    let cli = Cli::parse();
+    let context = Context::new();
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+    match &cli.command {
+        Commands::Internal(cmd) => cmd
+            .run(&context)
+            .await
+            .with_code(proc_exit::sysexits::SOFTWARE_ERR),
+
+        Commands::External(args) => {
+            let exit_status = run_external(args).await.to_sysexits()?;
+
+            proc_exit::Code::from_status(exit_status).ok()?;
+            proc_exit::Code::SUCCESS.ok()
+        },
     }
 }

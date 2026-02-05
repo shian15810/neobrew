@@ -1,34 +1,6 @@
-use clap::Parser;
-use neobrew::{
-    commands::{Cli, Commands, Runner, run_external},
-    context::Context,
-};
-use proc_exit::prelude::*;
-
 #[tokio::main]
 async fn main() {
-    let result = run().await;
+    let result = neobrew::run().await;
 
     proc_exit::exit(result);
-}
-
-async fn run() -> proc_exit::ExitResult {
-    color_eyre::install().with_code(proc_exit::sysexits::SOFTWARE_ERR)?;
-
-    let cli = Cli::parse();
-    let context = Context::new();
-
-    match &cli.command {
-        Commands::Internal(cmd) => cmd
-            .run(&context)
-            .await
-            .with_code(proc_exit::sysexits::SOFTWARE_ERR),
-
-        Commands::External(args) => {
-            let exit_status = run_external(args).await.to_sysexits()?;
-
-            proc_exit::Code::from_status(exit_status).ok()?;
-            proc_exit::Code::SUCCESS.ok()
-        },
-    }
 }
