@@ -10,6 +10,9 @@ use crate::context::Context;
 pub struct Cask {
     token: String,
     name: Vec<String>,
+    url: String,
+    version: String,
+    sha256: String,
 }
 
 impl Cask {

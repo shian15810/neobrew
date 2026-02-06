@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{collections::BTreeMap, sync::Arc};
 
 use color_eyre::eyre::{Result, eyre};
 use futures::future;
@@ -10,12 +10,52 @@ use crate::context::Context;
 #[derive(Deserialize)]
 struct RawFormula {
     name: String,
+    versions: Versions,
+    revision: u64,
+    bottle: Bottle,
     dependencies: Vec<String>,
+}
+
+impl RawFormula {
+    fn into_formula(self, dependencies: Vec<Arc<Formula>>) -> Formula {
+        Formula {
+            name: self.name,
+            versions: self.versions,
+            revision: self.revision,
+            bottle: self.bottle,
+            dependencies,
+        }
+    }
 }
 
 pub struct Formula {
     name: String,
+    versions: Versions,
+    revision: u64,
+    bottle: Bottle,
     dependencies: Vec<Arc<Self>>,
+}
+
+#[derive(Deserialize)]
+struct Versions {
+    stable: String,
+}
+
+#[derive(Deserialize)]
+struct Bottle {
+    stable: BottleStable,
+}
+
+#[derive(Deserialize)]
+struct BottleStable {
+    rebuild: u64,
+    files: BTreeMap<String, BottleStableFile>,
+}
+
+#[derive(Deserialize)]
+struct BottleStableFile {
+    url: String,
+    sha256: String,
 }
 
 impl Formula {
@@ -35,14 +75,13 @@ impl Formula {
             .json()
             .await?;
 
-        let RawFormula { name, dependencies } = raw_formula;
-
-        let dependencies = dependencies
+        let dependencies = raw_formula
+            .dependencies
             .iter()
             .map(|dependency| Self::load_with_stack(dependency, context, stack.clone()));
         let dependencies = future::try_join_all(dependencies).await?;
 
-        let formula = Self { name, dependencies };
+        let formula = raw_formula.into_formula(dependencies);
 
         Ok(Arc::new(formula))
     }
