@@ -1,8 +1,8 @@
-use std::{ffi::OsString, io, process::ExitStatus};
+use std::{ffi::OsString, io, process::ExitStatus, sync::Arc};
 
+use anyhow::Result;
 use async_trait::async_trait;
 use clap::{Args, Parser, Subcommand};
-use color_eyre::eyre::Result;
 use enum_dispatch::enum_dispatch;
 use tokio::process::Command;
 
@@ -38,7 +38,7 @@ pub enum Internal {
 #[async_trait]
 #[enum_dispatch(Internal)]
 pub trait Runner {
-    async fn run(&self, context: &Context) -> Result<()>;
+    async fn run(&self, context: Arc<Context>) -> Result<()>;
 }
 
 #[derive(Args)]

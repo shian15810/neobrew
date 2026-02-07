@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use color_eyre::eyre::{Result, eyre};
+use anyhow::{Result, anyhow};
 
 pub use self::{cask::Cask, formula::Formula};
 use crate::context::Context;
@@ -22,7 +22,7 @@ pub enum Package {
 impl Package {
     pub async fn resolve(
         package: &str,
-        context: &Context,
+        context: Arc<Context>,
         strategy: &ResolutionStrategy,
     ) -> Result<Self> {
         match strategy {
@@ -33,7 +33,7 @@ impl Package {
             ResolutionStrategy::CaskOnly => Ok(Self::Cask(Cask::load(package, context).await?)),
 
             ResolutionStrategy::Both => {
-                if let Ok(formula) = Formula::load(package, context).await {
+                if let Ok(formula) = Formula::load(package, Arc::clone(&context)).await {
                     return Ok(Self::Formula(formula));
                 }
 
@@ -41,7 +41,7 @@ impl Package {
                     return Ok(Self::Cask(cask));
                 }
 
-                Err(eyre!(
+                Err(anyhow!(
                     "No available formula or cask with the name \"{package}\"."
                 ))
             },
@@ -50,5 +50,5 @@ impl Package {
 }
 
 trait Loader {
-    async fn load(package: &str, context: &Context) -> Result<Arc<Self>>;
+    async fn load(package: &str, context: Arc<Context>) -> Result<Arc<Self>>;
 }

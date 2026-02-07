@@ -1,6 +1,8 @@
+use std::sync::Arc;
+
+use anyhow::Result;
 use async_trait::async_trait;
 use clap::Args;
-use color_eyre::eyre::Result;
 use futures::future;
 
 use super::{Resolution, Runner};
@@ -17,13 +19,13 @@ pub struct Uninstall {
 
 #[async_trait]
 impl Runner for Uninstall {
-    async fn run(&self, context: &Context) -> Result<()> {
+    async fn run(&self, context: Arc<Context>) -> Result<()> {
         let strategy = self.resolution.strategy();
 
         let packages = self
             .packages
             .iter()
-            .map(|package| Package::resolve(package, context, &strategy));
+            .map(|package| Package::resolve(package, Arc::clone(&context), &strategy));
         let packages = future::try_join_all(packages).await?;
 
         Ok(())

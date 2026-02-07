@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use clap::Parser;
 use proc_exit::prelude::*;
 
@@ -11,14 +13,12 @@ mod context;
 mod package;
 
 pub async fn run() -> proc_exit::ExitResult {
-    color_eyre::install().with_code(proc_exit::sysexits::SOFTWARE_ERR)?;
-
     let cli = Cli::parse();
     let context = Context::new();
 
     match &cli.command {
         Commands::Internal(cmd) => cmd
-            .run(&context)
+            .run(Arc::new(context))
             .await
             .with_code(proc_exit::sysexits::SOFTWARE_ERR),
 

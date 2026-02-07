@@ -1,8 +1,9 @@
 use std::{collections::BTreeMap, sync::Arc};
 
-use color_eyre::eyre::{Result, eyre};
+use anyhow::{Result, anyhow};
+use async_recursion::async_recursion;
 use futures::future;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::Loader;
 use crate::context::Context;
@@ -28,6 +29,7 @@ impl RawFormula {
     }
 }
 
+#[derive(Serialize, Deserialize)]
 pub struct Formula {
     name: String,
     versions: Versions,
@@ -36,32 +38,33 @@ pub struct Formula {
     dependencies: Vec<Arc<Self>>,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Versions {
     stable: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct Bottle {
     stable: BottleStable,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct BottleStable {
     rebuild: u64,
     files: BTreeMap<String, BottleStableFile>,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 struct BottleStableFile {
     url: String,
     sha256: String,
 }
 
 impl Formula {
+    #[async_recursion]
     async fn fetch_with_stack(
-        package: &str,
-        context: &Context,
+        package: String,
+        context: Arc<Context>,
         stack: Vec<String>,
     ) -> Result<Arc<Self>> {
         let formula_url = format!("https://formulae.brew.sh/api/formula/{package}.json");
@@ -75,10 +78,9 @@ impl Formula {
             .json()
             .await?;
 
-        let dependencies = raw_formula
-            .dependencies
-            .iter()
-            .map(|dependency| Self::load_with_stack(dependency, context, stack.clone()));
+        let dependencies = raw_formula.dependencies.iter().map(|dependency| {
+            Self::load_with_stack(dependency, Arc::clone(&context), stack.clone())
+        });
         let dependencies = future::try_join_all(dependencies).await?;
 
         let formula = raw_formula.into_formula(dependencies);
@@ -88,15 +90,15 @@ impl Formula {
 
     async fn load_with_stack(
         package: &str,
-        context: &Context,
+        context: Arc<Context>,
         mut stack: Vec<String>,
     ) -> Result<Arc<Self>> {
-        let package = package.to_string();
+        let package = package.to_owned();
 
         if stack.contains(&package) {
             stack.push(package);
 
-            return Err(eyre!(
+            return Err(anyhow!(
                 "Circular dependency detected: {}",
                 stack.join(" -> ")
             ));
@@ -104,19 +106,21 @@ impl Formula {
 
         stack.push(package.clone());
 
-        context
+        let formula = context
             .formula_registry()
-            .try_get_with(
-                package.clone(),
-                Self::fetch_with_stack(&package, context, stack),
-            )
+            .await?
+            .get_or_fetch(&package, || {
+                Self::fetch_with_stack(package.clone(), Arc::clone(&context), stack)
+            })
             .await
-            .map_err(|e| eyre!(e))
+            .map(|entry| Arc::clone(entry.value()))?;
+
+        Ok(formula)
     }
 }
 
 impl Loader for Formula {
-    async fn load(package: &str, context: &Context) -> Result<Arc<Self>> {
+    async fn load(package: &str, context: Arc<Context>) -> Result<Arc<Self>> {
         Self::load_with_stack(package, context, Vec::new()).await
     }
 }

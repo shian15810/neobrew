@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
-use color_eyre::eyre::{Result, eyre};
-use serde::Deserialize;
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
 
 use super::Loader;
 use crate::context::Context;
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Cask {
     token: String,
     name: Vec<String>,
@@ -16,7 +16,7 @@ pub struct Cask {
 }
 
 impl Cask {
-    async fn fetch(package: &str, context: &Context) -> Result<Arc<Self>> {
+    async fn fetch(package: String, context: Arc<Context>) -> Result<Arc<Self>> {
         let cask_url = format!("https://formulae.brew.sh/api/cask/{package}.json");
 
         let cask: Self = context
@@ -33,11 +33,16 @@ impl Cask {
 }
 
 impl Loader for Cask {
-    async fn load(package: &str, context: &Context) -> Result<Arc<Self>> {
-        context
+    async fn load(package: &str, context: Arc<Context>) -> Result<Arc<Self>> {
+        let cask = context
             .cask_registry()
-            .try_get_with(package.to_string(), Self::fetch(package, context))
+            .await?
+            .get_or_fetch(package, || {
+                Self::fetch(package.to_owned(), Arc::clone(&context))
+            })
             .await
-            .map_err(|e| eyre!(e))
+            .map(|entry| Arc::clone(entry.value()))?;
+
+        Ok(cask)
     }
 }

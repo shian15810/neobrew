@@ -1,16 +1,17 @@
 use std::sync::Arc;
 
-use color_eyre::eyre::Result;
-use moka::future::Cache;
+use anyhow::Result;
+use foyer::{HybridCache, HybridCacheBuilder};
 use once_cell::sync::OnceCell as OnceLock;
+use tokio::sync::OnceCell;
 
 use self::config::{Config, HomebrewConfig, NeobrewConfig};
 use crate::package::{Cask, Formula};
 
 mod config;
 
-type FormulaRegistry = Cache<String, Arc<Formula>>;
-type CaskRegistry = Cache<String, Arc<Cask>>;
+type FormulaRegistry = HybridCache<String, Arc<Formula>>;
+type CaskRegistry = HybridCache<String, Arc<Cask>>;
 
 pub struct Context {
     homebrew_config: OnceLock<HomebrewConfig>,
@@ -18,8 +19,8 @@ pub struct Context {
 
     http_client: OnceLock<reqwest::Client>,
 
-    formula_registry: OnceLock<FormulaRegistry>,
-    cask_registry: OnceLock<CaskRegistry>,
+    formula_registry: OnceCell<FormulaRegistry>,
+    cask_registry: OnceCell<CaskRegistry>,
 }
 
 impl Context {
@@ -30,8 +31,8 @@ impl Context {
 
             http_client: OnceLock::new(),
 
-            formula_registry: OnceLock::new(),
-            cask_registry: OnceLock::new(),
+            formula_registry: OnceCell::new(),
+            cask_registry: OnceCell::new(),
         }
     }
 
@@ -47,13 +48,32 @@ impl Context {
         self.http_client.get_or_init(reqwest::Client::new)
     }
 
-    pub fn formula_registry(&self) -> &FormulaRegistry {
-        self.formula_registry
-            .get_or_init(|| Cache::builder().build())
+    pub async fn formula_registry(&self) -> Result<&FormulaRegistry> {
+        let hybrid = self
+            .formula_registry
+            .get_or_try_init(|| {
+                HybridCacheBuilder::new()
+                    .memory(usize::MAX)
+                    .storage()
+                    .build()
+            })
+            .await?;
+
+        Ok(hybrid)
     }
 
-    pub fn cask_registry(&self) -> &CaskRegistry {
-        self.cask_registry.get_or_init(|| Cache::builder().build())
+    pub async fn cask_registry(&self) -> Result<&CaskRegistry> {
+        let hybrid = self
+            .cask_registry
+            .get_or_try_init(|| {
+                HybridCacheBuilder::new()
+                    .memory(usize::MAX)
+                    .storage()
+                    .build()
+            })
+            .await?;
+
+        Ok(hybrid)
     }
 }
 

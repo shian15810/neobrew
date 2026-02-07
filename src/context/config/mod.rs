@@ -1,4 +1,4 @@
-use color_eyre::eyre::Result;
+use anyhow::Result;
 use figment::{
     Figment,
     providers::{Env, Serialized},
