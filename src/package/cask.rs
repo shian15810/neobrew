@@ -1,12 +1,12 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use super::Loader;
-use crate::context::Context;
+use crate::context::{CaskRegistry, Context};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 pub struct Cask {
     token: String,
     name: Vec<String>,
@@ -33,10 +33,14 @@ impl Cask {
 }
 
 impl Loader for Cask {
+    type Registry = CaskRegistry;
+
+    fn registry(context: &Context) -> &Self::Registry {
+        context.cask_registry()
+    }
+
     async fn load(package: &str, context: Arc<Context>) -> Result<Arc<Self>> {
-        let cask = context
-            .cask_registry()
-            .await?
+        let cask = Self::registry(&context)
             .get_or_fetch(package, || {
                 Self::fetch(package.to_owned(), Arc::clone(&context))
             })

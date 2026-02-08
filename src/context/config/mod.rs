@@ -5,10 +5,10 @@ use figment::{
 };
 use serde::{Serialize, de::DeserializeOwned};
 
-pub use self::{homebrew_config::HomebrewConfig, neobrew_config::NeobrewConfig};
+pub use self::{homebrew::HomebrewConfig, neobrew::NeobrewConfig};
 
-mod homebrew_config;
-mod neobrew_config;
+mod homebrew;
+mod neobrew;
 
 cfg_if::cfg_if! {
     if #[cfg(all(target_os = "macos", target_arch = "x86_64"))] {
@@ -23,7 +23,7 @@ cfg_if::cfg_if! {
 }
 
 pub trait Config: Default + Serialize + DeserializeOwned {
-    const ENV_PREFIX: &'static str;
+    const ENV_PREFIX: &str;
 
     fn load() -> Result<Self> {
         let config = Figment::new()

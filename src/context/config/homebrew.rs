@@ -5,11 +5,11 @@ use serde::{Deserialize, Serialize};
 use super::{Config, DEFAULT_PREFIX};
 
 #[derive(Serialize, Deserialize)]
-pub struct NeobrewConfig {
+pub struct HomebrewConfig {
     prefix: PathBuf,
 }
 
-impl Default for NeobrewConfig {
+impl Default for HomebrewConfig {
     fn default() -> Self {
         Self {
             prefix: PathBuf::from(DEFAULT_PREFIX),
@@ -17,6 +17,6 @@ impl Default for NeobrewConfig {
     }
 }
 
-impl Config for NeobrewConfig {
-    const ENV_PREFIX: &'static str = "NEOBREW_";
+impl Config for HomebrewConfig {
+    const ENV_PREFIX: &str = "HOMEBREW_";
 }

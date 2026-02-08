@@ -1,26 +1,26 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use foyer::{HybridCache, HybridCacheBuilder};
+use foyer::{Cache, CacheBuilder};
 use once_cell::sync::OnceCell as OnceLock;
-use tokio::sync::OnceCell;
 
 use self::config::{Config, HomebrewConfig, NeobrewConfig};
 use crate::package::{Cask, Formula};
 
 mod config;
 
-type FormulaRegistry = HybridCache<String, Arc<Formula>>;
-type CaskRegistry = HybridCache<String, Arc<Cask>>;
+pub type FormulaRegistry = Cache<String, Arc<Formula>>;
+pub type CaskRegistry = Cache<String, Arc<Cask>>;
 
 pub struct Context {
     homebrew_config: OnceLock<HomebrewConfig>,
     neobrew_config: OnceLock<NeobrewConfig>,
 
     http_client: OnceLock<reqwest::Client>,
+    max_concurrency: OnceLock<usize>,
 
-    formula_registry: OnceCell<FormulaRegistry>,
-    cask_registry: OnceCell<CaskRegistry>,
+    formula_registry: OnceLock<FormulaRegistry>,
+    cask_registry: OnceLock<CaskRegistry>,
 }
 
 impl Context {
@@ -30,9 +30,10 @@ impl Context {
             neobrew_config: OnceLock::new(),
 
             http_client: OnceLock::new(),
+            max_concurrency: OnceLock::new(),
 
-            formula_registry: OnceCell::new(),
-            cask_registry: OnceCell::new(),
+            formula_registry: OnceLock::new(),
+            cask_registry: OnceLock::new(),
         }
     }
 
@@ -48,32 +49,18 @@ impl Context {
         self.http_client.get_or_init(reqwest::Client::new)
     }
 
-    pub async fn formula_registry(&self) -> Result<&FormulaRegistry> {
-        let hybrid = self
-            .formula_registry
-            .get_or_try_init(|| {
-                HybridCacheBuilder::new()
-                    .memory(usize::MAX)
-                    .storage()
-                    .build()
-            })
-            .await?;
-
-        Ok(hybrid)
+    fn max_concurrency(&self) -> &usize {
+        self.max_concurrency.get_or_init(|| 16)
     }
 
-    pub async fn cask_registry(&self) -> Result<&CaskRegistry> {
-        let hybrid = self
-            .cask_registry
-            .get_or_try_init(|| {
-                HybridCacheBuilder::new()
-                    .memory(usize::MAX)
-                    .storage()
-                    .build()
-            })
-            .await?;
+    pub fn formula_registry(&self) -> &FormulaRegistry {
+        self.formula_registry
+            .get_or_init(|| CacheBuilder::new(usize::MAX).build())
+    }
 
-        Ok(hybrid)
+    pub fn cask_registry(&self) -> &CaskRegistry {
+        self.cask_registry
+            .get_or_init(|| CacheBuilder::new(usize::MAX).build())
     }
 }
 

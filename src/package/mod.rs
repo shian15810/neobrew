@@ -50,5 +50,9 @@ impl Package {
 }
 
 trait Loader {
+    type Registry;
+
+    fn registry(context: &Context) -> &Self::Registry;
+
     async fn load(package: &str, context: Arc<Context>) -> Result<Arc<Self>>;
 }

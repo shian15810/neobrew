@@ -3,10 +3,10 @@ use std::{collections::BTreeMap, sync::Arc};
 use anyhow::{Result, anyhow};
 use async_recursion::async_recursion;
 use futures::future;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use super::Loader;
-use crate::context::Context;
+use crate::context::{Context, FormulaRegistry};
 
 #[derive(Deserialize)]
 struct RawFormula {
@@ -29,7 +29,6 @@ impl RawFormula {
     }
 }
 
-#[derive(Serialize, Deserialize)]
 pub struct Formula {
     name: String,
     versions: Versions,
@@ -38,23 +37,23 @@ pub struct Formula {
     dependencies: Vec<Arc<Self>>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 struct Versions {
     stable: String,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 struct Bottle {
     stable: BottleStable,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 struct BottleStable {
     rebuild: u64,
     files: BTreeMap<String, BottleStableFile>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 struct BottleStableFile {
     url: String,
     sha256: String,
@@ -106,9 +105,7 @@ impl Formula {
 
         stack.push(package.clone());
 
-        let formula = context
-            .formula_registry()
-            .await?
+        let formula = Self::registry(&context)
             .get_or_fetch(&package, || {
                 Self::fetch_with_stack(package.clone(), Arc::clone(&context), stack)
             })
@@ -120,6 +117,12 @@ impl Formula {
 }
 
 impl Loader for Formula {
+    type Registry = FormulaRegistry;
+
+    fn registry(context: &Context) -> &Self::Registry {
+        context.formula_registry()
+    }
+
     async fn load(package: &str, context: Arc<Context>) -> Result<Arc<Self>> {
         Self::load_with_stack(package, context, Vec::new()).await
     }
