@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
-use super::{Config, DEFAULT_PREFIX};
+use super::Config;
 
 #[derive(Serialize, Deserialize)]
 pub struct NeobrewConfig {
@@ -12,7 +12,7 @@ pub struct NeobrewConfig {
 impl Default for NeobrewConfig {
     fn default() -> Self {
         Self {
-            prefix: PathBuf::from(DEFAULT_PREFIX),
+            prefix: PathBuf::from(Self::DEFAULT_PREFIX),
         }
     }
 }

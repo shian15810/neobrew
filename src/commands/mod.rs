@@ -1,9 +1,10 @@
-use std::{ffi::OsString, io, process::ExitStatus, sync::Arc};
+use std::{ffi::OsString, sync::Arc};
 
 use anyhow::Result;
 use async_trait::async_trait;
 use clap::{Args, Parser, Subcommand};
 use enum_dispatch::enum_dispatch;
+use proc_exit::prelude::*;
 use tokio::process::Command;
 
 use self::{install::Install, uninstall::Uninstall};
@@ -28,8 +29,37 @@ pub enum Commands {
     External(Vec<OsString>),
 }
 
-#[enum_dispatch]
+impl Commands {
+    pub async fn run(&self, context: Arc<Context>) -> proc_exit::ExitResult {
+        match self {
+            Self::Internal(internal) => internal
+                .run(context)
+                .await
+                .with_code(proc_exit::sysexits::SOFTWARE_ERR),
+
+            Self::External(args) => {
+                let exit_status = Command::new("brew")
+                    .args(args)
+                    .env("HOMEBREW_NO_ANALYTICS", "1")
+                    .env("HOMEBREW_NO_AUTOREMOVE", "1")
+                    .env("HOMEBREW_NO_AUTO_UPDATE", "1")
+                    .env("HOMEBREW_NO_ENV_HINTS", "1")
+                    .env("HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK", "1")
+                    .env("HOMEBREW_NO_INSTALL_CLEANUP", "1")
+                    .env("HOMEBREW_NO_INSTALL_UPGRADE", "1")
+                    .status()
+                    .await
+                    .to_sysexits()?;
+
+                proc_exit::Code::from_status(exit_status).ok()?;
+                proc_exit::Code::SUCCESS.ok()
+            },
+        }
+    }
+}
+
 #[derive(Subcommand)]
+#[enum_dispatch]
 pub enum Internal {
     Install(Install),
     Uninstall(Uninstall),
@@ -37,7 +67,7 @@ pub enum Internal {
 
 #[async_trait]
 #[enum_dispatch(Internal)]
-pub trait Runner {
+trait Runner {
     async fn run(&self, context: Arc<Context>) -> Result<()>;
 }
 
@@ -58,18 +88,4 @@ impl Resolution {
             _ => ResolutionStrategy::Both,
         }
     }
-}
-
-pub async fn run_external(args: &[OsString]) -> io::Result<ExitStatus> {
-    Command::new("brew")
-        .args(args)
-        .env("HOMEBREW_NO_ANALYTICS", "1")
-        .env("HOMEBREW_NO_AUTOREMOVE", "1")
-        .env("HOMEBREW_NO_AUTO_UPDATE", "1")
-        .env("HOMEBREW_NO_ENV_HINTS", "1")
-        .env("HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK", "1")
-        .env("HOMEBREW_NO_INSTALL_CLEANUP", "1")
-        .env("HOMEBREW_NO_INSTALL_UPGRADE", "1")
-        .status()
-        .await
 }

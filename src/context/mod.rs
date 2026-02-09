@@ -16,8 +16,8 @@ pub struct Context {
     homebrew_config: OnceLock<HomebrewConfig>,
     neobrew_config: OnceLock<NeobrewConfig>,
 
-    http_client: OnceLock<reqwest::Client>,
     max_concurrency: OnceLock<usize>,
+    http_client: OnceLock<reqwest::Client>,
 
     formula_registry: OnceLock<FormulaRegistry>,
     cask_registry: OnceLock<CaskRegistry>,
@@ -29,8 +29,8 @@ impl Context {
             homebrew_config: OnceLock::new(),
             neobrew_config: OnceLock::new(),
 
-            http_client: OnceLock::new(),
             max_concurrency: OnceLock::new(),
+            http_client: OnceLock::new(),
 
             formula_registry: OnceLock::new(),
             cask_registry: OnceLock::new(),
@@ -45,12 +45,12 @@ impl Context {
         self.neobrew_config.get_or_try_init(NeobrewConfig::load)
     }
 
-    pub fn http_client(&self) -> &reqwest::Client {
-        self.http_client.get_or_init(reqwest::Client::new)
+    pub fn max_concurrency(&self) -> &usize {
+        self.max_concurrency.get_or_init(|| 16)
     }
 
-    fn max_concurrency(&self) -> &usize {
-        self.max_concurrency.get_or_init(|| 16)
+    pub fn http_client(&self) -> &reqwest::Client {
+        self.http_client.get_or_init(reqwest::Client::new)
     }
 
     pub fn formula_registry(&self) -> &FormulaRegistry {
@@ -61,11 +61,5 @@ impl Context {
     pub fn cask_registry(&self) -> &CaskRegistry {
         self.cask_registry
             .get_or_init(|| CacheBuilder::new(usize::MAX).build())
-    }
-}
-
-impl Default for Context {
-    fn default() -> Self {
-        Self::new()
     }
 }

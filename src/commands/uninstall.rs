@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 use clap::Args;
-use futures::future;
+use futures::{StreamExt, TryStreamExt, stream};
 
 use super::{Resolution, Runner};
 use crate::{context::Context, package::Package};
@@ -25,8 +25,12 @@ impl Runner for Uninstall {
         let packages = self
             .packages
             .iter()
-            .map(|package| Package::resolve(package, Arc::clone(&context), &strategy));
-        let packages = future::try_join_all(packages).await?;
+            .cloned()
+            .map(|package| Package::resolve(package, Arc::clone(&context), strategy));
+        let packages = stream::iter(packages)
+            .buffer_unordered(*context.max_concurrency())
+            .try_collect::<Vec<_>>()
+            .await?;
 
         Ok(())
     }

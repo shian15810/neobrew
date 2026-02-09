@@ -8,6 +8,7 @@ use crate::context::Context;
 mod cask;
 mod formula;
 
+#[derive(Clone, Copy)]
 pub enum ResolutionStrategy {
     FormulaOnly,
     CaskOnly,
@@ -21,9 +22,9 @@ pub enum Package {
 
 impl Package {
     pub async fn resolve(
-        package: &str,
+        package: String,
         context: Arc<Context>,
-        strategy: &ResolutionStrategy,
+        strategy: ResolutionStrategy,
     ) -> Result<Self> {
         match strategy {
             ResolutionStrategy::FormulaOnly => {
@@ -33,11 +34,11 @@ impl Package {
             ResolutionStrategy::CaskOnly => Ok(Self::Cask(Cask::load(package, context).await?)),
 
             ResolutionStrategy::Both => {
-                if let Ok(formula) = Formula::load(package, Arc::clone(&context)).await {
+                if let Ok(formula) = Formula::load(package.clone(), Arc::clone(&context)).await {
                     return Ok(Self::Formula(formula));
                 }
 
-                if let Ok(cask) = Cask::load(package, context).await {
+                if let Ok(cask) = Cask::load(package.clone(), context).await {
                     return Ok(Self::Cask(cask));
                 }
 
@@ -54,5 +55,5 @@ trait Loader {
 
     fn registry(context: &Context) -> &Self::Registry;
 
-    async fn load(package: &str, context: Arc<Context>) -> Result<Arc<Self>>;
+    async fn load(package: String, context: Arc<Context>) -> Result<Arc<Self>>;
 }

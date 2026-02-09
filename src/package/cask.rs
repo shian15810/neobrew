@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use serde::Deserialize;
+use url::Url;
 
 use super::Loader;
 use crate::context::{CaskRegistry, Context};
@@ -10,7 +11,7 @@ use crate::context::{CaskRegistry, Context};
 pub struct Cask {
     token: String,
     name: Vec<String>,
-    url: String,
+    url: Url,
     version: String,
     sha256: String,
 }
@@ -39,10 +40,10 @@ impl Loader for Cask {
         context.cask_registry()
     }
 
-    async fn load(package: &str, context: Arc<Context>) -> Result<Arc<Self>> {
+    async fn load(package: String, context: Arc<Context>) -> Result<Arc<Self>> {
         let cask = Self::registry(&context)
-            .get_or_fetch(package, || {
-                Self::fetch(package.to_owned(), Arc::clone(&context))
+            .get_or_fetch(&package, || {
+                Self::fetch(package.clone(), Arc::clone(&context))
             })
             .await
             .map(|entry| Arc::clone(entry.value()))?;

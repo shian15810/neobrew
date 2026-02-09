@@ -2,8 +2,9 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use anyhow::{Result, anyhow};
 use async_recursion::async_recursion;
-use futures::future;
+use futures::{StreamExt, TryStreamExt, stream};
 use serde::Deserialize;
+use url::Url;
 
 use super::Loader;
 use crate::context::{Context, FormulaRegistry};
@@ -55,7 +56,7 @@ struct BottleStable {
 
 #[derive(Deserialize)]
 struct BottleStableFile {
-    url: String,
+    url: Url,
     sha256: String,
 }
 
@@ -77,10 +78,13 @@ impl Formula {
             .json()
             .await?;
 
-        let dependencies = raw_formula.dependencies.iter().map(|dependency| {
+        let dependencies = raw_formula.dependencies.iter().cloned().map(|dependency| {
             Self::load_with_stack(dependency, Arc::clone(&context), stack.clone())
         });
-        let dependencies = future::try_join_all(dependencies).await?;
+        let dependencies = stream::iter(dependencies)
+            .buffer_unordered(*context.max_concurrency())
+            .try_collect::<Vec<_>>()
+            .await?;
 
         let formula = raw_formula.into_formula(dependencies);
 
@@ -88,12 +92,10 @@ impl Formula {
     }
 
     async fn load_with_stack(
-        package: &str,
+        package: String,
         context: Arc<Context>,
         mut stack: Vec<String>,
     ) -> Result<Arc<Self>> {
-        let package = package.to_owned();
-
         if stack.contains(&package) {
             stack.push(package);
 
@@ -123,7 +125,7 @@ impl Loader for Formula {
         context.formula_registry()
     }
 
-    async fn load(package: &str, context: Arc<Context>) -> Result<Arc<Self>> {
+    async fn load(package: String, context: Arc<Context>) -> Result<Arc<Self>> {
         Self::load_with_stack(package, context, Vec::new()).await
     }
 }
