@@ -8,7 +8,7 @@ use proc_exit::prelude::*;
 use tokio::process::Command;
 
 use self::{install::Install, uninstall::Uninstall};
-use crate::{context::Context, package::ResolutionStrategy};
+use crate::{context::Context, registries::ResolutionStrategy};
 
 mod install;
 mod uninstall;

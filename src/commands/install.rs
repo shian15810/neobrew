@@ -3,10 +3,9 @@ use std::sync::Arc;
 use anyhow::Result;
 use async_trait::async_trait;
 use clap::Args;
-use futures::{StreamExt, TryStreamExt, stream};
 
 use super::{Resolution, Runner};
-use crate::{context::Context, package::Package};
+use crate::{context::Context, registries::Registries};
 
 #[derive(Args)]
 pub struct Install {
@@ -20,16 +19,12 @@ pub struct Install {
 #[async_trait]
 impl Runner for Install {
     async fn run(&self, context: Arc<Context>) -> Result<()> {
+        let registries = Registries::new(context);
+
         let strategy = self.resolution.strategy();
 
-        let packages = self
-            .packages
-            .iter()
-            .cloned()
-            .map(|package| Package::resolve(package, Arc::clone(&context), strategy));
-        let packages = stream::iter(packages)
-            .buffer_unordered(*context.max_concurrency())
-            .try_collect::<Vec<_>>()
+        let _packages = registries
+            .resolve(self.packages.iter().cloned(), strategy)
             .await?;
 
         Ok(())
