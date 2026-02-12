@@ -2,7 +2,7 @@ use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct Cask {
-    token: String,
+    pub token: String,
     name: Vec<String>,
     url: String,
     version: String,

@@ -1,8 +1,14 @@
-use std::sync::Arc;
+use std::{
+    fs::File,
+    io::{BufWriter, Write},
+    sync::Arc,
+};
 
-use anyhow::Result;
+use anyhow::{Error, Result};
 use async_trait::async_trait;
 use clap::Args;
+use futures::stream::StreamExt;
+use tokio::{sync::mpsc, task};
 
 use super::{Resolution, Runner};
 use crate::{context::Context, registries::Registries};
@@ -19,13 +25,54 @@ pub struct Install {
 #[async_trait]
 impl Runner for Install {
     async fn run(&self, context: Arc<Context>) -> Result<()> {
-        let registries = Registries::new(context);
+        let registries = Registries::new(Arc::clone(&context));
 
         let strategy = self.resolution.strategy();
 
-        let _packages = registries
+        let packages = registries
             .resolve(self.packages.iter().cloned(), strategy)
             .await?;
+
+        for package in packages {
+            let (tx, mut rx) = mpsc::channel(32);
+
+            let context = Arc::clone(&context);
+
+            let _handle = task::spawn(async move {
+                let mut stream = context
+                    .http_client()
+                    .get("https://httpbin.org/json")
+                    .send()
+                    .await?
+                    .error_for_status()?
+                    .bytes_stream();
+
+                while let Some(item) = stream.next().await {
+                    let chunk = item?;
+
+                    tx.send(chunk).await?;
+                }
+
+                Ok::<_, Error>(())
+            })
+            .await??;
+
+            let _handle_blocking = task::spawn_blocking(move || -> Result<()> {
+                let id = package.id();
+
+                let file = File::create(format!("{id}.json"))?;
+                let mut file = BufWriter::new(file);
+
+                while let Some(chunk) = rx.blocking_recv() {
+                    file.write_all(&chunk)?;
+                }
+
+                file.flush()?;
+
+                Ok(())
+            })
+            .await??;
+        }
 
         Ok(())
     }

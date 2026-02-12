@@ -8,14 +8,13 @@ anyhow = "1.0.101"
 async-recursion = "1.1.1"
 async-trait = "0.1.89"
 cfg-if = "1.0.4"
-clap = { version = "4.5.57", features = ["derive"] }
+clap = { version = "4.5.58", features = ["derive"] }
 enum_dispatch = "0.3.13"
 figment = { version = "0.10.19", features = ["env"] }
 foyer = "0.22.3"
 futures = "0.3.31"
 once_cell = "1.21.3"
 proc-exit = "2.0.2"
-reqwest = { version = "0.13.2", features = ["json"] }
+reqwest = { version = "0.13.2", features = ["json", "stream"] }
 serde = { version = "1.0.228", features = ["derive"] }
 tokio = { version = "1.49.0", features = ["macros", "process", "rt-multi-thread"] }
-url = { version = "2.5.8", features = ["serde"] }

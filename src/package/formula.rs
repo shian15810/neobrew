@@ -24,7 +24,7 @@ impl RawFormula {
 }
 
 pub struct Formula {
-    name: String,
+    pub name: String,
     versions: Versions,
     revision: u64,
     bottle: Bottle,
