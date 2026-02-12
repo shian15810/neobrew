@@ -7,6 +7,7 @@ edition = "2024"
 anyhow = "1.0.101"
 async-recursion = "1.1.1"
 async-trait = "0.1.89"
+bytes = "1.11.1"
 cfg-if = "1.0.4"
 clap = { version = "4.5.58", features = ["derive"] }
 enum_dispatch = "0.3.13"

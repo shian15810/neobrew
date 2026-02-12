@@ -30,7 +30,7 @@ pub enum Commands {
 }
 
 impl Commands {
-    pub async fn run(&self, context: Arc<Context>) -> proc_exit::ExitResult {
+    pub async fn run(self, context: Arc<Context>) -> proc_exit::ExitResult {
         match self {
             Self::Internal(internal) => internal
                 .run(context)
@@ -68,7 +68,7 @@ pub enum Internal {
 #[async_trait]
 #[enum_dispatch(Internal)]
 trait Runner {
-    async fn run(&self, context: Arc<Context>) -> Result<()>;
+    async fn run(self, context: Arc<Context>) -> Result<()>;
 }
 
 #[derive(Args)]
@@ -81,7 +81,7 @@ struct Resolution {
 }
 
 impl Resolution {
-    fn strategy(&self) -> ResolutionStrategy {
+    fn strategy(self) -> ResolutionStrategy {
         match (self.formula, self.cask) {
             (true, _) => ResolutionStrategy::FormulaOnly,
             (_, true) => ResolutionStrategy::CaskOnly,

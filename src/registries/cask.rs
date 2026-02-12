@@ -33,7 +33,7 @@ impl CaskRegistry {
         let cask: Cask = self
             .context
             .http_client()
-            .get(&url)
+            .get(url)
             .send()
             .await?
             .error_for_status()?

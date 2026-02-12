@@ -1118,6 +1118,7 @@ dependencies = [
  "anyhow",
  "async-recursion",
  "async-trait",
+ "bytes",
  "cfg-if",
  "clap",
  "enum_dispatch",

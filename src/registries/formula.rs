@@ -62,7 +62,7 @@ impl FormulaRegistry {
         let raw_formula: RawFormula = self
             .context
             .http_client()
-            .get(&url)
+            .get(url)
             .send()
             .await?
             .error_for_status()?

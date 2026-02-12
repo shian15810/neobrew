@@ -8,7 +8,7 @@ use anyhow::{Error, Result};
 use async_trait::async_trait;
 use clap::Args;
 use futures::stream::StreamExt;
-use tokio::{sync::mpsc, task};
+use tokio::{sync::mpsc, task::JoinSet};
 
 use super::{Resolution, Runner};
 use crate::{context::Context, registries::Registries};
@@ -24,7 +24,7 @@ pub struct Install {
 
 #[async_trait]
 impl Runner for Install {
-    async fn run(&self, context: Arc<Context>) -> Result<()> {
+    async fn run(self, context: Arc<Context>) -> Result<()> {
         let registries = Registries::new(Arc::clone(&context));
 
         let strategy = self.resolution.strategy();
@@ -33,12 +33,14 @@ impl Runner for Install {
             .resolve(self.packages.iter().cloned(), strategy)
             .await?;
 
+        let mut set = JoinSet::new();
+
         for package in packages {
             let (tx, mut rx) = mpsc::channel(32);
 
             let context = Arc::clone(&context);
 
-            let _handle = task::spawn(async move {
+            set.spawn(async move {
                 let mut stream = context
                     .http_client()
                     .get("https://httpbin.org/json")
@@ -54,10 +56,9 @@ impl Runner for Install {
                 }
 
                 Ok::<_, Error>(())
-            })
-            .await??;
+            });
 
-            let _handle_blocking = task::spawn_blocking(move || -> Result<()> {
+            set.spawn_blocking(move || -> Result<()> {
                 let id = package.id();
 
                 let file = File::create(format!("{id}.json"))?;
@@ -70,8 +71,11 @@ impl Runner for Install {
                 file.flush()?;
 
                 Ok(())
-            })
-            .await??;
+            });
+        }
+
+        while let Some(res) = set.join_next().await {
+            res??;
         }
 
         Ok(())

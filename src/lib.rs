@@ -7,6 +7,7 @@ use self::{commands::Cli, context::Context};
 mod commands;
 mod context;
 mod package;
+mod pipeline;
 mod registries;
 
 pub async fn run() -> proc_exit::ExitResult {

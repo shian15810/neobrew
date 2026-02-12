@@ -35,7 +35,7 @@ impl Registries {
     }
 
     pub async fn resolve(
-        &self,
+        self,
         packages: impl IntoIterator<Item = String>,
         strategy: ResolutionStrategy,
     ) -> Result<Vec<Package>> {
