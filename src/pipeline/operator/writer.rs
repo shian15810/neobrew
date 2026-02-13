@@ -9,44 +9,45 @@ use bytes::Bytes;
 
 use super::Operator;
 
-pub struct FileWriter {
+pub struct Writer {
+    inner: Option<BufWriter<File>>,
+
     path: PathBuf,
-    sink: Option<BufWriter<File>>,
 }
 
-impl FileWriter {
+impl Writer {
     pub fn new(path: impl AsRef<Path>) -> Self {
         Self {
             path: path.as_ref().to_path_buf(),
-            sink: None,
+            inner: None,
         }
     }
 
-    fn get_or_init_sink(&mut self) -> Result<&mut BufWriter<File>> {
-        if self.sink.is_none() {
+    fn get_or_init(&mut self) -> Result<&mut BufWriter<File>> {
+        if self.inner.is_none() {
             let file = File::create(&self.path)?;
-            let sink = BufWriter::new(file);
+            let inner = BufWriter::new(file);
 
-            self.sink = Some(sink);
+            self.inner = Some(inner);
         }
 
-        Ok(self.sink.as_mut().unwrap())
+        Ok(self.inner.as_mut().unwrap())
     }
 }
 
-impl Operator for FileWriter {
+impl Operator for Writer {
     fn send(&mut self, chunk: Bytes) -> Result<()> {
-        let sink = self.get_or_init_sink()?;
+        let this = self.get_or_init()?;
 
-        sink.write_all(&chunk)?;
+        this.write_all(&chunk)?;
 
         Ok(())
     }
 
     fn apply(mut self) -> Result<()> {
-        let sink = self.get_or_init_sink()?;
+        let this = self.get_or_init()?;
 
-        sink.flush()?;
+        this.flush()?;
 
         Ok(())
     }

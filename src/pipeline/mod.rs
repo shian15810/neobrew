@@ -3,9 +3,9 @@ use bytes::Bytes;
 use futures::{Stream, StreamExt};
 use tokio::{sync::mpsc, task::JoinSet};
 
-pub use self::file_writer::FileWriter;
+use self::operator::Operator;
 
-mod file_writer;
+pub mod operator;
 
 pub struct Pipeline {
     txs: Vec<mpsc::Sender<Bytes>>,
@@ -20,12 +20,12 @@ impl Pipeline {
         }
     }
 
-    pub fn add(mut self, mut operator: impl Operator) -> Self {
+    pub fn broadcast(mut self, mut operator: impl Operator) -> Self {
         let (tx, mut rx) = mpsc::channel(32);
 
         self.txs.push(tx);
 
-        self.set.spawn_blocking(move || -> Result<()> {
+        self.set.spawn_blocking(move || {
             while let Some(chunk) = rx.blocking_recv() {
                 operator.send(chunk)?;
             }
@@ -57,10 +57,4 @@ impl Pipeline {
 
         Ok(())
     }
-}
-
-pub trait Operator: Send + 'static {
-    fn send(&mut self, chunk: Bytes) -> Result<()>;
-
-    fn apply(self) -> Result<()>;
 }

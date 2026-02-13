@@ -4,7 +4,7 @@ use anyhow::Result;
 use foyer::{Cache, CacheBuilder};
 
 use super::Registry;
-use crate::{context::Context, package::Cask};
+use crate::{context::Context, package::cask::Cask};
 
 pub struct CaskRegistry {
     context: Arc<Context>,

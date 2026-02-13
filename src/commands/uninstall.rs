@@ -8,7 +8,10 @@ use tokio::task::JoinSet;
 use super::{Resolution, Runner};
 use crate::{
     context::Context,
-    pipeline::{FileWriter, Pipeline},
+    pipeline::{
+        Pipeline,
+        operator::{Hasher, Writer},
+    },
     registries::Registries,
 };
 
@@ -40,7 +43,8 @@ impl Runner for Uninstall {
             set.spawn(async move {
                 let id = package.id();
 
-                let file_writer = FileWriter::new(format!("{id}.json"));
+                let hasher = Hasher::new();
+                let writer = Writer::new(format!("{id}.json"));
 
                 let stream = context
                     .http_client()
@@ -50,7 +54,11 @@ impl Runner for Uninstall {
                     .error_for_status()?
                     .bytes_stream();
 
-                let _pipeline = Pipeline::new().add(file_writer).apply(stream).await?;
+                let _pipeline = Pipeline::new()
+                    .broadcast(hasher)
+                    .broadcast(writer)
+                    .apply(stream)
+                    .await?;
 
                 Ok::<_, Error>(())
             });

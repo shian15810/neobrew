@@ -58,7 +58,7 @@ impl Runner for Install {
                 Ok::<_, Error>(())
             });
 
-            set.spawn_blocking(move || -> Result<()> {
+            set.spawn_blocking(move || {
                 let id = package.id();
 
                 let file = File::create(format!("{id}.json"))?;

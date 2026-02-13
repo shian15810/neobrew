@@ -1,12 +1,9 @@
 use std::sync::Arc;
 
-pub use self::{
-    cask::Cask,
-    formula::{Formula, RawFormula},
-};
+use self::{cask::Cask, formula::Formula};
 
-mod cask;
-mod formula;
+pub mod cask;
+pub mod formula;
 
 pub enum Package {
     Formula(Arc<Formula>),
