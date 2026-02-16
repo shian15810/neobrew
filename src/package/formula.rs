@@ -31,6 +31,8 @@ pub struct Formula {
     dependencies: Vec<Arc<Self>>,
 }
 
+impl Formula {}
+
 #[derive(Deserialize)]
 struct Versions {
     stable: String,

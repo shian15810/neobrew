@@ -7,9 +7,9 @@ use super::Registry;
 use crate::{context::Context, package::cask::Cask};
 
 pub struct CaskRegistry {
-    context: Arc<Context>,
-
     store: Cache<String, Arc<Cask>>,
+
+    context: Arc<Context>,
 }
 
 impl CaskRegistry {
@@ -52,9 +52,9 @@ impl Registry for CaskRegistry {
 
     fn new(context: Arc<Context>) -> Self {
         Self {
-            context,
-
             store: CacheBuilder::new(usize::MAX).build(),
+
+            context,
         }
     }
 }

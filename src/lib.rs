@@ -12,6 +12,7 @@ mod registries;
 
 pub async fn run() -> proc_exit::ExitResult {
     let cli = Cli::parse();
+
     let context = Context::new();
 
     cli.command.run(Arc::new(context)).await

@@ -31,9 +31,7 @@ impl Runner for Uninstall {
 
         let strategy = self.resolution.strategy();
 
-        let packages = registries
-            .resolve(self.packages.iter().cloned(), strategy)
-            .await?;
+        let packages = registries.resolve(self.packages, strategy).await?;
 
         let mut set = JoinSet::new();
 
@@ -43,9 +41,6 @@ impl Runner for Uninstall {
             set.spawn(async move {
                 let id = package.id();
 
-                let hasher = Hasher::new();
-                let writer = Writer::new(format!("{id}.json"));
-
                 let stream = context
                     .http_client()
                     .get("https://httpbin.org/json")
@@ -54,11 +49,13 @@ impl Runner for Uninstall {
                     .error_for_status()?
                     .bytes_stream();
 
-                let _pipeline = Pipeline::new()
-                    .broadcast(hasher)
-                    .broadcast(writer)
-                    .apply(stream)
+                let (hash, ..) = Pipeline::new(context)
+                    .fanout(Hasher::new())
+                    .fanout(Writer::new(format!("{id}.json")))
+                    .send_all(stream)
                     .await?;
+
+                dbg!(hash);
 
                 Ok::<_, Error>(())
             });

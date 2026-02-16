@@ -52,6 +52,7 @@ impl Commands {
                     .to_sysexits()?;
 
                 proc_exit::Code::from_status(exit_status).ok()?;
+
                 proc_exit::Code::SUCCESS.ok()
             },
         }

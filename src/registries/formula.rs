@@ -3,7 +3,7 @@ use std::sync::Arc;
 use anyhow::{Result, anyhow};
 use async_recursion::async_recursion;
 use foyer::{Cache, CacheBuilder};
-use futures::{StreamExt, TryStreamExt, stream};
+use futures::stream::{self, StreamExt, TryStreamExt};
 
 use super::Registry;
 use crate::{
@@ -12,9 +12,9 @@ use crate::{
 };
 
 pub struct FormulaRegistry {
-    context: Arc<Context>,
-
     store: Cache<String, Arc<Formula>>,
+
+    context: Arc<Context>,
 }
 
 impl FormulaRegistry {
@@ -94,9 +94,9 @@ impl Registry for FormulaRegistry {
 
     fn new(context: Arc<Context>) -> Self {
         Self {
-            context,
-
             store: CacheBuilder::new(usize::MAX).build(),
+
+            context,
         }
     }
 }

@@ -1,17 +1,19 @@
-use std::{
-    fs::File,
-    io::{BufWriter, Write},
-    sync::Arc,
-};
+use std::sync::Arc;
 
 use anyhow::{Error, Result};
 use async_trait::async_trait;
 use clap::Args;
-use futures::stream::StreamExt;
-use tokio::{sync::mpsc, task::JoinSet};
+use tokio::task::JoinSet;
 
 use super::{Resolution, Runner};
-use crate::{context::Context, registries::Registries};
+use crate::{
+    context::Context,
+    pipeline::{
+        Pipeline,
+        operator::{Hasher, Writer},
+    },
+    registries::Registries,
+};
 
 #[derive(Args)]
 pub struct Install {
@@ -29,19 +31,17 @@ impl Runner for Install {
 
         let strategy = self.resolution.strategy();
 
-        let packages = registries
-            .resolve(self.packages.iter().cloned(), strategy)
-            .await?;
+        let packages = registries.resolve(self.packages, strategy).await?;
 
         let mut set = JoinSet::new();
 
         for package in packages {
-            let (tx, mut rx) = mpsc::channel(32);
-
             let context = Arc::clone(&context);
 
             set.spawn(async move {
-                let mut stream = context
+                let id = package.id();
+
+                let stream = context
                     .http_client()
                     .get("https://httpbin.org/json")
                     .send()
@@ -49,28 +49,15 @@ impl Runner for Install {
                     .error_for_status()?
                     .bytes_stream();
 
-                while let Some(item) = stream.next().await {
-                    let chunk = item?;
+                let (hash, ..) = Pipeline::new(context)
+                    .fanout(Hasher::new())
+                    .fanout(Writer::new(format!("{id}.json")))
+                    .send_all(stream)
+                    .await?;
 
-                    tx.send(chunk).await?;
-                }
+                dbg!(hash);
 
                 Ok::<_, Error>(())
-            });
-
-            set.spawn_blocking(move || {
-                let id = package.id();
-
-                let file = File::create(format!("{id}.json"))?;
-                let mut file = BufWriter::new(file);
-
-                while let Some(chunk) = rx.blocking_recv() {
-                    file.write_all(&chunk)?;
-                }
-
-                file.flush()?;
-
-                Ok(())
             });
         }
 

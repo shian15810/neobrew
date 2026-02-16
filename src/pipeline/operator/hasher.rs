@@ -16,16 +16,18 @@ impl Hasher {
     }
 }
 
-impl Operator for Hasher {
-    fn send(&mut self, chunk: Bytes) -> Result<()> {
+impl Operator<Bytes, String> for Hasher {
+    fn feed(&mut self, chunk: Bytes) -> Result<()> {
         self.inner.update(chunk);
 
         Ok(())
     }
 
-    fn apply(self) -> Result<()> {
-        let _result = self.inner.finalize();
+    fn flush(self) -> Result<String> {
+        let result = self.inner.finalize();
 
-        Ok(())
+        let output = format!("{result:x}");
+
+        Ok(output)
     }
 }

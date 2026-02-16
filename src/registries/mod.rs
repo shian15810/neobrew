@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
-use futures::{StreamExt, TryStreamExt, stream};
+use futures::stream::{self, StreamExt, TryStreamExt};
 use once_cell::sync::OnceCell as OnceLock;
 
 use self::{cask::CaskRegistry, formula::FormulaRegistry};
@@ -10,7 +10,7 @@ use crate::{context::Context, package::Package};
 mod cask;
 mod formula;
 
-#[derive(Clone, Copy)]
+#[derive(Copy, Clone)]
 pub enum ResolutionStrategy {
     FormulaOnly,
     CaskOnly,
@@ -18,19 +18,19 @@ pub enum ResolutionStrategy {
 }
 
 pub struct Registries {
-    context: Arc<Context>,
-
     formula: OnceLock<Arc<FormulaRegistry>>,
     cask: OnceLock<Arc<CaskRegistry>>,
+
+    context: Arc<Context>,
 }
 
 impl Registries {
     pub fn new(context: Arc<Context>) -> Self {
         Self {
-            context,
-
             formula: OnceLock::new(),
             cask: OnceLock::new(),
+
+            context,
         }
     }
 
@@ -50,6 +50,7 @@ impl Registries {
         match strategy {
             ResolutionStrategy::FormulaOnly => {
                 let formula_registry = Arc::clone(self.formula());
+
                 let formula = formula_registry.resolve(package).await?;
 
                 Ok(Package::Formula(formula))
@@ -57,6 +58,7 @@ impl Registries {
 
             ResolutionStrategy::CaskOnly => {
                 let cask_registry = Arc::clone(self.cask());
+
                 let cask = cask_registry.resolve(package).await?;
 
                 Ok(Package::Cask(cask))
@@ -64,6 +66,7 @@ impl Registries {
 
             ResolutionStrategy::Both => {
                 let formula_registry = Arc::clone(self.formula());
+
                 let formula = formula_registry.resolve(package.clone()).await;
 
                 if let Ok(formula) = formula {
@@ -71,6 +74,7 @@ impl Registries {
                 }
 
                 let cask_registry = Arc::clone(self.cask());
+
                 let cask = cask_registry.resolve(package.clone()).await;
 
                 if let Ok(cask) = cask {
