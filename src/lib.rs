@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use clap::Parser;
+use tokio::signal;
 
 use self::{commands::Cli, context::Context};
 
@@ -15,5 +16,11 @@ pub async fn run() -> proc_exit::ExitResult {
 
     let context = Context::new();
 
-    cli.command.run(Arc::new(context)).await
+    tokio::select! {
+        biased;
+
+        _ = signal::ctrl_c() => proc_exit::bash::SIGINT.ok(),
+
+        exit_result = cli.command.run(Arc::new(context)) => exit_result,
+    }
 }
