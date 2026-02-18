@@ -1,4 +1,4 @@
-use std::{pin::Pin, sync::Arc, task};
+use std::{pin::Pin, task};
 
 use anyhow::Result;
 use futures::sink::{self, SinkExt};
@@ -18,7 +18,7 @@ pub trait Operator<Item: Send + 'static, Output: Send + 'static>: Send + 'static
     fn spawn(
         self,
         set: &mut JoinSet<Result<()>>,
-        context: Arc<Context>,
+        context: &Context,
     ) -> (BlockingSink<Item>, oneshot::Receiver<Output>)
     where
         Self: Sized,
@@ -30,7 +30,7 @@ pub trait Operator<Item: Send + 'static, Output: Send + 'static>: Send + 'static
         (sink, output_rx)
     }
 
-    fn feed(&mut self, item: Item) -> Result<()>;
+    fn feed(&mut self, chunk: Item) -> Result<()>;
 
     fn flush(self) -> Result<Output>;
 }
@@ -44,9 +44,9 @@ impl<Item: Send + 'static> BlockingSink<Item> {
         mut operator: impl Operator<Item, Output>,
         output_tx: oneshot::Sender<Output>,
         set: &mut JoinSet<Result<()>>,
-        _context: Arc<Context>,
+        context: &Context,
     ) -> Self {
-        let (tx, mut rx) = mpsc::channel(32);
+        let (tx, mut rx) = mpsc::channel(*context.max_concurrency());
 
         set.spawn_blocking(move || {
             while let Some(item) = rx.blocking_recv() {

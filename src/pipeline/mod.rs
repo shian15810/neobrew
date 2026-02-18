@@ -53,9 +53,7 @@ where
         mut self,
         operator: impl Operator<Item, Output>,
     ) -> Pipeline<Item, FanoutSink<Item, Si>, (Receivers, oneshot::Receiver<Output>)> {
-        let context = Arc::clone(&self.context);
-
-        let (sink, output_rx) = operator.spawn(&mut self.set, context);
+        let (sink, output_rx) = operator.spawn(&mut self.set, &self.context);
 
         Pipeline {
             _marker: PhantomData,

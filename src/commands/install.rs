@@ -49,13 +49,13 @@ impl Runner for Install {
                     .error_for_status()?
                     .bytes_stream();
 
-                let (hash, ..) = Pipeline::new(context)
+                let (hash, file) = Pipeline::new(context)
                     .fanout(Hasher::new())
-                    .fanout(Writer::new(format!("{id}.json")))
+                    .fanout(Writer::new(format!("{id}.json"))?)
                     .send_all(stream)
                     .await?;
 
-                dbg!(hash);
+                dbg!(hash, file);
 
                 Ok::<_, Error>(())
             });
