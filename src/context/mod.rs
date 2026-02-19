@@ -24,7 +24,7 @@ impl Context {
         }
     }
 
-    fn homebrew_config(&self) -> Result<&HomebrewConfig> {
+    pub fn homebrew_config(&self) -> Result<&HomebrewConfig> {
         self.homebrew_config.get_or_try_init(HomebrewConfig::load)
     }
 

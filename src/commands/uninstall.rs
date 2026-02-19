@@ -27,6 +27,10 @@ pub struct Uninstall {
 #[async_trait]
 impl Runner for Uninstall {
     async fn run(self, context: Arc<Context>) -> Result<()> {
+        if self.packages.is_empty() {
+            return Ok(());
+        }
+
         let registries = Registries::new(Arc::clone(&context));
 
         let strategy = self.resolution.strategy();
