@@ -44,14 +44,14 @@ impl HomebrewConfig {
     }
 }
 
-impl Default for HomebrewConfig {
-    fn default() -> Self {
-        Self {
-            prefix: Self::DEFAULT_PREFIX.to_owned(),
-        }
-    }
-}
-
 impl Config for HomebrewConfig {
     const ENV_PREFIX: &str = "HOMEBREW_";
+
+    fn default() -> Result<Self> {
+        let this = Self {
+            prefix: Self::DEFAULT_PREFIX.to_owned(),
+        };
+
+        Ok(this)
+    }
 }

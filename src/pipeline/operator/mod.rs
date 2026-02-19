@@ -15,6 +15,10 @@ mod hasher;
 mod writer;
 
 pub trait Operator<Item: Send + 'static, Output: Send + 'static>: Send + 'static {
+    fn feed(&mut self, chunk: Item) -> Result<()>;
+
+    fn flush(self) -> Result<Output>;
+
     fn spawn(
         self,
         set: &mut JoinSet<Result<()>>,
@@ -29,10 +33,6 @@ pub trait Operator<Item: Send + 'static, Output: Send + 'static>: Send + 'static
 
         (sink, output_rx)
     }
-
-    fn feed(&mut self, chunk: Item) -> Result<()>;
-
-    fn flush(self) -> Result<Output>;
 }
 
 pub struct BlockingSink<Item> {

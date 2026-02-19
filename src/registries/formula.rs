@@ -18,10 +18,6 @@ pub struct FormulaRegistry {
 }
 
 impl FormulaRegistry {
-    pub async fn resolve(self: Arc<Self>, package: String) -> Result<Arc<Formula>> {
-        self.resolve_with_stack(package, Vec::new()).await
-    }
-
     async fn resolve_with_stack(
         self: Arc<Self>,
         package: String,
@@ -87,6 +83,8 @@ impl FormulaRegistry {
 }
 
 impl Registry for FormulaRegistry {
+    type Package = Formula;
+
     const JSON_URL: &str = "https://formulae.brew.sh/api/formula.json";
     const JWS_JSON_URL: &str = "https://formulae.brew.sh/api/formula.jws.json";
     const TAP_MIGRATIONS_URL: &str = "https://formulae.brew.sh/api/formula_tap_migrations.json";
@@ -98,5 +96,9 @@ impl Registry for FormulaRegistry {
 
             context,
         }
+    }
+
+    async fn resolve(self: Arc<Self>, package: String) -> Result<Arc<Self::Package>> {
+        self.resolve_with_stack(package, Vec::new()).await
     }
 }

@@ -135,10 +135,14 @@ impl Registries {
 }
 
 trait Registry {
+    type Package;
+
     const JSON_URL: &str;
     const JWS_JSON_URL: &str;
     const TAP_MIGRATIONS_URL: &str;
     const TAP_MIGRATIONS_JWS_URL: &str;
 
     fn new(context: Arc<Context>) -> Self;
+
+    async fn resolve(self: Arc<Self>, package: String) -> Result<Arc<Self::Package>>;
 }
