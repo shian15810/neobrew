@@ -10,7 +10,7 @@ use crate::{
     context::Context,
     pipeline::{
         Pipeline,
-        operator::{Hasher, Writer},
+        operators::{Hasher, Writer},
     },
     registries::Registries,
 };

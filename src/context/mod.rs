@@ -1,13 +1,20 @@
 use anyhow::Result;
+use etcetera::app_strategy;
 use once_cell::sync::OnceCell as OnceLock;
 
-use self::config::{Config, HomebrewConfig, NeobrewConfig};
+use self::{
+    configs::{Config, HomebrewConfig, NeobrewConfig},
+    project_dirs::ProjectDirs,
+};
 
-mod config;
+mod configs;
+mod project_dirs;
 
 pub struct Context {
     homebrew_config: OnceLock<HomebrewConfig>,
     neobrew_config: OnceLock<NeobrewConfig>,
+
+    project_dirs: OnceLock<ProjectDirs>,
 
     max_concurrency: OnceLock<usize>,
     http_client: OnceLock<reqwest::Client>,
@@ -18,6 +25,8 @@ impl Context {
         Self {
             homebrew_config: OnceLock::new(),
             neobrew_config: OnceLock::new(),
+
+            project_dirs: OnceLock::new(),
 
             max_concurrency: OnceLock::new(),
             http_client: OnceLock::new(),
@@ -30,6 +39,12 @@ impl Context {
 
     fn neobrew_config(&self) -> Result<&NeobrewConfig> {
         self.neobrew_config.get_or_try_init(NeobrewConfig::load)
+    }
+
+    fn project_dirs(&self) -> Result<&app_strategy::Xdg> {
+        let project_dirs = self.project_dirs.get_or_try_init(ProjectDirs::new)?;
+
+        Ok(project_dirs)
     }
 
     pub fn max_concurrency(&self) -> &usize {

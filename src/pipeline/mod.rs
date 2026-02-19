@@ -7,10 +7,10 @@ use futures::{
 };
 use tokio::{sync::oneshot, task::JoinSet};
 
-use self::operator::{BlockingSink, Operator};
+use self::operators::{BlockingSink, Operator};
 use crate::context::Context;
 
-pub mod operator;
+pub mod operators;
 
 type DrainSink<Item> = sink::SinkErrInto<sink::Drain<Item>, Item, Error>;
 type FanoutSink<Item, Si> = sink::Fanout<Si, sink::SinkErrInto<BlockingSink<Item>, Item, Error>>;
