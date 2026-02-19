@@ -14,6 +14,7 @@ impl Package {
     pub fn id(&self) -> &str {
         match self {
             Self::Formula(formula) => &formula.name,
+
             Self::Cask(cask) => &cask.token,
         }
     }

@@ -1,7 +1,8 @@
-use std::sync::Arc;
+use std::{iter, sync::Arc};
 
 use anyhow::{Result, anyhow};
 use futures::stream::{self, StreamExt, TryStreamExt};
+use itertools::{Either, Itertools};
 use once_cell::sync::OnceCell as OnceLock;
 
 use self::{cask::CaskRegistry, formula::FormulaRegistry};
@@ -39,14 +40,42 @@ impl Registries {
         packages: impl IntoIterator<Item = String>,
         strategy: ResolutionStrategy,
     ) -> Result<Vec<Package>> {
+        let packages = self.resolve_many(packages, strategy).await?;
+        let packages = packages
+            .into_iter()
+            .flat_map(|package| match package {
+                Package::Formula(formula) => {
+                    let formulae = formula.iter().map(Package::Formula);
+
+                    Either::Left(formulae)
+                },
+
+                Package::Cask(cask) => {
+                    let casks = iter::once(Package::Cask(cask));
+
+                    Either::Right(casks)
+                },
+            })
+            .sorted_by(|a, b| a.id().cmp(b.id()))
+            .dedup_by(|a, b| a.id() == b.id())
+            .collect::<Vec<_>>();
+
+        Ok(packages)
+    }
+
+    async fn resolve_many(
+        self,
+        packages: impl IntoIterator<Item = String>,
+        strategy: ResolutionStrategy,
+    ) -> Result<Vec<Package>> {
         stream::iter(packages)
-            .map(|package| self.resolve_each(package, strategy))
+            .map(|package| self.resolve_one(package, strategy))
             .buffer_unordered(*self.context.max_concurrency())
             .try_collect::<Vec<_>>()
             .await
     }
 
-    async fn resolve_each(&self, package: String, strategy: ResolutionStrategy) -> Result<Package> {
+    async fn resolve_one(&self, package: String, strategy: ResolutionStrategy) -> Result<Package> {
         match strategy {
             ResolutionStrategy::FormulaOnly => {
                 let formula_registry = Arc::clone(self.formula());

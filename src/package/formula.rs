@@ -31,7 +31,31 @@ pub struct Formula {
     dependencies: Vec<Arc<Self>>,
 }
 
-impl Formula {}
+impl Formula {
+    pub fn iter(self: &Arc<Self>) -> FormulaIter {
+        FormulaIter {
+            stack: vec![Arc::clone(self)],
+        }
+    }
+}
+
+pub struct FormulaIter {
+    stack: Vec<Arc<Formula>>,
+}
+
+impl Iterator for FormulaIter {
+    type Item = Arc<Formula>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let current = self.stack.pop()?;
+
+        let dependencies = current.dependencies.iter().cloned();
+
+        self.stack.extend(dependencies);
+
+        Some(current)
+    }
+}
 
 #[derive(Deserialize)]
 struct Versions {
