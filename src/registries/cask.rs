@@ -1,7 +1,10 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use etcetera::AppStrategy;
 use foyer::{Cache, CacheBuilder};
+use serde_json::Value;
+use tokio::fs;
 
 use super::Registry;
 use crate::{context::Context, package::cask::Cask};
@@ -30,15 +33,32 @@ impl CaskRegistry {
     async fn fetch(self: Arc<Self>, package: String) -> Result<Arc<Cask>> {
         let url = format!("https://formulae.brew.sh/api/cask/{package}.json");
 
-        let cask: Cask = self
+        let res = self
             .context
             .client()
             .get(url)
             .send()
             .await?
-            .error_for_status()?
-            .json()
-            .await?;
+            .error_for_status()?;
+
+        let value: Value = res.json().await?;
+
+        let dir = self
+            .context
+            .project_dirs()?
+            .cache_dir()
+            .join("api")
+            .join("cask");
+
+        fs::create_dir_all(&dir).await?;
+
+        let file = dir.join(format!("{package}.json"));
+
+        let bytes = serde_json::to_vec(&value)?;
+
+        fs::write(file, bytes).await?;
+
+        let cask: Cask = serde_json::from_value(value)?;
 
         Ok(Arc::new(cask))
     }

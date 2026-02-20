@@ -2,8 +2,11 @@ use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
 use async_recursion::async_recursion;
+use etcetera::AppStrategy;
 use foyer::{Cache, CacheBuilder};
 use futures::stream::{self, StreamExt, TryStreamExt};
+use serde_json::Value;
+use tokio::fs;
 
 use super::Registry;
 use crate::{
@@ -55,15 +58,32 @@ impl FormulaRegistry {
     ) -> Result<Arc<Formula>> {
         let url = format!("https://formulae.brew.sh/api/formula/{package}.json");
 
-        let raw_formula: RawFormula = self
+        let res = self
             .context
             .client()
             .get(url)
             .send()
             .await?
-            .error_for_status()?
-            .json()
-            .await?;
+            .error_for_status()?;
+
+        let value: Value = res.json().await?;
+
+        let dir = self
+            .context
+            .project_dirs()?
+            .cache_dir()
+            .join("api")
+            .join("formula");
+
+        fs::create_dir_all(&dir).await?;
+
+        let file = dir.join(format!("{package}.json"));
+
+        let bytes = serde_json::to_vec(&value)?;
+
+        fs::write(file, bytes).await?;
+
+        let raw_formula: RawFormula = serde_json::from_value(value)?;
 
         let dependencies = raw_formula.dependencies.iter().cloned();
         let dependencies = stream::iter(dependencies)

@@ -42,7 +42,7 @@ impl Context {
         }
     }
 
-    fn project_dirs(&self) -> Result<&app_strategy::Xdg> {
+    pub fn project_dirs(&self) -> Result<&app_strategy::Xdg> {
         let project_dirs = self.project_dirs.get_or_try_init(ProjectDirs::new)?;
 
         Ok(project_dirs)
