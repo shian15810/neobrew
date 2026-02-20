@@ -70,7 +70,7 @@ impl Registries {
     ) -> Result<Vec<Package>> {
         stream::iter(packages)
             .map(|package| self.resolve_one(package, strategy))
-            .buffer_unordered(*self.context.max_concurrency())
+            .buffer_unordered(self.context.concurrency_limit())
             .try_collect::<Vec<_>>()
             .await
     }

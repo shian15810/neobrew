@@ -1,3 +1,5 @@
+use std::{num::NonZeroUsize, thread};
+
 use anyhow::Result;
 use etcetera::app_strategy;
 use once_cell::sync::OnceCell as OnceLock;
@@ -11,34 +13,33 @@ mod configs;
 mod project_dirs;
 
 pub struct Context {
-    homebrew_config: OnceLock<HomebrewConfig>,
-    neobrew_config: OnceLock<NeobrewConfig>,
-
     project_dirs: OnceLock<ProjectDirs>,
 
-    max_concurrency: OnceLock<usize>,
-    http_client: OnceLock<reqwest::Client>,
+    neobrew_config: OnceLock<NeobrewConfig>,
+    homebrew_config: OnceLock<HomebrewConfig>,
+
+    client: OnceLock<reqwest::Client>,
+
+    concurrency_limit: OnceLock<usize>,
+    channel_capacity: OnceLock<usize>,
 }
 
 impl Context {
+    const MAX_CONCURRENCY: usize = 1 << 4;
+    const BUFFER_MULTIPLIER: usize = 1 << 4;
+
     pub fn new() -> Self {
         Self {
-            homebrew_config: OnceLock::new(),
-            neobrew_config: OnceLock::new(),
-
             project_dirs: OnceLock::new(),
 
-            max_concurrency: OnceLock::new(),
-            http_client: OnceLock::new(),
+            neobrew_config: OnceLock::new(),
+            homebrew_config: OnceLock::new(),
+
+            client: OnceLock::new(),
+
+            concurrency_limit: OnceLock::new(),
+            channel_capacity: OnceLock::new(),
         }
-    }
-
-    pub fn homebrew_config(&self) -> Result<&HomebrewConfig> {
-        self.homebrew_config.get_or_try_init(HomebrewConfig::load)
-    }
-
-    fn neobrew_config(&self) -> Result<&NeobrewConfig> {
-        self.neobrew_config.get_or_try_init(NeobrewConfig::load)
     }
 
     fn project_dirs(&self) -> Result<&app_strategy::Xdg> {
@@ -47,11 +48,34 @@ impl Context {
         Ok(project_dirs)
     }
 
-    pub fn max_concurrency(&self) -> &usize {
-        self.max_concurrency.get_or_init(|| 16)
+    fn neobrew_config(&self) -> Result<&NeobrewConfig> {
+        self.neobrew_config.get_or_try_init(NeobrewConfig::load)
     }
 
-    pub fn http_client(&self) -> &reqwest::Client {
-        self.http_client.get_or_init(reqwest::Client::new)
+    pub fn homebrew_config(&self) -> Result<&HomebrewConfig> {
+        self.homebrew_config.get_or_try_init(HomebrewConfig::load)
+    }
+
+    pub fn client(&self) -> &reqwest::Client {
+        self.client.get_or_init(reqwest::Client::new)
+    }
+
+    pub fn concurrency_limit(&self) -> usize {
+        let concurrency_limit = self.concurrency_limit.get_or_init(|| {
+            thread::available_parallelism()
+                .unwrap_or(NonZeroUsize::MIN)
+                .get()
+                .min(Self::MAX_CONCURRENCY)
+        });
+
+        *concurrency_limit
+    }
+
+    pub fn channel_capacity(&self) -> usize {
+        let channel_capacity = self
+            .channel_capacity
+            .get_or_init(|| self.concurrency_limit() * Self::BUFFER_MULTIPLIER);
+
+        *channel_capacity
     }
 }

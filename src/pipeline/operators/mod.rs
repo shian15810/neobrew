@@ -46,7 +46,7 @@ impl<Item: Send + 'static> BlockingSink<Item> {
         set: &mut JoinSet<Result<()>>,
         context: &Context,
     ) -> Self {
-        let (tx, mut rx) = mpsc::channel(*context.max_concurrency());
+        let (tx, mut rx) = mpsc::channel(context.channel_capacity());
 
         set.spawn_blocking(move || {
             while let Some(item) = rx.blocking_recv() {

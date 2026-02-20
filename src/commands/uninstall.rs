@@ -39,14 +39,22 @@ impl Runner for Uninstall {
 
         let mut set = JoinSet::new();
 
+        let concurrency_limit = context.concurrency_limit();
+
         for package in packages {
+            if set.len() >= concurrency_limit
+                && let Some(res) = set.join_next().await
+            {
+                res??;
+            }
+
             let context = Arc::clone(&context);
 
             set.spawn(async move {
                 let id = package.id();
 
                 let stream = context
-                    .http_client()
+                    .client()
                     .get("https://httpbin.org/json")
                     .send()
                     .await?

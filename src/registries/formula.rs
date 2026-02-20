@@ -57,7 +57,7 @@ impl FormulaRegistry {
 
         let raw_formula: RawFormula = self
             .context
-            .http_client()
+            .client()
             .get(url)
             .send()
             .await?
@@ -72,7 +72,7 @@ impl FormulaRegistry {
 
                 this.resolve_with_stack(dependency, stack.clone())
             })
-            .buffer_unordered(*self.context.max_concurrency())
+            .buffer_unordered(self.context.concurrency_limit())
             .try_collect::<Vec<_>>()
             .await?;
 
