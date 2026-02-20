@@ -8,6 +8,7 @@ use tokio::task::JoinSet;
 use super::{Resolution, Runner};
 use crate::{
     context::Context,
+    package::Packageable,
     pipeline::{
         Pipeline,
         operators::{Hasher, Writer},

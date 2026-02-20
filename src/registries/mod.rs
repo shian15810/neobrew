@@ -6,7 +6,10 @@ use itertools::{Either, Itertools};
 use once_cell::sync::OnceCell as OnceLock;
 
 use self::{cask::CaskRegistry, formula::FormulaRegistry};
-use crate::{context::Context, package::Package};
+use crate::{
+    context::Context,
+    package::{Package, Packageable},
+};
 
 mod cask;
 mod formula;

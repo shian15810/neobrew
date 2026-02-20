@@ -2,6 +2,8 @@ use std::{collections::HashMap, sync::Arc};
 
 use serde::Deserialize;
 
+use super::Packageable;
+
 #[derive(Deserialize)]
 pub struct RawFormula {
     name: String,
@@ -24,7 +26,7 @@ impl RawFormula {
 }
 
 pub struct Formula {
-    pub name: String,
+    name: String,
     versions: Versions,
     revision: u64,
     bottle: Bottle,
@@ -36,6 +38,12 @@ impl Formula {
         FormulaIter {
             stack: vec![Arc::clone(self)],
         }
+    }
+}
+
+impl Packageable for Formula {
+    fn id(&self) -> &str {
+        &self.name
     }
 }
 
