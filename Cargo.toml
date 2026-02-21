@@ -5,7 +5,7 @@ authors = ["Cheeshian Chuah (shian15810) <shian15810@gmail.com>"]
 edition = "2024"
 
 [dependencies]
-anyhow = "1.0.101"
+anyhow = "1.0.102"
 async-recursion = "1.1.1"
 async-trait = "0.1.89"
 bytes = "1.11.1"
@@ -21,8 +21,9 @@ itertools = "0.14.0"
 once_cell = "1.21.3"
 proc-exit = "2.0.2"
 reqwest = { version = "0.13.2", features = ["json", "stream"] }
-serde = { version = "1.0.228", features = ["derive"] }
+serde = "1.0.228"
 serde_json = "1.0.149"
 sha2 = "0.10.9"
-tokio = { version = "1.49.0", features = ["macros", "process", "rt-multi-thread", "signal"] }
-tokio-util = "0.7.18"
+tokio = { version = "1.49.0", features = ["process", "rt-multi-thread", "signal"] }
+tokio-stream = "0.1.18"
+tokio-util = { version = "0.7.18", features = ["io-util"] }

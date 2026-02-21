@@ -9,24 +9,29 @@ use tokio::{
 use tokio_util::sync::{PollSendError, PollSender};
 
 pub use self::{hasher::Hasher, writer::Writer};
+use super::Operator;
 use crate::context::Context;
 
 mod hasher;
 mod writer;
 
-pub trait Operator<Item: Send + 'static, Output: Send + 'static>: Send + 'static {
+pub trait TeeOperator<Item, Output> {
     fn feed(&mut self, chunk: Item) -> Result<()>;
 
     fn flush(self) -> Result<Output>;
+}
 
+impl<
+    Item: Send + 'static,
+    Output: Send + 'static,
+    TeeOp: TeeOperator<Item, Output> + Send + 'static,
+> Operator<BlockingSink<Item>, Output> for TeeOp
+{
     fn spawn(
         self,
         set: &mut JoinSet<Result<()>>,
         context: &Context,
-    ) -> (BlockingSink<Item>, oneshot::Receiver<Output>)
-    where
-        Self: Sized,
-    {
+    ) -> (BlockingSink<Item>, oneshot::Receiver<Output>) {
         let (output_tx, output_rx) = oneshot::channel();
 
         let sink = BlockingSink::new(self, output_tx, set, context);
@@ -41,7 +46,7 @@ pub struct BlockingSink<Item> {
 
 impl<Item: Send + 'static> BlockingSink<Item> {
     fn new<Output: Send + 'static>(
-        mut operator: impl Operator<Item, Output>,
+        mut tee_operator: impl TeeOperator<Item, Output> + Send + 'static,
         output_tx: oneshot::Sender<Output>,
         set: &mut JoinSet<Result<()>>,
         context: &Context,
@@ -50,10 +55,10 @@ impl<Item: Send + 'static> BlockingSink<Item> {
 
         set.spawn_blocking(move || {
             while let Some(item) = rx.blocking_recv() {
-                operator.feed(item)?;
+                tee_operator.feed(item)?;
             }
 
-            let output = operator.flush()?;
+            let output = tee_operator.flush()?;
 
             let _ = output_tx.send(output);
 

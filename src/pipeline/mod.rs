@@ -1,38 +1,57 @@
-use std::{fmt::Debug, marker::PhantomData, sync::Arc};
+use std::{fmt::Debug, io, sync::Arc};
 
 use anyhow::{Error, Result};
 use futures::{
     sink::{self, SinkExt},
     stream::{self, StreamExt, TryStreamExt},
 };
-use tokio::{sync::oneshot, task::JoinSet};
+use tokio::{
+    sync::{mpsc, oneshot},
+    task::JoinSet,
+};
 
-use self::operators::{BlockingSink, Operator};
+use self::{
+    pipe_operators::PipeOperator,
+    tee_operators::{BlockingSink, TeeOperator},
+};
 use crate::context::Context;
 
-pub mod operators;
+pub mod pipe_operators;
+pub mod tee_operators;
 
 type DrainSink<Item> = sink::SinkErrInto<sink::Drain<Item>, Item, Error>;
 type FanoutSink<Item, Si> = sink::Fanout<Si, sink::SinkErrInto<BlockingSink<Item>, Item, Error>>;
 
-pub struct Pipeline<Item, Si, Receivers> {
-    _marker: PhantomData<Item>,
+pub trait Operator<InputHandle, Output> {
+    fn spawn(
+        self,
+        set: &mut JoinSet<Result<()>>,
+        context: &Context,
+    ) -> (InputHandle, oneshot::Receiver<Output>);
+}
 
+pub struct Pipeline<Item, St, Si, Receivers> {
+    stream: St,
+
+    input_txs: Vec<mpsc::Sender<io::Result<Item>>>,
     sink: Si,
-    receivers: Receivers,
+
+    output_rxs: Receivers,
 
     set: JoinSet<Result<()>>,
 
     context: Arc<Context>,
 }
 
-impl<Item> Pipeline<Item, DrainSink<Item>, ()> {
-    pub fn new(context: Arc<Context>) -> Self {
+impl<Item, St> Pipeline<Item, St, DrainSink<Item>, ()> {
+    pub fn new(stream: St, context: Arc<Context>) -> Self {
         Self {
-            _marker: PhantomData,
+            stream,
 
+            input_txs: Vec::new(),
             sink: sink::drain().sink_err_into(),
-            receivers: (),
+
+            output_rxs: (),
 
             set: JoinSet::new(),
 
@@ -43,23 +62,28 @@ impl<Item> Pipeline<Item, DrainSink<Item>, ()> {
 
 impl<
     Item: Clone + Debug + Send + Sync + 'static,
+    St: stream::Stream<Item = Result<Item, impl Into<Error>>>,
     Si: sink::Sink<Item, Error = Error>,
     Receivers: Collect,
-> Pipeline<Item, Si, Receivers>
+> Pipeline<Item, St, Si, Receivers>
 where
     Receivers::Output: Flatten,
 {
-    pub fn fanout<Output: Send + 'static>(
+    pub fn forward<Output>(
         mut self,
-        operator: impl Operator<Item, Output>,
-    ) -> Pipeline<Item, FanoutSink<Item, Si>, (Receivers, oneshot::Receiver<Output>)> {
-        let (sink, output_rx) = operator.spawn(&mut self.set, &self.context);
+        pipe_operator: impl PipeOperator<Output> + Operator<mpsc::Sender<io::Result<Item>>, Output>,
+    ) -> Pipeline<Item, St, Si, (Receivers, oneshot::Receiver<Output>)> {
+        let (input_tx, output_rx) = pipe_operator.spawn(&mut self.set, &self.context);
+
+        self.input_txs.push(input_tx);
 
         Pipeline {
-            _marker: PhantomData,
+            stream: self.stream,
 
-            sink: self.sink.fanout(sink.sink_err_into()),
-            receivers: (self.receivers, output_rx),
+            input_txs: self.input_txs,
+            sink: self.sink,
+
+            output_rxs: (self.output_rxs, output_rx),
 
             set: self.set,
 
@@ -67,17 +91,34 @@ where
         }
     }
 
-    pub async fn send_all<E: Into<Error>>(
+    pub fn fanout<Output>(
         mut self,
-        stream: impl stream::Stream<Item = Result<Item, E>>,
-    ) -> Result<<Receivers::Output as Flatten>::Output> {
-        stream.err_into().forward(self.sink).await?;
+        tee_operator: impl TeeOperator<Item, Output> + Operator<BlockingSink<Item>, Output>,
+    ) -> Pipeline<Item, St, FanoutSink<Item, Si>, (Receivers, oneshot::Receiver<Output>)> {
+        let (sink, output_rx) = tee_operator.spawn(&mut self.set, &self.context);
+
+        Pipeline {
+            stream: self.stream,
+
+            input_txs: self.input_txs,
+            sink: self.sink.fanout(sink.sink_err_into()),
+
+            output_rxs: (self.output_rxs, output_rx),
+
+            set: self.set,
+
+            context: self.context,
+        }
+    }
+
+    pub async fn spawn(mut self) -> Result<<Receivers::Output as Flatten>::Output> {
+        self.stream.err_into().forward(self.sink).await?;
 
         while let Some(res) = self.set.join_next().await {
             res??;
         }
 
-        let outputs = self.receivers.collect().await?;
+        let outputs = self.output_rxs.collect().await?;
 
         Ok(outputs.flatten())
     }
@@ -103,11 +144,11 @@ impl<Receivers: Collect, Output> Collect for (Receivers, oneshot::Receiver<Outpu
     type Output = (Receivers::Output, Output);
 
     async fn collect(self) -> Result<Self::Output> {
-        let (receivers, receiver) = self;
+        let (output_rxs, output_rx) = self;
 
-        let outputs = receivers.collect().await?;
+        let outputs = output_rxs.collect().await?;
 
-        let output = receiver.await?;
+        let output = output_rx.await?;
 
         Ok((outputs, output))
     }
@@ -134,9 +175,9 @@ where
     type Output = <Receivers::Output as Append<Output>>::Output;
 
     fn flatten(self) -> Self::Output {
-        let (receivers, output) = self;
+        let (output_rxs, output) = self;
 
-        receivers.flatten().append(output)
+        output_rxs.flatten().append(output)
     }
 }
 

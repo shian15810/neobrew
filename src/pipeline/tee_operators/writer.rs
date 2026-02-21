@@ -7,7 +7,7 @@ use std::{
 use anyhow::Result;
 use bytes::Bytes;
 
-use super::Operator;
+use super::TeeOperator;
 
 pub struct Writer {
     inner: BufWriter<File>,
@@ -23,7 +23,7 @@ impl Writer {
     }
 }
 
-impl Operator<Bytes, File> for Writer {
+impl TeeOperator<Bytes, File> for Writer {
     fn feed(&mut self, chunk: Bytes) -> Result<()> {
         self.inner.write_all(&chunk)?;
 

@@ -2,7 +2,7 @@ use anyhow::Result;
 use bytes::Bytes;
 use sha2::{Digest, Sha256};
 
-use super::Operator;
+use super::TeeOperator;
 
 pub struct Hasher {
     inner: Sha256,
@@ -16,7 +16,7 @@ impl Hasher {
     }
 }
 
-impl Operator<Bytes, String> for Hasher {
+impl TeeOperator<Bytes, String> for Hasher {
     fn feed(&mut self, chunk: Bytes) -> Result<()> {
         self.inner.update(chunk);
 

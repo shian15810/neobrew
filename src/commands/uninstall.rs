@@ -11,7 +11,8 @@ use crate::{
     package::Packageable,
     pipeline::{
         Pipeline,
-        operators::{Hasher, Writer},
+        pipe_operators::Pourer,
+        tee_operators::{Hasher, Writer},
     },
     registries::Registries,
 };
@@ -62,13 +63,14 @@ impl Runner for Uninstall {
                     .error_for_status()?
                     .bytes_stream();
 
-                let (hash, file) = Pipeline::new(context)
+                let (pour, hash, file) = Pipeline::new(stream, context)
+                    .forward(Pourer::new())
                     .fanout(Hasher::new())
                     .fanout(Writer::new(format!("{id}.json"))?)
-                    .send_all(stream)
+                    .spawn()
                     .await?;
 
-                dbg!(hash, file);
+                dbg!(pour, hash, file);
 
                 Ok::<_, Error>(())
             });
