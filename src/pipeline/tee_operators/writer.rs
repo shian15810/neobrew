@@ -23,14 +23,17 @@ impl Writer {
     }
 }
 
-impl TeeOperator<Bytes, File> for Writer {
-    fn feed(&mut self, chunk: Bytes) -> Result<()> {
+impl TeeOperator for Writer {
+    type Item = Bytes;
+    type Output = File;
+
+    fn feed(&mut self, chunk: Self::Item) -> Result<()> {
         self.inner.write_all(&chunk)?;
 
         Ok(())
     }
 
-    fn flush(mut self) -> Result<File> {
+    fn flush(mut self) -> Result<Self::Output> {
         self.inner.flush()?;
 
         let output = self.inner.into_inner()?;

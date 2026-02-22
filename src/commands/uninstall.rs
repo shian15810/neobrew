@@ -63,9 +63,9 @@ impl Runner for Uninstall {
                     .error_for_status()?
                     .bytes_stream();
 
-                let (pour, hash, file) = Pipeline::new(stream, context)
-                    .forward(Pourer::new())
+                let (hash, pour, file) = Pipeline::new(stream, context)
                     .fanout(Hasher::new())
+                    .fanout(Pourer::new(id))
                     .fanout(Writer::new(format!("{id}.json"))?)
                     .spawn()
                     .await?;

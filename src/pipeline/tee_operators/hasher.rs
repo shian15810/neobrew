@@ -16,14 +16,17 @@ impl Hasher {
     }
 }
 
-impl TeeOperator<Bytes, String> for Hasher {
-    fn feed(&mut self, chunk: Bytes) -> Result<()> {
+impl TeeOperator for Hasher {
+    type Item = Bytes;
+    type Output = String;
+
+    fn feed(&mut self, chunk: Self::Item) -> Result<()> {
         self.inner.update(chunk);
 
         Ok(())
     }
 
-    fn flush(self) -> Result<String> {
+    fn flush(self) -> Result<Self::Output> {
         let result = self.inner.finalize();
 
         let output = format!("{result:x}");

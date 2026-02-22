@@ -1,12 +1,9 @@
-use std::{pin::Pin, task};
-
 use anyhow::Result;
-use futures::sink::{self, SinkExt};
 use tokio::{
     sync::{mpsc, oneshot},
     task::JoinSet,
 };
-use tokio_util::sync::{PollSendError, PollSender};
+use tokio_util::sync::PollSender;
 
 pub use self::{hasher::Hasher, writer::Writer};
 use super::Operator;
@@ -15,87 +12,50 @@ use crate::context::Context;
 mod hasher;
 mod writer;
 
-pub trait TeeOperator<Item, Output> {
-    fn feed(&mut self, chunk: Item) -> Result<()>;
+pub struct TeeMarker;
 
-    fn flush(self) -> Result<Output>;
+pub trait TeeOperator {
+    type Item;
+    type Output;
+
+    fn feed(&mut self, chunk: Self::Item) -> Result<()>;
+
+    fn flush(self) -> Result<Self::Output>;
 }
 
 impl<
     Item: Send + 'static,
     Output: Send + 'static,
-    TeeOp: TeeOperator<Item, Output> + Send + 'static,
-> Operator<BlockingSink<Item>, Output> for TeeOp
+    TeeOp: TeeOperator<Item = Item, Output = Output> + Send + 'static,
+> Operator<Item, TeeMarker> for TeeOp
 {
+    type Output = TeeOp::Output;
+
     fn spawn(
-        self,
+        mut self,
         set: &mut JoinSet<Result<()>>,
         context: &Context,
-    ) -> (BlockingSink<Item>, oneshot::Receiver<Output>) {
+    ) -> (PollSender<Item>, oneshot::Receiver<Self::Output>) {
+        let channel_capacity = context.channel_capacity();
+
+        let (input_tx, mut input_rx) = mpsc::channel(channel_capacity);
+
         let (output_tx, output_rx) = oneshot::channel();
 
-        let sink = BlockingSink::new(self, output_tx, set, context);
-
-        (sink, output_rx)
-    }
-}
-
-pub struct BlockingSink<Item> {
-    inner: PollSender<Item>,
-}
-
-impl<Item: Send + 'static> BlockingSink<Item> {
-    fn new<Output: Send + 'static>(
-        mut tee_operator: impl TeeOperator<Item, Output> + Send + 'static,
-        output_tx: oneshot::Sender<Output>,
-        set: &mut JoinSet<Result<()>>,
-        context: &Context,
-    ) -> Self {
-        let (tx, mut rx) = mpsc::channel(context.channel_capacity());
+        let sink = PollSender::new(input_tx);
 
         set.spawn_blocking(move || {
-            while let Some(item) = rx.blocking_recv() {
-                tee_operator.feed(item)?;
+            while let Some(item) = input_rx.blocking_recv() {
+                self.feed(item)?;
             }
 
-            let output = tee_operator.flush()?;
+            let output = self.flush()?;
 
             let _ = output_tx.send(output);
 
             Ok(())
         });
 
-        Self {
-            inner: PollSender::new(tx),
-        }
-    }
-}
-
-impl<Item: Send> sink::Sink<Item> for BlockingSink<Item> {
-    type Error = PollSendError<Item>;
-
-    fn poll_ready(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context,
-    ) -> task::Poll<Result<(), Self::Error>> {
-        self.inner.poll_ready_unpin(cx)
-    }
-
-    fn start_send(mut self: Pin<&mut Self>, item: Item) -> Result<(), Self::Error> {
-        self.inner.start_send_unpin(item)
-    }
-
-    fn poll_flush(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context,
-    ) -> task::Poll<Result<(), Self::Error>> {
-        self.inner.poll_flush_unpin(cx)
-    }
-
-    fn poll_close(
-        mut self: Pin<&mut Self>,
-        cx: &mut task::Context,
-    ) -> task::Poll<Result<(), Self::Error>> {
-        self.inner.poll_close_unpin(cx)
+        (sink, output_rx)
     }
 }
