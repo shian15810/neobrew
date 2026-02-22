@@ -7,7 +7,7 @@ use anyhow::Result;
 use flate2::bufread::GzDecoder;
 use tar::Archive;
 
-use super::PipeOperator;
+use super::PullOperator;
 
 pub struct Pourer {
     path: PathBuf,
@@ -21,7 +21,7 @@ impl Pourer {
     }
 }
 
-impl PipeOperator for Pourer {
+impl PullOperator for Pourer {
     type Output = PathBuf;
 
     fn from_reader(self, reader: impl BufRead) -> Result<Self::Output> {

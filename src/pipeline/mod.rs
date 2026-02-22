@@ -5,30 +5,27 @@ use futures::{
     sink::{self, SinkExt},
     stream::{self, StreamExt, TryStreamExt},
 };
-use tokio::{sync::oneshot, task::JoinSet};
-use tokio_util::sync::PollSender;
+use tokio::task;
+use tokio_util::{sync::PollSender, task::AbortOnDropHandle};
 
 use crate::context::Context;
 
-pub mod pipe_operators;
-pub mod tee_operators;
+pub mod pull_operators;
+pub mod push_operators;
 
 pub trait Operator<Item, _Marker> {
     type Output;
 
     fn spawn(
         self,
-        set: &mut JoinSet<Result<()>>,
         context: &Context,
-    ) -> (PollSender<Item>, oneshot::Receiver<Self::Output>);
+    ) -> (PollSender<Item>, AbortOnDropHandle<Result<Self::Output>>);
 }
 
-pub struct Pipeline<Item, St, Si, Receivers> {
+pub struct Pipeline<Item, St, Si, Handles> {
     stream: St,
     sink: Si,
-    output_rxs: Receivers,
-
-    set: JoinSet<Result<()>>,
+    handles: Handles,
 
     context: Arc<Context>,
 
@@ -40,9 +37,7 @@ impl<Item, St> Pipeline<Item, St, sink::SinkErrInto<sink::Drain<Item>, Item, Err
         Self {
             stream,
             sink: sink::drain().sink_err_into(),
-            output_rxs: (),
-
-            set: JoinSet::new(),
+            handles: (),
 
             context,
 
@@ -55,26 +50,24 @@ impl<
     Item: Clone + Debug + Send + Sync + 'static,
     St: stream::TryStream<Ok = Item, Error = impl Into<Error>> + Send + 'static,
     Si: sink::Sink<Item, Error = Error> + Send + 'static,
-    Receivers: Collect,
-> Pipeline<Item, St, Si, Receivers>
+    Handles: TryJoin,
+> Pipeline<Item, St, Si, Handles>
 {
     pub fn fanout<_Marker, Op: Operator<Item, _Marker>>(
-        mut self,
+        self,
         operator: Op,
     ) -> Pipeline<
         Item,
         St,
         sink::Fanout<Si, sink::SinkErrInto<PollSender<Item>, Item, Error>>,
-        (Receivers, oneshot::Receiver<Op::Output>),
+        (Handles, AbortOnDropHandle<Result<Op::Output>>),
     > {
-        let (sink, output_rx) = operator.spawn(&mut self.set, &self.context);
+        let (sink, handle) = operator.spawn(&self.context);
 
         Pipeline {
             stream: self.stream,
             sink: self.sink.fanout(sink.sink_err_into()),
-            output_rxs: (self.output_rxs, output_rx),
-
-            set: self.set,
+            handles: (self.handles, handle),
 
             context: self.context,
 
@@ -82,51 +75,47 @@ impl<
         }
     }
 
-    pub async fn spawn(mut self) -> Result<<Receivers::Output as Flatten>::Output>
+    pub async fn spawn(self) -> Result<<Handles::Output as Flatten>::Output>
     where
-        Receivers::Output: Flatten,
+        Handles::Output: Flatten,
     {
-        self.set.spawn(async move {
-            self.stream.err_into().forward(self.sink).await?;
+        let handle = task::spawn(self.stream.err_into().forward(self.sink));
+        let handle = AbortOnDropHandle::new(handle);
 
-            Ok(())
-        });
+        handle.await??;
 
-        while let Some(res) = self.set.join_next().await {
-            res??;
-        }
+        let outputs = self.handles.try_join().await?;
+        let outputs = outputs.flatten();
 
-        let outputs = self.output_rxs.collect().await?;
-
-        Ok(outputs.flatten())
+        Ok(outputs)
     }
 }
 
-// --- Collect ---
+// --- TryJoin ---
 
-pub trait Collect {
+pub trait TryJoin {
     type Output;
 
-    async fn collect(self) -> Result<Self::Output>;
+    async fn try_join(self) -> Result<Self::Output>;
 }
 
-impl Collect for () {
+impl TryJoin for () {
     type Output = ();
 
-    async fn collect(self) -> Result<Self::Output> {
+    async fn try_join(self) -> Result<Self::Output> {
         Ok(())
     }
 }
 
-impl<Receivers: Collect, Output> Collect for (Receivers, oneshot::Receiver<Output>) {
-    type Output = (Receivers::Output, Output);
+impl<Handles: TryJoin, Output> TryJoin for (Handles, AbortOnDropHandle<Result<Output>>) {
+    type Output = (Handles::Output, Output);
 
-    async fn collect(self) -> Result<Self::Output> {
-        let (output_rxs, output_rx) = self;
+    async fn try_join(self) -> Result<Self::Output> {
+        let (handles, handle) = self;
 
-        let outputs = output_rxs.collect().await?;
+        let outputs = handles.try_join().await?;
 
-        let output = output_rx.await?;
+        let output = handle.await??;
 
         Ok((outputs, output))
     }
@@ -146,16 +135,18 @@ impl Flatten for () {
     fn flatten(self) -> Self::Output {}
 }
 
-impl<Receivers: Flatten, Output> Flatten for (Receivers, Output)
+impl<Handles: Flatten, Output> Flatten for (Handles, Output)
 where
-    Receivers::Output: Append<Output>,
+    Handles::Output: Append<Output>,
 {
-    type Output = <Receivers::Output as Append<Output>>::Output;
+    type Output = <Handles::Output as Append<Output>>::Output;
 
     fn flatten(self) -> Self::Output {
-        let (output_rxs, output) = self;
+        let (handles, output) = self;
 
-        output_rxs.flatten().append(output)
+        let outputs = handles.flatten();
+
+        outputs.append(output)
     }
 }
 
@@ -183,7 +174,6 @@ macro_rules! impl_append {
             type Output = ($head, $($tail,)* Output);
 
             fn append(self, output: Output) -> Self::Output {
-                #[allow(non_snake_case)]
                 let ($head, $($tail,)*) = self;
 
                 ($head, $($tail,)* output)

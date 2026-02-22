@@ -31,7 +31,11 @@ impl FormulaRegistry {
 
             return Err(anyhow!(
                 "Circular dependency detected: {}",
-                stack.join(" -> ")
+                stack
+                    .iter()
+                    .map(|package| format!(r#""{package}""#))
+                    .collect::<Vec<_>>()
+                    .join(" -> ")
             ));
         }
 
@@ -97,8 +101,9 @@ impl FormulaRegistry {
             .await?;
 
         let formula = raw_formula.into_formula(dependencies);
+        let formula = Arc::new(formula);
 
-        Ok(Arc::new(formula))
+        Ok(formula)
     }
 }
 

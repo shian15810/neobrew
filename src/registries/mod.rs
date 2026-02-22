@@ -84,16 +84,18 @@ impl Registries {
                 let formula_registry = Arc::clone(self.formula());
 
                 let formula = formula_registry.resolve(package).await?;
+                let formula = Package::Formula(formula);
 
-                Ok(Package::Formula(formula))
+                Ok(formula)
             },
 
             ResolutionStrategy::CaskOnly => {
                 let cask_registry = Arc::clone(self.cask());
 
                 let cask = cask_registry.resolve(package).await?;
+                let cask = Package::Cask(cask);
 
-                Ok(Package::Cask(cask))
+                Ok(cask)
             },
 
             ResolutionStrategy::Both => {
@@ -102,7 +104,9 @@ impl Registries {
                 let formula = formula_registry.resolve(package.clone()).await;
 
                 if let Ok(formula) = formula {
-                    return Ok(Package::Formula(formula));
+                    let formula = Package::Formula(formula);
+
+                    return Ok(formula);
                 }
 
                 let cask_registry = Arc::clone(self.cask());
@@ -110,11 +114,13 @@ impl Registries {
                 let cask = cask_registry.resolve(package.clone()).await;
 
                 if let Ok(cask) = cask {
-                    return Ok(Package::Cask(cask));
+                    let cask = Package::Cask(cask);
+
+                    return Ok(cask);
                 }
 
                 Err(anyhow!(
-                    "No available formula or cask with the name \"{package}\"."
+                    r#"No available formula or cask with the name "{package}"."#
                 ))
             },
         }

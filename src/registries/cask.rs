@@ -59,8 +59,9 @@ impl CaskRegistry {
         fs::write(file, bytes).await?;
 
         let cask: Cask = serde_json::from_value(value)?;
+        let cask = Arc::new(cask);
 
-        Ok(Arc::new(cask))
+        Ok(cask)
     }
 }
 

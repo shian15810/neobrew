@@ -11,8 +11,8 @@ use crate::{
     package::Packageable,
     pipeline::{
         Pipeline,
-        pipe_operators::Pourer,
-        tee_operators::{Hasher, Writer},
+        pull_operators::Pourer,
+        push_operators::{Hasher, Writer},
     },
     registries::Registries,
 };
@@ -63,14 +63,14 @@ impl Runner for Install {
                     .error_for_status()?
                     .bytes_stream();
 
-                let (hash, pour, file) = Pipeline::new(stream, context)
+                let (hash, path, file) = Pipeline::new(stream, context)
                     .fanout(Hasher::new())
                     .fanout(Pourer::new(id))
                     .fanout(Writer::new(format!("{id}.json"))?)
                     .spawn()
                     .await?;
 
-                dbg!(pour, hash, file);
+                dbg!(hash, path, file);
 
                 Ok::<_, Error>(())
             });

@@ -7,7 +7,7 @@ use std::{
 use anyhow::Result;
 use bytes::Bytes;
 
-use super::TeeOperator;
+use super::PushOperator;
 
 pub struct Writer {
     inner: BufWriter<File>,
@@ -23,7 +23,7 @@ impl Writer {
     }
 }
 
-impl TeeOperator for Writer {
+impl PushOperator for Writer {
     type Item = Bytes;
     type Output = File;
 

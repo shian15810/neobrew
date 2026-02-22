@@ -1,8 +1,8 @@
 use anyhow::Result;
 use bytes::Bytes;
-use sha2::{Digest, Sha256};
+use sha2::{Digest, Sha256, digest};
 
-use super::TeeOperator;
+use super::PushOperator;
 
 pub struct Hasher {
     inner: Sha256,
@@ -16,9 +16,9 @@ impl Hasher {
     }
 }
 
-impl TeeOperator for Hasher {
+impl PushOperator for Hasher {
     type Item = Bytes;
-    type Output = String;
+    type Output = digest::Output<Sha256>;
 
     fn feed(&mut self, chunk: Self::Item) -> Result<()> {
         self.inner.update(chunk);
@@ -27,9 +27,7 @@ impl TeeOperator for Hasher {
     }
 
     fn flush(self) -> Result<Self::Output> {
-        let result = self.inner.finalize();
-
-        let output = format!("{result:x}");
+        let output = self.inner.finalize();
 
         Ok(output)
     }
