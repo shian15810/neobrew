@@ -1,7 +1,6 @@
 use std::{ffi::OsString, sync::Arc};
 
 use anyhow::Result;
-use async_trait::async_trait;
 use clap::{Args, Parser, Subcommand};
 use enum_dispatch::enum_dispatch;
 use proc_exit::prelude::*;
@@ -40,6 +39,7 @@ impl Commands {
             Self::External(args) => {
                 let exit_status = Command::new("brew")
                     .args(args)
+                    .env("HOMEBREW_COLOR", "1")
                     .env("HOMEBREW_NO_ANALYTICS", "1")
                     .env("HOMEBREW_NO_AUTOREMOVE", "1")
                     .env("HOMEBREW_NO_AUTO_UPDATE", "1")
@@ -66,7 +66,6 @@ pub enum Internal {
     Uninstall(Uninstall),
 }
 
-#[async_trait]
 #[enum_dispatch(Internal)]
 trait Runner {
     async fn run(self, context: Arc<Context>) -> Result<()>;

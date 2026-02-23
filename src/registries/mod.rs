@@ -1,6 +1,7 @@
 use std::{iter, sync::Arc};
 
 use anyhow::{Result, anyhow};
+use enum_dispatch::enum_dispatch;
 use futures::stream::{self, StreamExt, TryStreamExt};
 use itertools::{Either, Itertools};
 use once_cell::sync::OnceCell as OnceLock;
@@ -19,6 +20,28 @@ pub enum ResolutionStrategy {
     FormulaOnly,
     CaskOnly,
     Both,
+}
+
+#[enum_dispatch]
+enum RegistryKind {
+    Formula(Arc<FormulaRegistry>),
+    Cask(Arc<CaskRegistry>),
+}
+
+#[enum_dispatch(Arc<RegistryKind>)]
+trait Registrable {
+    type Package;
+
+    async fn resolve(self: Arc<Self>, package: String) -> Result<Arc<Self::Package>>;
+}
+
+trait Registry {
+    const JSON_URL: &str;
+    const JWS_JSON_URL: &str;
+    const TAP_MIGRATIONS_URL: &str;
+    const TAP_MIGRATIONS_JWS_URL: &str;
+
+    fn new(context: Arc<Context>) -> Self;
 }
 
 pub struct Registries {
@@ -79,79 +102,44 @@ impl Registries {
     }
 
     async fn resolve_one(&self, package: String, strategy: ResolutionStrategy) -> Result<Package> {
-        match strategy {
-            ResolutionStrategy::FormulaOnly => {
-                let formula_registry = Arc::clone(self.formula());
+        if matches!(
+            strategy,
+            ResolutionStrategy::FormulaOnly | ResolutionStrategy::Both
+        ) {
+            let formula_registry = self.get_or_init(&self.formula);
+            let formula_registry = Arc::clone(formula_registry);
 
-                let formula = formula_registry.resolve(package).await?;
-                let formula = Package::Formula(formula);
+            let formula = formula_registry.resolve(package.clone()).await;
 
-                Ok(formula)
-            },
-
-            ResolutionStrategy::CaskOnly => {
-                let cask_registry = Arc::clone(self.cask());
-
-                let cask = cask_registry.resolve(package).await?;
-                let cask = Package::Cask(cask);
-
-                Ok(cask)
-            },
-
-            ResolutionStrategy::Both => {
-                let formula_registry = Arc::clone(self.formula());
-
-                let formula = formula_registry.resolve(package.clone()).await;
-
-                if let Ok(formula) = formula {
-                    let formula = Package::Formula(formula);
-
-                    return Ok(formula);
-                }
-
-                let cask_registry = Arc::clone(self.cask());
-
-                let cask = cask_registry.resolve(package.clone()).await;
-
-                if let Ok(cask) = cask {
-                    let cask = Package::Cask(cask);
-
-                    return Ok(cask);
-                }
-
-                Err(anyhow!(
-                    r#"No available formula or cask with the name "{package}"."#
-                ))
-            },
+            if let Ok(formula) = formula {
+                return Ok(Package::Formula(formula));
+            }
         }
+
+        if matches!(
+            strategy,
+            ResolutionStrategy::CaskOnly | ResolutionStrategy::Both
+        ) {
+            let cask_registry = self.get_or_init(&self.cask);
+            let cask_registry = Arc::clone(cask_registry);
+
+            let cask = cask_registry.resolve(package.clone()).await;
+
+            if let Ok(cask) = cask {
+                return Ok(Package::Cask(cask));
+            }
+        }
+
+        Err(anyhow!(
+            r#"No available formula or cask with the name "{package}"."#
+        ))
     }
 
-    fn formula(&self) -> &Arc<FormulaRegistry> {
-        self.formula.get_or_init(|| {
-            let context = Arc::clone(&self.context);
+    fn get_or_init<'a, Reg: Registry>(&self, cell: &'a OnceLock<Arc<Reg>>) -> &'a Arc<Reg> {
+        cell.get_or_init(|| {
+            let registry = Reg::new(Arc::clone(&self.context));
 
-            Arc::new(FormulaRegistry::new(context))
+            Arc::new(registry)
         })
     }
-
-    fn cask(&self) -> &Arc<CaskRegistry> {
-        self.cask.get_or_init(|| {
-            let context = Arc::clone(&self.context);
-
-            Arc::new(CaskRegistry::new(context))
-        })
-    }
-}
-
-trait Registry {
-    type Package;
-
-    const JSON_URL: &str;
-    const JWS_JSON_URL: &str;
-    const TAP_MIGRATIONS_URL: &str;
-    const TAP_MIGRATIONS_JWS_URL: &str;
-
-    fn new(context: Arc<Context>) -> Self;
-
-    async fn resolve(self: Arc<Self>, package: String) -> Result<Arc<Self::Package>>;
 }

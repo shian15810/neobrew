@@ -8,7 +8,7 @@ use futures::stream::{self, StreamExt, TryStreamExt};
 use serde_json::Value;
 use tokio::fs;
 
-use super::Registry;
+use super::{Registrable, Registry};
 use crate::{
     context::Context,
     package::formula::{Formula, RawFormula},
@@ -107,9 +107,17 @@ impl FormulaRegistry {
     }
 }
 
-impl Registry for FormulaRegistry {
+impl Registrable for FormulaRegistry {
     type Package = Formula;
 
+    async fn resolve(self: Arc<Self>, package: String) -> Result<Arc<Self::Package>> {
+        let formula = self.resolve_with_stack(package, Vec::new()).await?;
+
+        Ok(formula)
+    }
+}
+
+impl Registry for FormulaRegistry {
     const JSON_URL: &str = "https://formulae.brew.sh/api/formula.json";
     const JWS_JSON_URL: &str = "https://formulae.brew.sh/api/formula.jws.json";
     const TAP_MIGRATIONS_URL: &str = "https://formulae.brew.sh/api/formula_tap_migrations.json";
@@ -121,9 +129,5 @@ impl Registry for FormulaRegistry {
 
             context,
         }
-    }
-
-    async fn resolve(self: Arc<Self>, package: String) -> Result<Arc<Self::Package>> {
-        self.resolve_with_stack(package, Vec::new()).await
     }
 }

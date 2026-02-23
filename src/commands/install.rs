@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use anyhow::{Error, Result};
-use async_trait::async_trait;
 use clap::Args;
 use tokio::task::JoinSet;
 
@@ -26,7 +25,6 @@ pub struct Install {
     resolution: Resolution,
 }
 
-#[async_trait]
 impl Runner for Install {
     async fn run(self, context: Arc<Context>) -> Result<()> {
         if self.packages.is_empty() {
