@@ -11,11 +11,14 @@ use tokio::fs;
 use super::{Registrable, Registry};
 use crate::{
     context::Context,
-    package::formula::{Formula, RawFormula},
+    package::{
+        Packageable,
+        formula::{RawFormula, ResolvedFormula},
+    },
 };
 
 pub struct FormulaRegistry {
-    store: Cache<String, Arc<Formula>>,
+    store: Cache<String, Arc<ResolvedFormula>>,
 
     context: Arc<Context>,
 }
@@ -25,15 +28,17 @@ impl FormulaRegistry {
         self: Arc<Self>,
         package: String,
         mut stack: Vec<String>,
-    ) -> Result<Arc<Formula>> {
+    ) -> Result<Arc<ResolvedFormula>> {
         if stack.contains(&package) {
-            stack.push(package);
+            let formula = package;
+
+            stack.push(formula);
 
             return Err(anyhow!(
-                "Circular dependency detected: {}",
+                "Circular formula dependency detected: {}",
                 stack
                     .iter()
-                    .map(|package| format!(r#""{package}""#))
+                    .map(|formula| format!(r#""{formula}""#))
                     .collect::<Vec<_>>()
                     .join(" -> ")
             ));
@@ -41,7 +46,7 @@ impl FormulaRegistry {
 
         stack.push(package.clone());
 
-        let formula = self
+        let resolved_formula = self
             .store
             .get_or_fetch(&package, || {
                 let this = Arc::clone(&self);
@@ -51,7 +56,7 @@ impl FormulaRegistry {
             .await
             .map(|entry| Arc::clone(entry.value()))?;
 
-        Ok(formula)
+        Ok(resolved_formula)
     }
 
     #[async_recursion]
@@ -59,7 +64,7 @@ impl FormulaRegistry {
         self: Arc<Self>,
         package: String,
         stack: Vec<String>,
-    ) -> Result<Arc<Formula>> {
+    ) -> Result<Arc<ResolvedFormula>> {
         let url = format!("https://formulae.brew.sh/api/formula/{package}.json");
 
         let res = self
@@ -72,25 +77,13 @@ impl FormulaRegistry {
 
         let value: Value = res.json().await?;
 
-        let dir = self
-            .context
-            .project_dirs()?
-            .cache_dir()
-            .join("api")
-            .join("formula");
-
-        fs::create_dir_all(&dir).await?;
-
-        let file = dir.join(format!("{package}.json"));
-
         let bytes = serde_json::to_vec(&value)?;
-
-        fs::write(file, bytes).await?;
 
         let raw_formula: RawFormula = serde_json::from_value(value)?;
 
         let dependencies = raw_formula.dependencies.iter().cloned();
-        let dependencies = stream::iter(dependencies)
+
+        let resolved_dependencies = stream::iter(dependencies)
             .map(|dependency| {
                 let this = Arc::clone(&self);
 
@@ -100,20 +93,33 @@ impl FormulaRegistry {
             .try_collect::<Vec<_>>()
             .await?;
 
-        let formula = raw_formula.into_formula(dependencies);
-        let formula = Arc::new(formula);
+        let resolved_formula = ResolvedFormula::from((raw_formula, resolved_dependencies));
+        let resolved_formula = Arc::new(resolved_formula);
 
-        Ok(formula)
+        let dir = self
+            .context
+            .project_dirs()?
+            .cache_dir()
+            .join("api")
+            .join("formula");
+
+        fs::create_dir_all(&dir).await?;
+
+        let file = dir.join(format!("{}.json", resolved_formula.id()));
+
+        fs::write(file, bytes).await?;
+
+        Ok(resolved_formula)
     }
 }
 
 impl Registrable for FormulaRegistry {
-    type Package = Formula;
+    type Package = ResolvedFormula;
 
     async fn resolve(self: Arc<Self>, package: String) -> Result<Arc<Self::Package>> {
-        let formula = self.resolve_with_stack(package, Vec::new()).await?;
+        let resolved_formula = self.resolve_with_stack(package, Vec::new()).await?;
 
-        Ok(formula)
+        Ok(resolved_formula)
     }
 }
 

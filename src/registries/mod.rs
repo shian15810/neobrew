@@ -1,15 +1,15 @@
-use std::{iter, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
 use enum_dispatch::enum_dispatch;
 use futures::stream::{self, StreamExt, TryStreamExt};
-use itertools::{Either, Itertools};
+use itertools::Itertools;
 use once_cell::sync::OnceCell as OnceLock;
 
 use self::{cask::CaskRegistry, formula::FormulaRegistry};
 use crate::{
     context::Context,
-    package::{Package, Packageable},
+    package::{Packageable, ResolvedPackage},
 };
 
 mod cask;
@@ -65,35 +65,23 @@ impl Registries {
         self,
         packages: impl IntoIterator<Item = String>,
         strategy: ResolutionStrategy,
-    ) -> Result<Vec<Package>> {
-        let packages = self.resolve_many(packages, strategy).await?;
-        let packages = packages
+    ) -> Result<Vec<ResolvedPackage>> {
+        let resolved_packages = self.resolve_many(packages, strategy).await?;
+        let resolved_packages = resolved_packages
             .into_iter()
-            .flat_map(|package| match package {
-                Package::Formula(formula) => {
-                    let formulae = formula.iter().map(Package::Formula);
-
-                    Either::Left(formulae)
-                },
-
-                Package::Cask(cask) => {
-                    let casks = iter::once(Package::Cask(cask));
-
-                    Either::Right(casks)
-                },
-            })
+            .flat_map(|resolved_package| resolved_package.iter())
             .sorted_by(|a, b| a.id().cmp(b.id()))
             .dedup_by(|a, b| a.id() == b.id())
             .collect::<Vec<_>>();
 
-        Ok(packages)
+        Ok(resolved_packages)
     }
 
     async fn resolve_many(
         self,
         packages: impl IntoIterator<Item = String>,
         strategy: ResolutionStrategy,
-    ) -> Result<Vec<Package>> {
+    ) -> Result<Vec<ResolvedPackage>> {
         stream::iter(packages)
             .map(|package| self.resolve_one(package, strategy))
             .buffer_unordered(self.context.concurrency_limit())
@@ -101,7 +89,11 @@ impl Registries {
             .await
     }
 
-    async fn resolve_one(&self, package: String, strategy: ResolutionStrategy) -> Result<Package> {
+    async fn resolve_one(
+        &self,
+        package: String,
+        strategy: ResolutionStrategy,
+    ) -> Result<ResolvedPackage> {
         if matches!(
             strategy,
             ResolutionStrategy::FormulaOnly | ResolutionStrategy::Both
@@ -109,10 +101,10 @@ impl Registries {
             let formula_registry = self.get_or_init(&self.formula);
             let formula_registry = Arc::clone(formula_registry);
 
-            let formula = formula_registry.resolve(package.clone()).await;
+            let resolved_formula = formula_registry.resolve(package.clone()).await;
 
-            if let Ok(formula) = formula {
-                return Ok(Package::Formula(formula));
+            if let Ok(resolved_formula) = resolved_formula {
+                return Ok(ResolvedPackage::Formula(resolved_formula));
             }
         }
 
@@ -123,16 +115,14 @@ impl Registries {
             let cask_registry = self.get_or_init(&self.cask);
             let cask_registry = Arc::clone(cask_registry);
 
-            let cask = cask_registry.resolve(package.clone()).await;
+            let resolved_cask = cask_registry.resolve(package.clone()).await;
 
-            if let Ok(cask) = cask {
-                return Ok(Package::Cask(cask));
+            if let Ok(resolved_cask) = resolved_cask {
+                return Ok(ResolvedPackage::Cask(resolved_cask));
             }
         }
 
-        Err(anyhow!(
-            r#"No available formula or cask with the name "{package}"."#
-        ))
+        Err(anyhow!(r#"Formula or cask "{package}" not found."#))
     }
 
     fn get_or_init<'a, Reg: Registry>(&self, cell: &'a OnceLock<Arc<Reg>>) -> &'a Arc<Reg> {

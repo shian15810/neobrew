@@ -13,19 +13,13 @@ pub struct RawFormula {
     pub dependencies: Vec<String>,
 }
 
-impl RawFormula {
-    pub fn into_formula(self, dependencies: Vec<Arc<Formula>>) -> Formula {
-        Formula {
-            name: self.name,
-            versions: self.versions,
-            revision: self.revision,
-            bottle: self.bottle,
-            dependencies,
-        }
+impl Packageable for RawFormula {
+    fn id(&self) -> &str {
+        &self.name
     }
 }
 
-pub struct Formula {
+pub struct ResolvedFormula {
     name: String,
     versions: Versions,
     revision: u64,
@@ -33,26 +27,38 @@ pub struct Formula {
     dependencies: Vec<Arc<Self>>,
 }
 
-impl Formula {
-    pub fn iter(self: &Arc<Self>) -> FormulaIter {
-        FormulaIter {
+impl ResolvedFormula {
+    pub fn iter(self: &Arc<Self>) -> ResolvedFormulaIter {
+        ResolvedFormulaIter {
             stack: vec![Arc::clone(self)],
         }
     }
 }
 
-impl Packageable for Formula {
+impl From<(RawFormula, Vec<Arc<Self>>)> for ResolvedFormula {
+    fn from((raw, dependencies): (RawFormula, Vec<Arc<Self>>)) -> Self {
+        Self {
+            name: raw.name,
+            versions: raw.versions,
+            revision: raw.revision,
+            bottle: raw.bottle,
+            dependencies,
+        }
+    }
+}
+
+impl Packageable for ResolvedFormula {
     fn id(&self) -> &str {
         &self.name
     }
 }
 
-pub struct FormulaIter {
-    stack: Vec<Arc<Formula>>,
+pub struct ResolvedFormulaIter {
+    stack: Vec<Arc<ResolvedFormula>>,
 }
 
-impl Iterator for FormulaIter {
-    type Item = Arc<Formula>;
+impl Iterator for ResolvedFormulaIter {
+    type Item = Arc<ResolvedFormula>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let current = self.stack.pop()?;

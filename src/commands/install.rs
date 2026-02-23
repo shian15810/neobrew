@@ -35,13 +35,13 @@ impl Runner for Install {
 
         let strategy = self.resolution.strategy();
 
-        let packages = registries.resolve(self.packages, strategy).await?;
+        let resolved_packages = registries.resolve(self.packages, strategy).await?;
 
         let mut set = JoinSet::new();
 
         let concurrency_limit = context.concurrency_limit();
 
-        for package in packages {
+        for resolved_package in resolved_packages {
             if set.len() >= concurrency_limit
                 && let Some(res) = set.join_next().await
             {
@@ -51,7 +51,7 @@ impl Runner for Install {
             let context = Arc::clone(&context);
 
             set.spawn(async move {
-                let id = package.id();
+                let id = resolved_package.id();
 
                 let stream = context
                     .client()
