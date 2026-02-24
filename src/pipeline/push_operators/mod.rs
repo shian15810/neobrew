@@ -32,7 +32,7 @@ impl<
         mut self,
         context: &Context,
     ) -> (PollSender<Item>, AbortOnDropHandle<Result<Self::Output>>) {
-        let (tx, mut rx) = mpsc::channel(context.channel_capacity());
+        let (tx, mut rx) = mpsc::channel(*context.channel_capacity);
 
         let sink = PollSender::new(tx);
 

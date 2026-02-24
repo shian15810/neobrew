@@ -9,6 +9,18 @@ pub struct HomebrewConfig {
     prefix: String,
 }
 
+impl Config for HomebrewConfig {
+    const ENV_PREFIX: &str = "HOMEBREW_";
+}
+
+impl Default for HomebrewConfig {
+    fn default() -> Self {
+        Self {
+            prefix: Self::DEFAULT_PREFIX.to_owned(),
+        }
+    }
+}
+
 impl HomebrewConfig {
     cfg_if::cfg_if! {
         if #[cfg(all(target_os = "macos", target_arch = "aarch64"))] {
@@ -25,7 +37,7 @@ impl HomebrewConfig {
             return Ok(());
         }
 
-        Err(anyhow!(
+        let err = anyhow!(
             indoc! {r#"
                 Unsupported `HOMEBREW_PREFIX`: "{}"
 
@@ -39,19 +51,9 @@ impl HomebrewConfig {
                 Homebrew installation — so you can use `nbrew` and `brew` interchangeably.
 
                 See https://docs.brew.sh/Installation"#},
-            self.prefix
-        ))
-    }
-}
+            self.prefix,
+        );
 
-impl Default for HomebrewConfig {
-    fn default() -> Self {
-        Self {
-            prefix: Self::DEFAULT_PREFIX.to_owned(),
-        }
+        Err(err)
     }
-}
-
-impl Config for HomebrewConfig {
-    const ENV_PREFIX: &str = "HOMEBREW_";
 }

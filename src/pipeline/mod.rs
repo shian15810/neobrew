@@ -117,7 +117,9 @@ impl<Handles: TryJoin, Output> TryJoin for (Handles, AbortOnDropHandle<Result<Ou
 
         let output = handle.await??;
 
-        Ok((outputs, output))
+        let outputs = (outputs, output);
+
+        Ok(outputs)
     }
 }
 

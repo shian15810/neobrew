@@ -1,10 +1,9 @@
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use anyhow::{Result, anyhow};
 use enum_dispatch::enum_dispatch;
 use futures::stream::{self, StreamExt, TryStreamExt};
 use itertools::Itertools;
-use once_cell::sync::OnceCell as OnceLock;
 
 use self::{cask::CaskRegistry, formula::FormulaRegistry};
 use crate::{
@@ -23,44 +22,63 @@ pub enum ResolutionStrategy {
 }
 
 #[enum_dispatch]
-enum RegistryKind {
+enum Registry {
     Formula(Arc<FormulaRegistry>),
     Cask(Arc<CaskRegistry>),
 }
 
-#[enum_dispatch(Arc<RegistryKind>)]
+#[enum_dispatch(Arc<Registry>)]
 trait Registrable {
-    type Package;
+    type ResolvedPackage;
 
-    async fn resolve(self: Arc<Self>, package: String) -> Result<Arc<Self::Package>>;
-}
+    const API_URL: &str;
 
-trait Registry {
     const JSON_URL: &str;
     const JWS_JSON_URL: &str;
     const TAP_MIGRATIONS_URL: &str;
     const TAP_MIGRATIONS_JWS_URL: &str;
 
     fn new(context: Arc<Context>) -> Self;
+
+    async fn resolve(self: Arc<Self>, package: String) -> Result<Arc<Self::ResolvedPackage>>;
 }
 
-pub struct Registries {
-    formula: OnceLock<Arc<FormulaRegistry>>,
-    cask: OnceLock<Arc<CaskRegistry>>,
+pub struct Registries<FormulaFn, CaskFn> {
+    formula: LazyLock<Arc<FormulaRegistry>, FormulaFn>,
+    cask: LazyLock<Arc<CaskRegistry>, CaskFn>,
 
     context: Arc<Context>,
 }
 
-impl Registries {
-    pub fn new(context: Arc<Context>) -> Self {
-        Self {
-            formula: OnceLock::new(),
-            cask: OnceLock::new(),
+impl Registries<(), ()> {
+    pub fn new(
+        context: Arc<Context>,
+    ) -> Registries<impl FnOnce() -> Arc<FormulaRegistry>, impl FnOnce() -> Arc<CaskRegistry>> {
+        let formula_context = Arc::clone(&context);
+
+        let cask_context = Arc::clone(&context);
+
+        Registries {
+            formula: LazyLock::new(|| {
+                let formula_registry = FormulaRegistry::new(formula_context);
+
+                Arc::new(formula_registry)
+            }),
+
+            cask: LazyLock::new(|| {
+                let cask_registry = CaskRegistry::new(cask_context);
+
+                Arc::new(cask_registry)
+            }),
 
             context,
         }
     }
+}
 
+impl<FormulaFn: FnOnce() -> Arc<FormulaRegistry>, CaskFn: FnOnce() -> Arc<CaskRegistry>>
+    Registries<FormulaFn, CaskFn>
+{
     pub async fn resolve(
         self,
         packages: impl IntoIterator<Item = String>,
@@ -84,7 +102,7 @@ impl Registries {
     ) -> Result<Vec<ResolvedPackage>> {
         stream::iter(packages)
             .map(|package| self.resolve_one(package, strategy))
-            .buffer_unordered(self.context.concurrency_limit())
+            .buffer_unordered(*self.context.concurrency_limit)
             .try_collect::<Vec<_>>()
             .await
     }
@@ -96,40 +114,36 @@ impl Registries {
     ) -> Result<ResolvedPackage> {
         if matches!(
             strategy,
-            ResolutionStrategy::FormulaOnly | ResolutionStrategy::Both
+            ResolutionStrategy::FormulaOnly | ResolutionStrategy::Both,
         ) {
-            let formula_registry = self.get_or_init(&self.formula);
-            let formula_registry = Arc::clone(formula_registry);
+            let formula_registry = Arc::clone(&self.formula);
 
             let resolved_formula = formula_registry.resolve(package.clone()).await;
 
             if let Ok(resolved_formula) = resolved_formula {
-                return Ok(ResolvedPackage::Formula(resolved_formula));
+                let resolved_package = ResolvedPackage::Formula(resolved_formula);
+
+                return Ok(resolved_package);
             }
         }
 
         if matches!(
             strategy,
-            ResolutionStrategy::CaskOnly | ResolutionStrategy::Both
+            ResolutionStrategy::CaskOnly | ResolutionStrategy::Both,
         ) {
-            let cask_registry = self.get_or_init(&self.cask);
-            let cask_registry = Arc::clone(cask_registry);
+            let cask_registry = Arc::clone(&self.cask);
 
             let resolved_cask = cask_registry.resolve(package.clone()).await;
 
             if let Ok(resolved_cask) = resolved_cask {
-                return Ok(ResolvedPackage::Cask(resolved_cask));
+                let resolved_package = ResolvedPackage::Cask(resolved_cask);
+
+                return Ok(resolved_package);
             }
         }
 
-        Err(anyhow!(r#"Formula or cask "{package}" not found."#))
-    }
+        let err = anyhow!(r#"Formula or cask "{package}" not found."#);
 
-    fn get_or_init<'a, Reg: Registry>(&self, cell: &'a OnceLock<Arc<Reg>>) -> &'a Arc<Reg> {
-        cell.get_or_init(|| {
-            let registry = Reg::new(Arc::clone(&self.context));
-
-            Arc::new(registry)
-        })
+        Err(err)
     }
 }

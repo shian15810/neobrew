@@ -8,7 +8,7 @@ use futures::stream::{self, StreamExt, TryStreamExt};
 use serde_json::Value;
 use tokio::fs;
 
-use super::{Registrable, Registry};
+use super::Registrable;
 use crate::{
     context::Context,
     package::{
@@ -23,6 +23,31 @@ pub struct FormulaRegistry {
     context: Arc<Context>,
 }
 
+impl Registrable for FormulaRegistry {
+    type ResolvedPackage = ResolvedFormula;
+
+    const API_URL: &str = "https://formulae.brew.sh/api/formula/{}.json";
+
+    const JSON_URL: &str = "https://formulae.brew.sh/api/formula.json";
+    const JWS_JSON_URL: &str = "https://formulae.brew.sh/api/formula.jws.json";
+    const TAP_MIGRATIONS_URL: &str = "https://formulae.brew.sh/api/formula_tap_migrations.json";
+    const TAP_MIGRATIONS_JWS_URL: &str = "https://formulae.brew.sh/api/formula_tap_migrations.jws.json";
+
+    fn new(context: Arc<Context>) -> Self {
+        Self {
+            store: CacheBuilder::new(usize::MAX).build(),
+
+            context,
+        }
+    }
+
+    async fn resolve(self: Arc<Self>, package: String) -> Result<Arc<Self::ResolvedPackage>> {
+        let resolved_formula = self.resolve_with_stack(package, Vec::new()).await?;
+
+        Ok(resolved_formula)
+    }
+}
+
 impl FormulaRegistry {
     async fn resolve_with_stack(
         self: Arc<Self>,
@@ -34,14 +59,16 @@ impl FormulaRegistry {
 
             stack.push(formula);
 
-            return Err(anyhow!(
+            let err = anyhow!(
                 "Circular formula dependency detected: {}",
                 stack
                     .iter()
                     .map(|formula| format!(r#""{formula}""#))
                     .collect::<Vec<_>>()
-                    .join(" -> ")
-            ));
+                    .join(" -> "),
+            );
+
+            return Err(err);
         }
 
         stack.push(package.clone());
@@ -65,11 +92,11 @@ impl FormulaRegistry {
         package: String,
         stack: Vec<String>,
     ) -> Result<Arc<ResolvedFormula>> {
-        let url = format!("https://formulae.brew.sh/api/formula/{package}.json");
+        let url = Self::API_URL.replace("{}", &package);
 
         let res = self
             .context
-            .client()
+            .client
             .get(url)
             .send()
             .await?
@@ -89,7 +116,7 @@ impl FormulaRegistry {
 
                 this.resolve_with_stack(dependency, stack.clone())
             })
-            .buffer_unordered(self.context.concurrency_limit())
+            .buffer_unordered(*self.context.concurrency_limit)
             .try_collect::<Vec<_>>()
             .await?;
 
@@ -110,30 +137,5 @@ impl FormulaRegistry {
         fs::write(file, bytes).await?;
 
         Ok(resolved_formula)
-    }
-}
-
-impl Registrable for FormulaRegistry {
-    type Package = ResolvedFormula;
-
-    async fn resolve(self: Arc<Self>, package: String) -> Result<Arc<Self::Package>> {
-        let resolved_formula = self.resolve_with_stack(package, Vec::new()).await?;
-
-        Ok(resolved_formula)
-    }
-}
-
-impl Registry for FormulaRegistry {
-    const JSON_URL: &str = "https://formulae.brew.sh/api/formula.json";
-    const JWS_JSON_URL: &str = "https://formulae.brew.sh/api/formula.jws.json";
-    const TAP_MIGRATIONS_URL: &str = "https://formulae.brew.sh/api/formula_tap_migrations.json";
-    const TAP_MIGRATIONS_JWS_URL: &str = "https://formulae.brew.sh/api/formula_tap_migrations.jws.json";
-
-    fn new(context: Arc<Context>) -> Self {
-        Self {
-            store: CacheBuilder::new(usize::MAX).build(),
-
-            context,
-        }
     }
 }

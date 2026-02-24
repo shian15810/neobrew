@@ -1,11 +1,9 @@
-use std::ops::Deref;
-
 use anyhow::Result;
 use clap::{crate_authors, crate_name};
 use etcetera::{AppStrategyArgs, app_strategy};
 
 pub struct ProjectDirs {
-    inner: app_strategy::Xdg,
+    strategy: app_strategy::Xdg,
 }
 
 impl ProjectDirs {
@@ -25,16 +23,12 @@ impl ProjectDirs {
             app_name: crate_name!().to_owned(),
         })?;
 
-        let this = Self { inner: strategy };
+        let this = Self { strategy };
 
         Ok(this)
     }
-}
 
-impl Deref for ProjectDirs {
-    type Target = app_strategy::Xdg;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
+    pub fn strategy(&self) -> &app_strategy::Xdg {
+        &self.strategy
     }
 }

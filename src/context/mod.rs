@@ -1,4 +1,4 @@
-use std::{num::NonZeroUsize, thread};
+use std::{num::NonZeroUsize, sync::LazyLock, thread};
 
 use anyhow::Result;
 use etcetera::app_strategy;
@@ -12,16 +12,23 @@ use self::{
 mod configs;
 mod project_dirs;
 
+static CONCURRENCY_LIMIT: LazyLock<usize> = LazyLock::new(|| {
+    thread::available_parallelism()
+        .unwrap_or(NonZeroUsize::MIN)
+        .get()
+        .min(Context::MAX_CONCURRENCY)
+});
+
 pub struct Context {
     project_dirs: OnceLock<ProjectDirs>,
 
     neobrew_config: OnceLock<NeobrewConfig>,
     homebrew_config: OnceLock<HomebrewConfig>,
 
-    client: OnceLock<reqwest::Client>,
+    pub client: LazyLock<reqwest::Client>,
 
-    concurrency_limit: OnceLock<usize>,
-    channel_capacity: OnceLock<usize>,
+    pub concurrency_limit: LazyLock<usize>,
+    pub channel_capacity: LazyLock<usize>,
 }
 
 impl Context {
@@ -35,17 +42,19 @@ impl Context {
             neobrew_config: OnceLock::new(),
             homebrew_config: OnceLock::new(),
 
-            client: OnceLock::new(),
+            client: LazyLock::new(reqwest::Client::new),
 
-            concurrency_limit: OnceLock::new(),
-            channel_capacity: OnceLock::new(),
+            concurrency_limit: LazyLock::new(|| *CONCURRENCY_LIMIT),
+            channel_capacity: LazyLock::new(|| *CONCURRENCY_LIMIT * Self::BUFFER_MULTIPLIER),
         }
     }
 
     pub fn project_dirs(&self) -> Result<&app_strategy::Xdg> {
         let project_dirs = self.project_dirs.get_or_try_init(ProjectDirs::new)?;
 
-        Ok(project_dirs)
+        let strategy = project_dirs.strategy();
+
+        Ok(strategy)
     }
 
     fn neobrew_config(&self) -> Result<&NeobrewConfig> {
@@ -54,28 +63,5 @@ impl Context {
 
     pub fn homebrew_config(&self) -> Result<&HomebrewConfig> {
         self.homebrew_config.get_or_try_init(HomebrewConfig::load)
-    }
-
-    pub fn client(&self) -> &reqwest::Client {
-        self.client.get_or_init(reqwest::Client::new)
-    }
-
-    pub fn concurrency_limit(&self) -> usize {
-        let concurrency_limit = self.concurrency_limit.get_or_init(|| {
-            thread::available_parallelism()
-                .unwrap_or(NonZeroUsize::MIN)
-                .get()
-                .min(Self::MAX_CONCURRENCY)
-        });
-
-        *concurrency_limit
-    }
-
-    pub fn channel_capacity(&self) -> usize {
-        let channel_capacity = self
-            .channel_capacity
-            .get_or_init(|| self.concurrency_limit() * Self::BUFFER_MULTIPLIER);
-
-        *channel_capacity
     }
 }

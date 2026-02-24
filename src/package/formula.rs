@@ -27,14 +27,6 @@ pub struct ResolvedFormula {
     dependencies: Vec<Arc<Self>>,
 }
 
-impl ResolvedFormula {
-    pub fn iter(self: &Arc<Self>) -> ResolvedFormulaIter {
-        ResolvedFormulaIter {
-            stack: vec![Arc::clone(self)],
-        }
-    }
-}
-
 impl From<(RawFormula, Vec<Arc<Self>>)> for ResolvedFormula {
     fn from((raw, dependencies): (RawFormula, Vec<Arc<Self>>)) -> Self {
         Self {
@@ -53,6 +45,14 @@ impl Packageable for ResolvedFormula {
     }
 }
 
+impl ResolvedFormula {
+    pub fn iter(self: &Arc<Self>) -> ResolvedFormulaIter {
+        ResolvedFormulaIter {
+            stack: vec![Arc::clone(self)],
+        }
+    }
+}
+
 pub struct ResolvedFormulaIter {
     stack: Vec<Arc<ResolvedFormula>>,
 }
@@ -63,9 +63,9 @@ impl Iterator for ResolvedFormulaIter {
     fn next(&mut self) -> Option<Self::Item> {
         let current = self.stack.pop()?;
 
-        let dependencies = current.dependencies.iter().cloned();
+        let children = current.dependencies.iter().cloned();
 
-        self.stack.extend(dependencies);
+        self.stack.extend(children);
 
         Some(current)
     }

@@ -39,7 +39,7 @@ impl Runner for Uninstall {
 
         let mut set = JoinSet::new();
 
-        let concurrency_limit = context.concurrency_limit();
+        let concurrency_limit = *context.concurrency_limit;
 
         for resolved_package in resolved_packages {
             if set.len() >= concurrency_limit
@@ -54,7 +54,7 @@ impl Runner for Uninstall {
                 let id = resolved_package.id();
 
                 let stream = context
-                    .client()
+                    .client
                     .get("https://httpbin.org/json")
                     .send()
                     .await?
