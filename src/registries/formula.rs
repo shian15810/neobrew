@@ -62,7 +62,7 @@ impl FormulaRegistry {
             let err = anyhow!(
                 "Circular formula dependency detected: {}",
                 stack
-                    .iter()
+                    .into_iter()
                     .map(|formula| format!(r#""{formula}""#))
                     .collect::<Vec<_>>()
                     .join(" -> "),

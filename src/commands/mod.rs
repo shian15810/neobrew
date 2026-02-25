@@ -2,6 +2,7 @@ use std::{ffi::OsString, sync::Arc};
 
 use anyhow::Result;
 use clap::{Args, Parser, Subcommand};
+use clap_verbosity_flag::Verbosity;
 use enum_dispatch::enum_dispatch;
 use proc_exit::prelude::*;
 use tokio::process::Command;
@@ -17,6 +18,9 @@ mod uninstall;
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
+
+    #[command(flatten)]
+    pub verbosity: Verbosity,
 }
 
 #[derive(Subcommand)]

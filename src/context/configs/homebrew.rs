@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use cfg_if::cfg_if;
 use indoc::indoc;
 use serde::{Deserialize, Serialize};
 
@@ -22,7 +23,7 @@ impl Default for HomebrewConfig {
 }
 
 impl HomebrewConfig {
-    cfg_if::cfg_if! {
+    cfg_if! {
         if #[cfg(all(target_os = "macos", target_arch = "aarch64"))] {
             const DEFAULT_PREFIX: &str = "/opt/homebrew";
         } else if #[cfg(all(target_os = "macos", target_arch = "x86_64"))] {
