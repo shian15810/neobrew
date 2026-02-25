@@ -28,7 +28,7 @@ impl<
 {
     type Output = PushOp::Output;
 
-    fn spawn(
+    fn spawn_blocking(
         mut self,
         context: &Context,
     ) -> (PollSender<Item>, AbortOnDropHandle<Result<Self::Output>>) {

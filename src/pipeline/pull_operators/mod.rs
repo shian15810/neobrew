@@ -33,7 +33,7 @@ impl<
 {
     type Output = PullOp::Output;
 
-    fn spawn(
+    fn spawn_blocking(
         self,
         context: &Context,
     ) -> (PollSender<Item>, AbortOnDropHandle<Result<Self::Output>>) {

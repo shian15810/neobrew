@@ -16,7 +16,7 @@ pub mod push_operators;
 pub trait Operator<Item, _Marker> {
     type Output;
 
-    fn spawn(
+    fn spawn_blocking(
         self,
         context: &Context,
     ) -> (PollSender<Item>, AbortOnDropHandle<Result<Self::Output>>);
@@ -62,7 +62,7 @@ impl<
         sink::Fanout<Si, sink::SinkErrInto<PollSender<Item>, Item, Error>>,
         (Handles, AbortOnDropHandle<Result<Op::Output>>),
     > {
-        let (sink, handle) = operator.spawn(&self.context);
+        let (sink, handle) = operator.spawn_blocking(&self.context);
 
         Pipeline {
             stream: self.stream,
@@ -79,7 +79,11 @@ impl<
     where
         Handles::Output: Flatten,
     {
-        let handle = task::spawn(self.stream.err_into().forward(self.sink));
+        let handle = task::spawn(async move {
+            let forward = self.stream.err_into().forward(self.sink);
+
+            forward.await
+        });
         let handle = AbortOnDropHandle::new(handle);
 
         handle.await??;
@@ -171,7 +175,7 @@ macro_rules! impl_append {
         }
     };
 
-    ($head:ident $(, $tail:ident)*) => {
+    ($head:ident $(, $tail:ident)* $(,)?) => {
         impl<Output, $head, $($tail,)*> Append<Output> for ($head, $($tail,)*) {
             type Output = ($head, $($tail,)* Output);
 
@@ -187,5 +191,5 @@ macro_rules! impl_append {
 }
 
 impl_append!(
-    T15, T14, T13, T12, T11, T10, T9, T8, T7, T6, T5, T4, T3, T2, T1, T0
+    T15, T14, T13, T12, T11, T10, T9, T8, T7, T6, T5, T4, T3, T2, T1, T0,
 );

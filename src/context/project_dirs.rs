@@ -23,7 +23,9 @@ impl ProjectDirs {
             app_name: crate_name!().to_owned(),
         })?;
 
-        let this = Self { strategy };
+        let this = Self {
+            strategy,
+        };
 
         Ok(this)
     }
