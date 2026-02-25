@@ -1,7 +1,7 @@
 use std::{ffi::OsString, sync::Arc};
 
 use anyhow::Result;
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, ColorChoice, Parser, Subcommand, ValueEnum};
 use clap_verbosity_flag::Verbosity;
 use enum_dispatch::enum_dispatch;
 use proc_exit::prelude::*;
@@ -14,13 +14,29 @@ mod install;
 mod uninstall;
 
 #[derive(Parser)]
-#[command(bin_name = "nbrew", version)]
+#[command(display_name = "Neobrew", bin_name = "nbrew", version, author)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
 
     #[command(flatten)]
     pub verbosity: Verbosity,
+
+    #[arg(
+        long,
+        global = true,
+        value_name = "WHEN",
+        num_args = 0..=1,
+        require_equals = true,
+        default_value_t = ColorChoice::Auto,
+        default_missing_value = &*ColorChoice::Always
+            .to_possible_value()
+            .unwrap()
+            .get_name()
+            .to_owned()
+            .leak(),
+    )]
+    color: ColorChoice,
 }
 
 #[derive(Subcommand)]
@@ -41,21 +57,23 @@ impl Commands {
                 .with_code(proc_exit::sysexits::SOFTWARE_ERR),
 
             Self::External(args) => {
-                let exit_status = Command::new("brew")
-                    .args(args)
-                    .env("HOMEBREW_COLOR", "1")
+                let mut cmd = Command::new("brew");
+
+                cmd.args(args)
+                    .env("HOMEBREW_VERBOSE", "0")
+                    .env("HOMEBREW_COLOR", "0")
+                    .env("HOMEBREW_NO_COLOR", "0")
                     .env("HOMEBREW_NO_ANALYTICS", "1")
                     .env("HOMEBREW_NO_AUTOREMOVE", "1")
                     .env("HOMEBREW_NO_AUTO_UPDATE", "1")
                     .env("HOMEBREW_NO_ENV_HINTS", "1")
                     .env("HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK", "1")
                     .env("HOMEBREW_NO_INSTALL_CLEANUP", "1")
-                    .env("HOMEBREW_NO_INSTALL_UPGRADE", "1")
-                    .status()
-                    .await
-                    .to_sysexits()?;
+                    .env("HOMEBREW_NO_INSTALL_UPGRADE", "1");
 
-                proc_exit::Code::from_status(exit_status).ok()?;
+                let status = cmd.status().await.to_sysexits()?;
+
+                proc_exit::Code::from_status(status).ok()?;
 
                 proc_exit::Code::SUCCESS.ok()
             },

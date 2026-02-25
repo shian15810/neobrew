@@ -1,6 +1,6 @@
 #[tokio::main]
 async fn main() {
-    let exit_result = neobrew::run().await;
+    let result = neobrew::run().await;
 
-    proc_exit::exit(exit_result);
+    proc_exit::exit(result);
 }

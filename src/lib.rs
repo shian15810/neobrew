@@ -50,6 +50,6 @@ pub async fn run() -> proc_exit::ExitResult {
 
         _ = signal::ctrl_c() => proc_exit::bash::SIGINT.ok(),
 
-        exit_result = cli.command.run(Arc::new(context)) => exit_result,
+        result = cli.command.run(Arc::new(context)) => result,
     }
 }

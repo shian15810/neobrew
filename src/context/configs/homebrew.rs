@@ -1,5 +1,6 @@
 use anyhow::{Result, anyhow};
 use cfg_if::cfg_if;
+use figment::util::bool_from_str_or_int;
 use indoc::indoc;
 use serde::{Deserialize, Serialize};
 
@@ -8,6 +9,15 @@ use super::Config;
 #[derive(Serialize, Deserialize)]
 pub struct HomebrewConfig {
     prefix: String,
+
+    #[serde(deserialize_with = "bool_from_str_or_int")]
+    verbose: bool,
+
+    #[serde(deserialize_with = "bool_from_str_or_int")]
+    color: bool,
+
+    #[serde(deserialize_with = "bool_from_str_or_int")]
+    no_color: bool,
 }
 
 impl Config for HomebrewConfig {
@@ -18,6 +28,11 @@ impl Default for HomebrewConfig {
     fn default() -> Self {
         Self {
             prefix: Self::DEFAULT_PREFIX.to_owned(),
+
+            verbose: false,
+
+            color: false,
+            no_color: false,
         }
     }
 }
