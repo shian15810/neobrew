@@ -17,6 +17,7 @@ etcetera = "0.11.0"
 figment = { version = "0.10.19", features = ["env"] }
 flate2 = "1.1.9"
 foyer = "0.22.3"
+frunk = "0.4.4"
 futures = "0.3.32"
 indoc = "2.0.7"
 itertools = "0.14.0"

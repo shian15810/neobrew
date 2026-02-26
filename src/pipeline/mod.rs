@@ -1,6 +1,7 @@
 use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 
 use anyhow::{Error, Result};
+use frunk::hlist::{HCons, HNil};
 use futures::{
     sink::{self, SinkExt},
     stream::{self, StreamExt, TryStreamExt},
@@ -32,12 +33,12 @@ pub struct Pipeline<Item, St, Si, Handles> {
     _marker: PhantomData<Item>,
 }
 
-impl<Item, St> Pipeline<Item, St, sink::SinkErrInto<sink::Drain<Item>, Item, Error>, ()> {
+impl<Item, St> Pipeline<Item, St, sink::SinkErrInto<sink::Drain<Item>, Item, Error>, HNil> {
     pub fn new(stream: St, context: Arc<Context>) -> Self {
         Self {
             stream,
             sink: sink::drain().sink_err_into(),
-            handles: (),
+            handles: HNil,
 
             context,
 
@@ -50,24 +51,27 @@ impl<
     Item: Clone + Debug + Send + Sync + 'static,
     St: stream::TryStream<Ok = Item, Error = impl Into<Error>> + Send + 'static,
     Si: sink::Sink<Item, Error = Error> + Send + 'static,
-    Handles: TryJoin,
+    Handles: Collect,
 > Pipeline<Item, St, Si, Handles>
 {
-    pub fn fanout<_Marker, Op: Operator<Item, _Marker>>(
+    pub fn fanout<Op: Operator<Item, _Marker>, _Marker>(
         self,
         operator: Op,
     ) -> Pipeline<
         Item,
         St,
         sink::Fanout<Si, sink::SinkErrInto<PollSender<Item>, Item, Error>>,
-        (Handles, AbortOnDropHandle<Result<Op::Output>>),
+        HCons<AbortOnDropHandle<Result<Op::Output>>, Handles>,
     > {
         let (sink, handle) = operator.spawn_blocking(&self.context);
 
         Pipeline {
             stream: self.stream,
             sink: self.sink.fanout(sink.sink_err_into()),
-            handles: (self.handles, handle),
+            handles: HCons {
+                head: handle,
+                tail: self.handles,
+            },
 
             context: self.context,
 
@@ -75,10 +79,7 @@ impl<
         }
     }
 
-    pub async fn spawn(self) -> Result<<Handles::Output as Flatten>::Output>
-    where
-        Handles::Output: Flatten,
-    {
+    pub async fn spawn(self) -> Result<Handles::Outputs> {
         let handle = task::spawn(async move {
             let forward = self.stream.err_into().forward(self.sink);
 
@@ -88,108 +89,37 @@ impl<
 
         handle.await??;
 
-        let outputs = self.handles.try_join().await?;
-        let outputs = outputs.flatten();
+        let outputs = self.handles.collect().await?;
 
         Ok(outputs)
     }
 }
 
-// --- TryJoin ---
+pub trait Collect {
+    type Outputs;
 
-pub trait TryJoin {
-    type Output;
-
-    async fn try_join(self) -> Result<Self::Output>;
+    async fn collect(self) -> Result<Self::Outputs>;
 }
 
-impl TryJoin for () {
-    type Output = ();
+impl Collect for HNil {
+    type Outputs = Self;
 
-    async fn try_join(self) -> Result<Self::Output> {
-        Ok(())
-    }
-}
-
-impl<Handles: TryJoin, Output> TryJoin for (Handles, AbortOnDropHandle<Result<Output>>) {
-    type Output = (Handles::Output, Output);
-
-    async fn try_join(self) -> Result<Self::Output> {
-        let (handles, handle) = self;
-
-        let outputs = handles.try_join().await?;
-
-        let output = handle.await??;
-
-        let outputs = (outputs, output);
+    async fn collect(self) -> Result<Self::Outputs> {
+        let outputs = Self;
 
         Ok(outputs)
     }
 }
 
-// --- Flatten ---
+impl<Item, Handles: Collect> Collect for HCons<AbortOnDropHandle<Result<Item>>, Handles> {
+    type Outputs = HCons<Item, Handles::Outputs>;
 
-pub trait Flatten {
-    type Output;
+    async fn collect(self) -> Result<Self::Outputs> {
+        let outputs = HCons {
+            head: self.head.await??,
+            tail: self.tail.collect().await?,
+        };
 
-    fn flatten(self) -> Self::Output;
-}
-
-impl Flatten for () {
-    type Output = ();
-
-    fn flatten(self) -> Self::Output {}
-}
-
-impl<Handles: Flatten, Output> Flatten for (Handles, Output)
-where
-    Handles::Output: Append<Output>,
-{
-    type Output = <Handles::Output as Append<Output>>::Output;
-
-    fn flatten(self) -> Self::Output {
-        let (handles, output) = self;
-
-        let outputs = handles.flatten();
-
-        outputs.append(output)
+        Ok(outputs)
     }
 }
-
-// --- Append ---
-
-pub trait Append<Output> {
-    type Output;
-
-    fn append(self, output: Output) -> Self::Output;
-}
-
-macro_rules! impl_append {
-    () => {
-        impl<Output> Append<Output> for () {
-            type Output = (Output,);
-
-            fn append(self, output: Output) -> Self::Output {
-                (output,)
-            }
-        }
-    };
-
-    ($head:ident $(, $tail:ident)* $(,)?) => {
-        impl<Output, $head, $($tail,)*> Append<Output> for ($head, $($tail,)*) {
-            type Output = ($head, $($tail,)* Output);
-
-            fn append(self, output: Output) -> Self::Output {
-                let ($head, $($tail,)*) = self;
-
-                ($head, $($tail,)* output)
-            }
-        }
-
-        impl_append!($($tail),*);
-    };
-}
-
-impl_append!(
-    T15, T14, T13, T12, T11, T10, T9, T8, T7, T6, T5, T4, T3, T2, T1, T0,
-);

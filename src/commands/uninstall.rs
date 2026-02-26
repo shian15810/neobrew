@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use anyhow::{Error, Result};
 use clap::Args;
+use frunk::hlist_pat;
 use tokio::task::JoinSet;
 
 use super::{Resolution, Runner};
@@ -61,7 +62,7 @@ impl Runner for Uninstall {
                     .error_for_status()?
                     .bytes_stream();
 
-                let (hash, path, file) = Pipeline::new(stream, context)
+                let hlist_pat![hash, path, file] = Pipeline::new(stream, context)
                     .fanout(Hasher::new())
                     .fanout(Pourer::new(id))
                     .fanout(Writer::new(format!("{id}.json"))?)

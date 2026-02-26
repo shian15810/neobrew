@@ -17,14 +17,12 @@ impl ProjectDirs {
             .and_then(|(_, tail)| tail.split_once(')'))
             .map_or(Self::AUTHOR, |(head, _)| head);
 
-        let strategy = app_strategy::choose_app_strategy(AppStrategyArgs {
-            top_level_domain: Self::TOP_LEVEL_DOMAIN.to_owned(),
-            author: author.to_owned(),
-            app_name: crate_name!().to_owned(),
-        })?;
-
         let this = Self {
-            strategy,
+            strategy: app_strategy::choose_app_strategy(AppStrategyArgs {
+                top_level_domain: Self::TOP_LEVEL_DOMAIN.to_owned(),
+                author: author.to_owned(),
+                app_name: crate_name!().to_owned(),
+            })?,
         };
 
         Ok(this)

@@ -94,7 +94,7 @@ impl FormulaRegistry {
     ) -> Result<Arc<ResolvedFormula>> {
         let url = Self::API_URL.replace("{}", &package);
 
-        let res = self
+        let resp = self
             .context
             .client
             .get(url)
@@ -102,7 +102,7 @@ impl FormulaRegistry {
             .await?
             .error_for_status()?;
 
-        let value: Value = res.json().await?;
+        let value: Value = resp.json().await?;
 
         let bytes = serde_json::to_vec(&value)?;
 

@@ -37,6 +37,7 @@ impl ResolvedPackage {
 
                 Either::Left(formulae)
             },
+
             Self::Cask(cask) => {
                 let casks = iter::once(Arc::clone(cask)).map(Self::Cask);
 

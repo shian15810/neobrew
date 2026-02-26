@@ -64,7 +64,7 @@ impl CaskRegistry {
     async fn fetch(self: Arc<Self>, package: String) -> Result<Arc<ResolvedCask>> {
         let url = Self::API_URL.replace("{}", &package);
 
-        let res = self
+        let resp = self
             .context
             .client
             .get(url)
@@ -72,7 +72,7 @@ impl CaskRegistry {
             .await?
             .error_for_status()?;
 
-        let value: Value = res.json().await?;
+        let value: Value = resp.json().await?;
 
         let bytes = serde_json::to_vec(&value)?;
 
