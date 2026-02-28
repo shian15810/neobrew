@@ -1,34 +1,41 @@
-use anyhow::Error;
+use anyhow::Result;
 use clap::Parser;
 use neobrew::Cli;
 use proc_exit::prelude::*;
-use tokio::{signal, task};
+use tokio::{
+    signal,
+    task::{self, JoinHandle},
+};
 use tracing_subscriber::prelude::*;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> proc_exit::ExitResult {
     let cli = Cli::parse();
 
     init_tracing(&cli);
 
-    let handle = task::spawn(async move {
+    let handle: JoinHandle<Result<()>> = task::spawn(async move {
         signal::ctrl_c().await?;
 
-        Ok::<_, Error>(())
+        Ok(())
     });
 
     let result = tokio::select! {
         biased;
 
-        res = handle => match res.map_err(Error::from).flatten() {
-            Ok(()) => proc_exit::bash::SIGINT.ok(),
-            Err(e) => Err(e).with_code(proc_exit::sysexits::SOFTWARE_ERR),
+        res = handle => {
+            res.with_code(proc_exit::sysexits::SOFTWARE_ERR)?
+                .with_code(proc_exit::sysexits::SOFTWARE_ERR)?;
+
+            proc_exit::bash::SIGINT.ok()
         },
 
         res = neobrew::run(cli) => res,
     };
 
-    proc_exit::exit(result);
+    result?;
+
+    proc_exit::Code::SUCCESS.ok()
 }
 
 fn init_tracing(cli: &Cli) {

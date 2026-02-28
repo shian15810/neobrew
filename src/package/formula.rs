@@ -47,8 +47,10 @@ impl Packageable for ResolvedFormula {
 
 impl ResolvedFormula {
     pub fn iter(self: &Arc<Self>) -> ResolvedFormulaIter {
+        let this = Arc::clone(self);
+
         ResolvedFormulaIter {
-            stack: vec![Arc::clone(self)],
+            stack: vec![this],
         }
     }
 }

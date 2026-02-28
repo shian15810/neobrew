@@ -5,7 +5,6 @@ use async_recursion::async_recursion;
 use etcetera::AppStrategy;
 use foyer::{Cache, CacheBuilder};
 use futures::stream::{self, StreamExt, TryStreamExt};
-use serde_json::Value;
 use tokio::fs;
 
 use super::Registrable;
@@ -31,7 +30,8 @@ impl Registrable for FormulaRegistry {
     const JSON_URL: &str = "https://formulae.brew.sh/api/formula.json";
     const JWS_JSON_URL: &str = "https://formulae.brew.sh/api/formula.jws.json";
     const TAP_MIGRATIONS_URL: &str = "https://formulae.brew.sh/api/formula_tap_migrations.json";
-    const TAP_MIGRATIONS_JWS_URL: &str = "https://formulae.brew.sh/api/formula_tap_migrations.jws.json";
+    const TAP_MIGRATIONS_JWS_URL: &str =
+        "https://formulae.brew.sh/api/formula_tap_migrations.jws.json";
 
     fn new(context: Arc<Context>) -> Self {
         Self {
@@ -42,7 +42,9 @@ impl Registrable for FormulaRegistry {
     }
 
     async fn resolve(self: Arc<Self>, package: String) -> Result<Arc<Self::ResolvedPackage>> {
-        let resolved_formula = self.resolve_with_stack(package, Vec::new()).await?;
+        let stack = Vec::new();
+
+        let resolved_formula = self.resolve_with_stack(package, stack).await?;
 
         Ok(resolved_formula)
     }
@@ -59,14 +61,13 @@ impl FormulaRegistry {
 
             stack.push(formula);
 
-            let err = anyhow!(
-                "Circular formula dependency detected: {}",
-                stack
-                    .into_iter()
-                    .map(|formula| format!(r#""{formula}""#))
-                    .collect::<Vec<_>>()
-                    .join(" -> "),
-            );
+            let stack = stack
+                .into_iter()
+                .map(|formula| format!(r#""{formula}""#))
+                .collect::<Vec<_>>();
+            let stack = stack.join(" -> ");
+
+            let err = anyhow!("Circular formula dependency detected: {stack}");
 
             return Err(err);
         }
@@ -80,8 +81,9 @@ impl FormulaRegistry {
 
                 this.fetch_with_stack(package.clone(), stack)
             })
-            .await
-            .map(|entry| Arc::clone(entry.value()))?;
+            .await?;
+        let resolved_formula = resolved_formula.value();
+        let resolved_formula = Arc::clone(resolved_formula);
 
         Ok(resolved_formula)
     }
@@ -94,19 +96,25 @@ impl FormulaRegistry {
     ) -> Result<Arc<ResolvedFormula>> {
         let url = Self::API_URL.replace("{}", &package);
 
-        let resp = self
+        let resp = self.context.client.get(url).send().await?;
+        let resp = resp.error_for_status()?;
+
+        let bytes = resp.bytes().await?;
+
+        let raw_formula: RawFormula = serde_json::from_slice(&bytes)?;
+
+        let dir = self
             .context
-            .client
-            .get(url)
-            .send()
-            .await?
-            .error_for_status()?;
+            .proj_dirs
+            .cache_dir()
+            .join("api")
+            .join("formula");
 
-        let value: Value = resp.json().await?;
+        fs::create_dir_all(&dir).await?;
 
-        let bytes = serde_json::to_vec(&value)?;
+        let file = dir.join(format!("{}.json", raw_formula.id()));
 
-        let raw_formula: RawFormula = serde_json::from_value(value)?;
+        fs::write(file, bytes).await?;
 
         let dependencies = raw_formula.dependencies.iter().cloned();
 
@@ -117,24 +125,11 @@ impl FormulaRegistry {
                 this.resolve_with_stack(dependency, stack.clone())
             })
             .buffer_unordered(*self.context.concurrency_limit)
-            .try_collect::<Vec<_>>()
-            .await?;
+            .try_collect::<Vec<_>>();
+        let resolved_dependencies = resolved_dependencies.await?;
 
         let resolved_formula = ResolvedFormula::from((raw_formula, resolved_dependencies));
         let resolved_formula = Arc::new(resolved_formula);
-
-        let dir = self
-            .context
-            .project_dirs()?
-            .cache_dir()
-            .join("api")
-            .join("formula");
-
-        fs::create_dir_all(&dir).await?;
-
-        let file = dir.join(format!("{}.json", resolved_formula.id()));
-
-        fs::write(file, bytes).await?;
 
         Ok(resolved_formula)
     }

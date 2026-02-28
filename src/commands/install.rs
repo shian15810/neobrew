@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::{Error, Result};
+use anyhow::Result;
 use clap::Args;
 use frunk::hlist_pat;
 use tokio::task::JoinSet;
@@ -32,13 +32,17 @@ impl Runner for Install {
             return Ok(());
         }
 
-        let registries = Registries::new(Arc::clone(&context));
+        let registries = {
+            let context = Arc::clone(&context);
+
+            Registries::new(context)
+        };
 
         let strategy = self.resolution.strategy();
 
         let resolved_packages = registries.resolve(self.packages, strategy).await?;
 
-        let mut set = JoinSet::new();
+        let mut set: JoinSet<Result<()>> = JoinSet::new();
 
         let concurrency_limit = *context.concurrency_limit;
 
@@ -54,13 +58,14 @@ impl Runner for Install {
             set.spawn(async move {
                 let id = resolved_package.id();
 
-                let stream = context
+                let resp = context
                     .client
                     .get("https://httpbin.org/json")
                     .send()
-                    .await?
-                    .error_for_status()?
-                    .bytes_stream();
+                    .await?;
+                let resp = resp.error_for_status()?;
+
+                let stream = resp.bytes_stream();
 
                 let hlist_pat![hash, path, file] = Pipeline::new(stream, context)
                     .fanout(Hasher::new())
@@ -71,7 +76,7 @@ impl Runner for Install {
 
                 dbg!(hash, path, file);
 
-                Ok::<_, Error>(())
+                Ok(())
             });
         }
 

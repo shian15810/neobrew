@@ -15,8 +15,10 @@ pub struct Writer {
 
 impl Writer {
     pub fn new(path: impl AsRef<Path>) -> Result<Self> {
+        let file = File::create(path)?;
+
         let this = Self {
-            inner: BufWriter::new(File::create(path)?),
+            inner: BufWriter::new(file),
         };
 
         Ok(this)

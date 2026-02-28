@@ -1,5 +1,8 @@
 use anyhow::Result;
-use tokio::{sync::mpsc, task};
+use tokio::{
+    sync::mpsc,
+    task::{self, JoinHandle},
+};
 use tokio_util::{sync::PollSender, task::AbortOnDropHandle};
 
 pub use self::{hasher::Hasher, writer::Writer};
@@ -36,7 +39,7 @@ impl<
 
         let sink = PollSender::new(tx);
 
-        let handle = task::spawn_blocking(move || {
+        let handle: JoinHandle<Result<Output>> = task::spawn_blocking(move || {
             while let Some(item) = rx.blocking_recv() {
                 self.feed(item)?;
             }

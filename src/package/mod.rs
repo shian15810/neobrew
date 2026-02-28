@@ -39,7 +39,9 @@ impl ResolvedPackage {
             },
 
             Self::Cask(cask) => {
-                let casks = iter::once(Arc::clone(cask)).map(Self::Cask);
+                let cask = Arc::clone(cask);
+
+                let casks = iter::once(cask).map(Self::Cask);
 
                 Either::Right(casks)
             },

@@ -54,22 +54,29 @@ impl Registries<(), ()> {
     pub fn new(
         context: Arc<Context>,
     ) -> Registries<impl FnOnce() -> Arc<FormulaRegistry>, impl FnOnce() -> Arc<CaskRegistry>> {
-        let formula_context = Arc::clone(&context);
+        let formula_registry = {
+            let context = Arc::clone(&context);
 
-        let cask_context = Arc::clone(&context);
-
-        Registries {
-            formula: LazyLock::new(|| {
-                let formula_registry = FormulaRegistry::new(formula_context);
+            LazyLock::new(|| {
+                let formula_registry = FormulaRegistry::new(context);
 
                 Arc::new(formula_registry)
-            }),
+            })
+        };
 
-            cask: LazyLock::new(|| {
-                let cask_registry = CaskRegistry::new(cask_context);
+        let cask_registry = {
+            let context = Arc::clone(&context);
+
+            LazyLock::new(|| {
+                let cask_registry = CaskRegistry::new(context);
 
                 Arc::new(cask_registry)
-            }),
+            })
+        };
+
+        Registries {
+            formula: formula_registry,
+            cask: cask_registry,
 
             context,
         }
@@ -88,8 +95,8 @@ impl<FormulaFn: FnOnce() -> Arc<FormulaRegistry>, CaskFn: FnOnce() -> Arc<CaskRe
         let resolved_packages = resolved_packages
             .into_iter()
             .flat_map(|resolved_package| resolved_package.iter())
-            .sorted_by(|a, b| a.id().cmp(b.id()))
-            .dedup_by(|a, b| a.id() == b.id())
+            .sorted_by(|left, right| left.id().cmp(right.id()))
+            .dedup_by(|left, right| left.id() == right.id())
             .collect::<Vec<_>>();
 
         Ok(resolved_packages)
@@ -100,11 +107,13 @@ impl<FormulaFn: FnOnce() -> Arc<FormulaRegistry>, CaskFn: FnOnce() -> Arc<CaskRe
         packages: impl IntoIterator<Item = String>,
         strategy: ResolutionStrategy,
     ) -> Result<Vec<ResolvedPackage>> {
-        stream::iter(packages)
+        let resolved_packages = stream::iter(packages)
             .map(|package| self.resolve_one(package, strategy))
             .buffer_unordered(*self.context.concurrency_limit)
-            .try_collect::<Vec<_>>()
-            .await
+            .try_collect::<Vec<_>>();
+        let resolved_packages = resolved_packages.await?;
+
+        Ok(resolved_packages)
     }
 
     async fn resolve_one(

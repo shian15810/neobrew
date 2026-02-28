@@ -3,7 +3,6 @@ use std::sync::Arc;
 use anyhow::Result;
 use etcetera::AppStrategy;
 use foyer::{Cache, CacheBuilder};
-use serde_json::Value;
 use tokio::fs;
 
 use super::Registrable;
@@ -29,7 +28,8 @@ impl Registrable for CaskRegistry {
     const JSON_URL: &str = "https://formulae.brew.sh/api/cask.json";
     const JWS_JSON_URL: &str = "https://formulae.brew.sh/api/cask.jws.json";
     const TAP_MIGRATIONS_URL: &str = "https://formulae.brew.sh/api/cask_tap_migrations.json";
-    const TAP_MIGRATIONS_JWS_URL: &str = "https://formulae.brew.sh/api/cask_tap_migrations.jws.json";
+    const TAP_MIGRATIONS_JWS_URL: &str =
+        "https://formulae.brew.sh/api/cask_tap_migrations.jws.json";
 
     fn new(context: Arc<Context>) -> Self {
         Self {
@@ -55,8 +55,9 @@ impl CaskRegistry {
 
                 this.fetch(package.clone())
             })
-            .await
-            .map(|entry| Arc::clone(entry.value()))?;
+            .await?;
+        let resolved_cask = resolved_cask.value();
+        let resolved_cask = Arc::clone(resolved_cask);
 
         Ok(resolved_cask)
     }
@@ -64,35 +65,23 @@ impl CaskRegistry {
     async fn fetch(self: Arc<Self>, package: String) -> Result<Arc<ResolvedCask>> {
         let url = Self::API_URL.replace("{}", &package);
 
-        let resp = self
-            .context
-            .client
-            .get(url)
-            .send()
-            .await?
-            .error_for_status()?;
+        let resp = self.context.client.get(url).send().await?;
+        let resp = resp.error_for_status()?;
 
-        let value: Value = resp.json().await?;
+        let bytes = resp.bytes().await?;
 
-        let bytes = serde_json::to_vec(&value)?;
+        let raw_cask: RawCask = serde_json::from_slice(&bytes)?;
 
-        let raw_cask: RawCask = serde_json::from_value(value)?;
-
-        let resolved_cask = ResolvedCask::from(raw_cask);
-        let resolved_cask = Arc::new(resolved_cask);
-
-        let dir = self
-            .context
-            .project_dirs()?
-            .cache_dir()
-            .join("api")
-            .join("cask");
+        let dir = self.context.proj_dirs.cache_dir().join("api").join("cask");
 
         fs::create_dir_all(&dir).await?;
 
-        let file = dir.join(format!("{}.json", resolved_cask.id()));
+        let file = dir.join(format!("{}.json", raw_cask.id()));
 
         fs::write(file, bytes).await?;
+
+        let resolved_cask = ResolvedCask::from(raw_cask);
+        let resolved_cask = Arc::new(resolved_cask);
 
         Ok(resolved_cask)
     }

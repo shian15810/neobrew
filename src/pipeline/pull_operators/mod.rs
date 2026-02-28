@@ -3,7 +3,10 @@ use std::io::{self, BufRead};
 use anyhow::Result;
 use bytes::Buf;
 use futures::stream::StreamExt;
-use tokio::{sync::mpsc, task};
+use tokio::{
+    sync::mpsc,
+    task::{self, JoinHandle},
+};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::{
     io::{StreamReader, SyncIoBridge},
@@ -41,13 +44,13 @@ impl<
 
         let sink = PollSender::new(tx);
 
-        let stream = ReceiverStream::new(rx).map(Ok::<_, io::Error>);
+        let stream = ReceiverStream::new(rx).map(io::Result::Ok);
 
         let reader = StreamReader::new(stream);
 
         let sync_reader = SyncIoBridge::new(reader);
 
-        let handle = task::spawn_blocking(move || {
+        let handle: JoinHandle<Result<Output>> = task::spawn_blocking(move || {
             let output = self.from_reader(sync_reader)?;
 
             Ok(output)

@@ -3,10 +3,11 @@ use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 use anyhow::{Error, Result};
 use frunk::hlist::{HCons, HNil};
 use futures::{
+    future::TryFutureExt,
     sink::{self, SinkExt},
     stream::{self, StreamExt, TryStreamExt},
 };
-use tokio::task;
+use tokio::task::{self, JoinHandle};
 use tokio_util::{sync::PollSender, task::AbortOnDropHandle};
 
 use crate::context::Context;
@@ -80,16 +81,18 @@ impl<
     }
 
     pub async fn spawn(self) -> Result<Handles::Outputs> {
-        let handle = task::spawn(async move {
+        let handle: JoinHandle<Result<()>> = task::spawn(async move {
             let forward = self.stream.err_into().forward(self.sink);
 
-            forward.await
+            forward.await?;
+
+            Ok(())
         });
         let handle = AbortOnDropHandle::new(handle);
 
-        handle.await??;
+        let (result, outputs) = futures::try_join!(handle.err_into(), self.handles.collect())?;
 
-        let outputs = self.handles.collect().await?;
+        result?;
 
         Ok(outputs)
     }
@@ -115,9 +118,11 @@ impl<Item, Handles: Collect> Collect for HCons<AbortOnDropHandle<Result<Item>>, 
     type Outputs = HCons<Item, Handles::Outputs>;
 
     async fn collect(self) -> Result<Self::Outputs> {
+        let (output, outputs) = futures::try_join!(self.head.err_into(), self.tail.collect())?;
+
         let outputs = HCons {
-            head: self.head.await??,
-            tail: self.tail.collect().await?,
+            head: output?,
+            tail: outputs,
         };
 
         Ok(outputs)

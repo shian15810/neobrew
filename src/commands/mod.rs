@@ -1,8 +1,8 @@
 use std::{ffi::OsString, sync::Arc};
 
 use anyhow::Result;
-use clap::{Args, ColorChoice, Parser, Subcommand, ValueEnum};
-use clap_verbosity_flag::Verbosity;
+use clap::{Args, ColorChoice, Parser, Subcommand};
+use clap_verbosity_flag::{Verbosity, VerbosityFilter};
 use enum_dispatch::enum_dispatch;
 use proc_exit::prelude::*;
 use tokio::process::Command;
@@ -29,12 +29,7 @@ pub struct Cli {
         num_args = 0..=1,
         require_equals = true,
         default_value_t = ColorChoice::Auto,
-        default_missing_value = &*ColorChoice::Always
-            .to_possible_value()
-            .unwrap()
-            .get_name()
-            .to_owned()
-            .leak(),
+        default_missing_value = &*ColorChoice::Always.to_string().leak(),
     )]
     color: ColorChoice,
 }
@@ -51,27 +46,51 @@ pub enum Commands {
 impl Commands {
     pub async fn run(self, context: Arc<Context>) -> proc_exit::ExitResult {
         match self {
-            Self::Internal(internal) => internal
-                .run(context)
-                .await
-                .with_code(proc_exit::sysexits::SOFTWARE_ERR),
+            Self::Internal(internal) => {
+                let res = internal.run(context).await;
+
+                res.with_code(proc_exit::sysexits::SOFTWARE_ERR)?;
+
+                proc_exit::Code::SUCCESS.ok()
+            },
 
             Self::External(args) => {
                 let mut cmd = Command::new("brew");
 
-                cmd.args(args)
-                    .env("HOMEBREW_VERBOSE", "0")
-                    .env("HOMEBREW_COLOR", "0")
-                    .env("HOMEBREW_NO_COLOR", "0")
-                    .env("HOMEBREW_NO_ANALYTICS", "1")
+                cmd.args(args);
+
+                match context.config.verbosity_filter {
+                    VerbosityFilter::Debug => {
+                        cmd.env("HOMEBREW_DEBUG", "1");
+                    },
+                    VerbosityFilter::Info => {
+                        cmd.env("HOMEBREW_VERBOSE", "1");
+                    },
+                    _ => {},
+                }
+
+                match context.config.color_choice {
+                    ColorChoice::Never => {
+                        cmd.env("HOMEBREW_NO_COLOR", "1");
+                    },
+                    ColorChoice::Always => {
+                        cmd.env("HOMEBREW_COLOR", "1");
+                    },
+                    _ => {},
+                }
+
+                cmd.env("HOMEBREW_NO_ANALYTICS", "1")
                     .env("HOMEBREW_NO_AUTOREMOVE", "1")
                     .env("HOMEBREW_NO_AUTO_UPDATE", "1")
                     .env("HOMEBREW_NO_ENV_HINTS", "1")
+                    .env("HOMEBREW_NO_INSECURE_REDIRECT", "1")
                     .env("HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK", "1")
                     .env("HOMEBREW_NO_INSTALL_CLEANUP", "1")
                     .env("HOMEBREW_NO_INSTALL_UPGRADE", "1");
 
-                let status = cmd.status().await.to_sysexits()?;
+                let res = cmd.status().await;
+
+                let status = res.to_sysexits()?;
 
                 proc_exit::Code::from_status(status).ok()?;
 

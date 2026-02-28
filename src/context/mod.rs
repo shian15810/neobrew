@@ -1,12 +1,11 @@
 use std::{num::NonZeroUsize, sync::LazyLock, thread};
 
 use anyhow::Result;
-use etcetera::app_strategy;
-use once_cell::sync::OnceCell as OnceLock;
+use clap::ArgMatches;
 
 use self::{
-    configs::{Config, HomebrewConfig, NeobrewConfig},
-    project_dirs::ProjectDirs,
+    configs::Config,
+    project_dirs::{ChosenAppStrategy, ProjectDirs},
 };
 
 mod configs;
@@ -20,10 +19,9 @@ static CONCURRENCY_LIMIT: LazyLock<usize> = LazyLock::new(|| {
 });
 
 pub struct Context {
-    project_dirs: OnceLock<ProjectDirs>,
+    pub proj_dirs: ChosenAppStrategy,
 
-    neobrew_config: OnceLock<NeobrewConfig>,
-    homebrew_config: OnceLock<HomebrewConfig>,
+    pub config: Config,
 
     pub client: LazyLock<reqwest::Client>,
 
@@ -35,33 +33,18 @@ impl Context {
     const MAX_CONCURRENCY: usize = 1 << 4;
     const BUFFER_MULTIPLIER: usize = 1 << 4;
 
-    pub fn new() -> Self {
-        Self {
-            project_dirs: OnceLock::new(),
+    pub fn new(matches: &ArgMatches) -> Result<Self> {
+        let this = Self {
+            proj_dirs: ProjectDirs::new()?.strategy(),
 
-            neobrew_config: OnceLock::new(),
-            homebrew_config: OnceLock::new(),
+            config: Config::load(matches)?,
 
             client: LazyLock::new(reqwest::Client::new),
 
             concurrency_limit: LazyLock::new(|| *CONCURRENCY_LIMIT),
             channel_capacity: LazyLock::new(|| *CONCURRENCY_LIMIT * Self::BUFFER_MULTIPLIER),
-        }
-    }
+        };
 
-    pub fn project_dirs(&self) -> Result<&app_strategy::Xdg> {
-        let project_dirs = self.project_dirs.get_or_try_init(ProjectDirs::new)?;
-
-        let strategy = project_dirs.strategy();
-
-        Ok(strategy)
-    }
-
-    fn neobrew_config(&self) -> Result<&NeobrewConfig> {
-        self.neobrew_config.get_or_try_init(NeobrewConfig::load)
-    }
-
-    pub fn homebrew_config(&self) -> Result<&HomebrewConfig> {
-        self.homebrew_config.get_or_try_init(HomebrewConfig::load)
+        Ok(this)
     }
 }
