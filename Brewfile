@@ -1,0 +1,6 @@
+brew "mise"
+brew "rustup"
+brew "taplo"
+brew "markdownlint-cli2"
+brew "prettier"
+brew "biome"

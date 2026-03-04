@@ -69,6 +69,7 @@ impl Commands {
                     _ => {},
                 }
 
+                #[allow(clippy::match_wildcard_for_single_variants)]
                 match context.config.color_choice {
                     ColorChoice::Never => {
                         cmd.env("HOMEBREW_NO_COLOR", "1");

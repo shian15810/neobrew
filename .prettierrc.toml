@@ -1,0 +1,6 @@
+#:schema https://www.schemastore.org/prettierrc.json
+
+[[overrides]]
+files = ["*.md"]
+options.tabWidth = 4
+options.proseWrap = "always"

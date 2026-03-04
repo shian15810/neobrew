@@ -1,0 +1,19 @@
+#:schema https://www.schemastore.org/taplo.json
+
+[formatting]
+indent_string = "    "
+allowed_blank_lines = 1
+
+[[rule]]
+include = ["**/Cargo.toml"]
+keys = [
+    "dependencies",
+    "dev-dependencies",
+    "build-dependencies",
+    "target.*.dependencies",
+    "target.*.dev-dependencies",
+    "target.*.build-dependencies",
+]
+formatting.inline_table_expand = false
+formatting.reorder_keys = true
+formatting.reorder_arrays = true

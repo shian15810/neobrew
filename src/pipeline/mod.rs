@@ -55,6 +55,7 @@ impl<
     Handles: Collect,
 > Pipeline<Item, St, Si, Handles>
 {
+    #[allow(clippy::type_complexity)]
     pub fn fanout<Op: Operator<Item, _Marker>, _Marker>(
         self,
         operator: Op,

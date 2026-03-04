@@ -1,0 +1,22 @@
+# Source: https://github.com/rust-lang/rust-analyzer/blob/HEAD/crates/rust-analyzer/src/config.rs
+
+# Workspace-level configs (effective at workspace root only)
+
+[check]
+command = "clippy"
+extraEnv.RUSTUP_TOOLCHAIN = "nightly"
+
+[rustfmt]
+extraArgs = ["+nightly"]
+
+# Local-level configs (effective at any workspace level)
+
+[assist]
+emitMustUse = true
+preferSelf = true
+
+[imports]
+granularity.enforce = true
+merge.glob = false
+preferPrelude = true
+prefix = "self"

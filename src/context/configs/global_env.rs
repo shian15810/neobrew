@@ -36,6 +36,7 @@ impl ProviderConfig for GlobalEnvConfig {
     const METADATA_NAME: &str = "Global environment variable(s)";
 
     fn data(&self) -> figment::Result<Map<Profile, Dict>> {
+        #[rustfmt::skip]
         let color_choice = match (
             self.no_color.as_deref(),
             self.force_color.as_deref().or(self.clicolor_force.as_deref()),

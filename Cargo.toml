@@ -1,8 +1,14 @@
+#:schema https://www.schemastore.org/cargo.json
+
 [package]
 name = "neobrew"
 version = "0.1.0"
 authors = ["Cheeshian Chuah (shian15810) <shian15810@gmail.com>"]
 edition = "2024"
+description = "Neobrew (nbrew) - A DX-focused, Homebrew-interoperable package manager for macOS and Linux, written in Rust and powered by reactive pipelines built for extreme performance."
+readme = "README.md"
+repository = "https://github.com/shian15810/neobrew"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 anyhow = "1.0.102"
@@ -29,7 +35,48 @@ serde_json = "1.0.149"
 serde_with = "3.17.0"
 sha2 = "0.10.9"
 tar = "0.4.44"
-tokio = { version = "1.49.0", features = ["process", "rt-multi-thread", "signal"] }
+tokio = { version = "1.50.0", features = ["process", "rt-multi-thread", "signal"] }
 tokio-stream = "0.1.18"
 tokio-util = { version = "0.7.18", features = ["io-util", "rt"] }
 tracing-subscriber = "0.3.22"
+
+[lints.rust]
+# default = "allow"
+unqualified_local_imports = "warn"
+unreachable_pub = "deny"
+unsafe_attr_outside_unsafe = "warn"
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+# default = "warn"
+dead_code = "allow"
+# default = "deny"
+
+[lints.rustdoc]
+# default = "allow"
+unescaped_backticks = "warn"
+# default = "warn"
+# default = "deny"
+
+[lints.clippy]
+pedantic = "warn"
+# restriction = "warn"
+clone_on_ref_ptr = "warn"
+empty_enum_variants_with_brackets = "warn"
+empty_structs_with_brackets = "warn"
+expect_used = "warn"
+if_then_some_else_none = "warn"
+redundant_test_prefix = "warn"
+redundant_type_annotations = "warn"
+self_named_module_files = "warn"
+str_to_string = "warn"
+unwrap_used = "warn"
+# nursery = "warn"
+branches_sharing_code = "warn"
+needless_pass_by_ref_mut = "warn"
+redundant_clone = "warn"
+redundant_pub_crate = "warn"
+trait_duplication_in_bounds = "warn"
+type_repetition_in_bounds = "warn"
+unnecessary_struct_initialization = "warn"
+use_self = "warn"
+# cargo = "warn"

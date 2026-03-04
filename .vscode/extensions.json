@@ -1,0 +1,12 @@
+{
+    "recommendations": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "DavidAnson.vscode-markdownlint",
+        "esbenp.prettier-vscode",
+        "biomejs.biome",
+        "EditorConfig.EditorConfig",
+    ],
+
+    "unwantedRecommendations": [],
+}

@@ -25,6 +25,7 @@ pub struct PullMarker;
 pub trait PullOperator {
     type Output;
 
+    #[allow(clippy::wrong_self_convention)]
     fn from_reader(self, reader: impl BufRead) -> Result<Self::Output>;
 }
 

@@ -1,3 +1,12 @@
+#![feature(
+    multiple_supertrait_upcastable,
+    must_not_suspend,
+    non_exhaustive_omitted_patterns_lint,
+    strict_provenance_lints,
+    supertrait_item_shadowing,
+    unqualified_local_imports
+)]
+
 use anyhow::Result;
 use clap::Parser;
 use neobrew::Cli;

@@ -1,0 +1,13 @@
+avoid-breaking-exported-api = false
+disallowed-macros = [
+    "std::panic",
+    "std::todo",
+    "std::unimplemented",
+    "std::unreachable",
+]
+disallowed-methods = [
+    "std::panic::panic_any",
+    "std::panic::resume_unwind",
+    "std::process::abort",
+    "std::process::exit",
+]

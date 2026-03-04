@@ -1,0 +1,11 @@
+#:schema https://mise.jdx.dev/schema/mise.json
+
+[env]
+MACOSX_DEPLOYMENT_TARGET = "{{ exec(command='rustc --print=deployment-target') | split(pat='=') | last }}"
+
+[tasks.bundle]
+run = "brew bundle"
+
+[tasks.install]
+depends = ["bundle"]
+run = "mise install"

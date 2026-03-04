@@ -43,6 +43,7 @@ trait ProviderConfig: Sized {
         Metadata::named(Self::METADATA_NAME)
     }
 
+    #[allow(clippy::result_large_err)]
     fn data(&self) -> figment::Result<Map<Profile, Dict>>;
 
     fn into_provider(self) -> FigmentProvider<Self> {
