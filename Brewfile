@@ -1,5 +1,7 @@
 brew "mise"
+brew "sccache"
 brew "rustup"
+brew "cargo-nextest"
 brew "taplo"
 brew "markdownlint-cli2"
 brew "prettier"

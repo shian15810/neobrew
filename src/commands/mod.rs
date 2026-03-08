@@ -1,7 +1,17 @@
 use std::{ffi::OsString, sync::Arc};
 
 use anyhow::Result;
-use clap::{Args, ColorChoice, Parser, Subcommand};
+use clap::{
+    Args,
+    ColorChoice,
+    Parser,
+    Subcommand,
+    ValueEnum,
+    crate_authors,
+    crate_description,
+    crate_name,
+    crate_version,
+};
 use clap_verbosity_flag::{Verbosity, VerbosityFilter};
 use enum_dispatch::enum_dispatch;
 use proc_exit::prelude::*;
@@ -14,7 +24,20 @@ mod install;
 mod uninstall;
 
 #[derive(Parser)]
-#[command(display_name = "Neobrew", bin_name = "nbrew", version, author)]
+#[command(
+    name = crate_name!(),
+    bin_name = env!("CARGO_PKG_METADATA_NEOBREW_BIN_NAME"),
+    display_name = env!("CARGO_PKG_METADATA_NEOBREW_DISPLAY_NAME"),
+    author = crate_authors!(),
+    about = crate_description!().split_once(" - ").map(|(head, _)| head),
+    long_about = crate_description!(),
+    version = crate_version!(),
+    long_version = rustc_tools_util::get_version_info!()
+        .to_string()
+        .leak()
+        .split_once(' ')
+        .map(|(_, tail)| tail),
+)]
 pub struct Cli {
     #[command(subcommand)]
     pub command: Commands,
@@ -29,7 +52,9 @@ pub struct Cli {
         num_args = 0..=1,
         require_equals = true,
         default_value_t = ColorChoice::Auto,
-        default_missing_value = &*ColorChoice::Always.to_string().leak(),
+        default_missing_value = ColorChoice::Always
+            .to_possible_value()
+            .map(|val| -> &str { val.get_name().to_owned().leak() }),
     )]
     color: ColorChoice,
 }
@@ -57,14 +82,14 @@ impl Commands {
             Self::External(args) => {
                 let mut cmd = Command::new("brew");
 
-                cmd.args(args);
+                let _ = cmd.args(args);
 
                 match context.config.verbosity_filter {
                     VerbosityFilter::Debug => {
-                        cmd.env("HOMEBREW_DEBUG", "1");
+                        let _ = cmd.env("HOMEBREW_DEBUG", "1");
                     },
                     VerbosityFilter::Info => {
-                        cmd.env("HOMEBREW_VERBOSE", "1");
+                        let _ = cmd.env("HOMEBREW_VERBOSE", "1");
                     },
                     _ => {},
                 }
@@ -72,15 +97,16 @@ impl Commands {
                 #[allow(clippy::match_wildcard_for_single_variants)]
                 match context.config.color_choice {
                     ColorChoice::Never => {
-                        cmd.env("HOMEBREW_NO_COLOR", "1");
+                        let _ = cmd.env("HOMEBREW_NO_COLOR", "1");
                     },
                     ColorChoice::Always => {
-                        cmd.env("HOMEBREW_COLOR", "1");
+                        let _ = cmd.env("HOMEBREW_COLOR", "1");
                     },
                     _ => {},
                 }
 
-                cmd.env("HOMEBREW_NO_ANALYTICS", "1")
+                let _ = cmd
+                    .env("HOMEBREW_NO_ANALYTICS", "1")
                     .env("HOMEBREW_NO_AUTOREMOVE", "1")
                     .env("HOMEBREW_NO_AUTO_UPDATE", "1")
                     .env("HOMEBREW_NO_ENV_HINTS", "1")

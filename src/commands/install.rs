@@ -55,7 +55,7 @@ impl Runner for Install {
 
             let context = Arc::clone(&context);
 
-            set.spawn(async move {
+            let _handle = set.spawn(async move {
                 let id = resolved_package.id();
 
                 let resp = context

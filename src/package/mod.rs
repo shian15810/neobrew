@@ -56,7 +56,8 @@ pub trait Packageable {
 
 impl<Package: Packageable> Packageable for Arc<Package> {
     fn id(&self) -> &str {
-        let this = &**self;
+        #[allow(clippy::use_self)]
+        let this = Arc::as_ref(self);
 
         this.id()
     }

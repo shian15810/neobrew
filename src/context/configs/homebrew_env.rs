@@ -73,7 +73,8 @@ impl HomebrewEnvConfig {
                 seamless developer experience, and smooth interoperability with your local
                 Homebrew installation — so you can use `nbrew` and `brew` interchangeably.
 
-                See https://docs.brew.sh/Installation"#},
+                See https://docs.brew.sh/Installation"#
+            },
             self.prefix,
         );
 

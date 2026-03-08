@@ -23,28 +23,16 @@
     )
 )]
 
-use std::sync::Arc;
+use anyhow::Result;
 
-use clap::CommandFactory;
-use proc_exit::prelude::*;
+use self::neobrew_metadata::NeobrewMetadata;
 
-pub use self::commands::Cli;
-use self::context::Context;
+mod neobrew_metadata;
 
-mod commands;
-mod context;
-mod package;
-mod pipeline;
-mod registries;
+fn main() -> Result<()> {
+    rustc_tools_util::setup_version_info!();
 
-#[allow(clippy::missing_errors_doc)]
-pub async fn run(cli: Cli) -> proc_exit::ExitResult {
-    let matches = Cli::command().get_matches();
+    NeobrewMetadata::setup()?;
 
-    let context = Context::new(&matches).with_code(proc_exit::sysexits::CONFIG_ERR)?;
-    let context = Arc::new(context);
-
-    cli.command.run(context).await?;
-
-    proc_exit::Code::SUCCESS.ok()
+    Ok(())
 }

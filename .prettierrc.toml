@@ -2,5 +2,7 @@
 
 [[overrides]]
 files = ["*.md"]
-options.tabWidth = 4
-options.proseWrap = "always"
+
+[overrides.options]
+tabWidth = 4
+proseWrap = "always"

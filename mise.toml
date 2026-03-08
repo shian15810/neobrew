@@ -1,11 +1,39 @@
 #:schema https://mise.jdx.dev/schema/mise.json
 
 [env]
-MACOSX_DEPLOYMENT_TARGET = "{{ exec(command='rustc --print=deployment-target') | split(pat='=') | last }}"
+MACOSX_DEPLOYMENT_TARGET = { required = true }
 
-[tasks.bundle]
-run = "brew bundle"
+[tasks.setup]
+run = "brew bundle check || brew bundle install"
 
-[tasks.install]
-depends = ["bundle"]
-run = "mise install"
+[tasks.run]
+run = "cargo +nightly run"
+alias = "default"
+
+[tasks.fmt]
+run = "cargo +nightly fmt"
+
+[tasks.check]
+run = "cargo +nightly check"
+
+[tasks.clippy]
+run = "cargo +nightly clippy"
+
+[tasks.test]
+run = "cargo +nightly test"
+
+[tasks.nextest]
+run = "cargo +nightly nextest run --no-tests=pass"
+depends_post = ["doctest"]
+
+[tasks.doctest]
+run = "cargo +nightly test --doc"
+
+[tasks.doc]
+run = "cargo +nightly doc --no-deps"
+
+[tasks.build]
+run = "cargo build --release"
+
+[tasks.bench]
+run = "cargo bench"

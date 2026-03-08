@@ -14,6 +14,8 @@ keys = [
     "target.*.dev-dependencies",
     "target.*.build-dependencies",
 ]
-formatting.inline_table_expand = false
-formatting.reorder_keys = true
-formatting.reorder_arrays = true
+
+[rule.formatting]
+inline_table_expand = false
+reorder_keys = true
+reorder_arrays = true

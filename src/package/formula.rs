@@ -46,7 +46,7 @@ impl Packageable for ResolvedFormula {
 }
 
 impl ResolvedFormula {
-    pub fn iter(self: &Arc<Self>) -> ResolvedFormulaIter {
+    pub fn iter(self: &Arc<Self>) -> impl Iterator<Item = Arc<Self>> + use<> {
         let this = Arc::clone(self);
 
         ResolvedFormulaIter {
@@ -55,7 +55,7 @@ impl ResolvedFormula {
     }
 }
 
-pub struct ResolvedFormulaIter {
+struct ResolvedFormulaIter {
     stack: Vec<Arc<ResolvedFormula>>,
 }
 

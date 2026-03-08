@@ -1,2 +1,13 @@
 [build]
-rustflags = ["--cfg", "tokio_unstable"]
+rustc-wrapper = "sccache"
+rustflags = ["--cfg=tokio_unstable"]
+
+[env]
+CC = "sccache cc"
+CXX = "sccache c++"
+OBJC = "sccache cc"
+OBJCXX = "sccache c++"
+CMAKE_C_COMPILER_LAUNCHER = "sccache"
+CMAKE_CXX_COMPILER_LAUNCHER = "sccache"
+CMAKE_OBJC_COMPILER_LAUNCHER = "sccache"
+CMAKE_OBJCXX_COMPILER_LAUNCHER = "sccache"

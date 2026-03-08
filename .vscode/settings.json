@@ -3,26 +3,47 @@
         "**/mod.rs": "${dirname}/mod.rs",
     },
 
-    "rust-analyzer.runnables.test.command": "nextest run",
+    "json.schemaDownload.trustedDomains": {
+        "https://raw.githubusercontent.com/DavidAnson/markdownlint/": true,
+        "https://biomejs.dev/": true,
+    },
 
     "[rust]": {
         "editor.defaultFormatter": "rust-lang.rust-analyzer",
     },
-
     "[toml]": {
         "editor.defaultFormatter": "tamasfe.even-better-toml",
     },
-
     "[markdown]": {
         "editor.defaultFormatter": "esbenp.prettier-vscode",
     },
-
     "[jsonc]": {
         "editor.defaultFormatter": "biomejs.biome",
     },
 
-    "json.schemaDownload.trustedDomains": {
-        "https://biomejs.dev/": true,
-        "https://mise.jdx.dev/": true,
+    "mise.configureExtensionsAutomatically": true,
+    "mise.configureExtensionsIncludeGlobalTools": false,
+    "mise.configureExtensionsUseSymLinks": true,
+
+    "mise.updateEnvAutomaticallyIncludePath": true,
+    "mise.updateOpenTerminalsEnvAutomatically": true,
+
+    "rust-analyzer.runnables.extraEnv": {
+        "RUSTUP_TOOLCHAIN": "nightly",
     },
+    "rust-analyzer.cargo.extraEnv": {
+        "RUSTUP_TOOLCHAIN": "nightly",
+    },
+    "rust-analyzer.cargo.targetDir": true,
+    "rust-analyzer.check.command": "clippy",
+    "rust-analyzer.rustfmt.extraArgs": [
+        "+nightly",
+    ],
+
+    "rust-analyzer.assist.emitMustUse": true,
+    "rust-analyzer.assist.preferSelf": true,
+    "rust-analyzer.imports.merge.glob": false,
+    "rust-analyzer.imports.granularity.enforce": true,
+    "rust-analyzer.imports.preferPrelude": true,
+    "rust-analyzer.imports.prefix": "self",
 }
