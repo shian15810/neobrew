@@ -39,9 +39,9 @@ use tracing_subscriber::{filter::LevelFilter, prelude::*};
 async fn main() -> proc_exit::ExitResult {
     let matches = Cli::command().get_matches();
 
-    let context = Context::new(&matches).with_code(proc_exit::sysexits::CONFIG_ERR)?;
+    let context = Context::new(&matches)?;
 
-    init_tracing(context.config.verbosity_filter);
+    init_tracing(*context.config().verbosity_filter());
 
     let handle: JoinHandle<Result<()>> = task::spawn(async move {
         signal::ctrl_c().await?;

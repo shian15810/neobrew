@@ -10,12 +10,18 @@ pub(crate) struct RawFormula {
     versions: Versions,
     revision: u64,
     bottle: Bottle,
-    pub(crate) dependencies: Vec<String>,
+    dependencies: Vec<String>,
 }
 
 impl Packageable for RawFormula {
     fn id(&self) -> &str {
         &self.name
+    }
+}
+
+impl RawFormula {
+    pub(crate) fn dependencies(&self) -> &[String] {
+        &self.dependencies
     }
 }
 

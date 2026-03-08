@@ -70,7 +70,7 @@ trait EnvConfig: DeserializeOwned {
 #[serde_as]
 #[derive(Serialize, Deserialize)]
 pub struct Config {
-    pub verbosity_filter: VerbosityFilter,
+    pub(crate) verbosity_filter: VerbosityFilter,
 
     #[serde_as(as = "DisplayFromStr")]
     pub(crate) color_choice: ColorChoice,
@@ -102,5 +102,9 @@ impl Config {
             .merge(CliConfig::from_arg_matches(matches).into_provider());
 
         Ok(figment)
+    }
+
+    pub fn verbosity_filter(&self) -> &VerbosityFilter {
+        &self.verbosity_filter
     }
 }

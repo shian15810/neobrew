@@ -2,13 +2,14 @@ use std::{num::NonZeroUsize, sync::LazyLock, thread};
 
 use anyhow::Result;
 use clap::ArgMatches;
+use proc_exit::prelude::*;
 
 use self::{
-    configs::Config,
+    config::Config,
     project_dirs::{ChosenAppStrategy, ProjectDirs},
 };
 
-mod configs;
+mod config;
 mod project_dirs;
 
 static CONCURRENCY_LIMIT: LazyLock<usize> = LazyLock::new(|| {
@@ -19,9 +20,9 @@ static CONCURRENCY_LIMIT: LazyLock<usize> = LazyLock::new(|| {
 });
 
 pub struct Context {
-    pub config: Config,
-
     pub(super) proj_dirs: ChosenAppStrategy,
+
+    pub(super) config: Config,
 
     pub(super) client: LazyLock<reqwest::Client>,
 
@@ -34,11 +35,17 @@ impl Context {
     const BUFFER_MULTIPLIER: usize = 1 << 4;
 
     #[allow(clippy::missing_errors_doc)]
-    pub fn new(matches: &ArgMatches) -> Result<Self> {
-        let this = Self {
-            config: Config::load(matches)?,
+    pub fn new(matches: &ArgMatches) -> Result<Self, proc_exit::Exit> {
+        let proj_dirs = ProjectDirs::new()
+            .with_code(proc_exit::sysexits::OS_ERR)?
+            .strategy();
 
-            proj_dirs: ProjectDirs::new()?.strategy(),
+        let config = Config::load(matches).with_code(proc_exit::sysexits::CONFIG_ERR)?;
+
+        let this = Self {
+            proj_dirs,
+
+            config,
 
             client: LazyLock::new(reqwest::Client::new),
 
@@ -47,5 +54,9 @@ impl Context {
         };
 
         Ok(this)
+    }
+
+    pub fn config(&self) -> &Config {
+        &self.config
     }
 }

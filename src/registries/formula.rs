@@ -116,7 +116,7 @@ impl FormulaRegistry {
 
         fs::write(file, bytes).await?;
 
-        let dependencies = raw_formula.dependencies.iter().cloned();
+        let dependencies = raw_formula.dependencies().iter().cloned();
 
         let resolved_dependencies = stream::iter(dependencies)
             .map(|dependency| {
