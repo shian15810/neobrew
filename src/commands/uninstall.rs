@@ -17,8 +17,8 @@ use crate::{
     registries::Registries,
 };
 
-#[derive(Args)]
-pub struct Uninstall {
+#[derive(Args, Debug)]
+pub(crate) struct Uninstall {
     #[arg(value_name = "FORMULA|CASK")]
     packages: Vec<String>,
 

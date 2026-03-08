@@ -5,16 +5,16 @@ use tokio::{
 };
 use tokio_util::{sync::PollSender, task::AbortOnDropHandle};
 
-pub use self::{hasher::Hasher, writer::Writer};
+pub(crate) use self::{hasher::Hasher, writer::Writer};
 use super::Operator;
 use crate::context::Context;
 
 mod hasher;
 mod writer;
 
-pub struct PushMarker;
+pub(crate) struct PushMarker;
 
-pub trait PushOperator {
+pub(crate) trait PushOperator {
     type Item;
     type Output;
 

@@ -10,7 +10,7 @@ struct Metadata {
 }
 
 #[derive(Deserialize)]
-pub struct NeobrewMetadata {
+pub(super) struct NeobrewMetadata {
     bin_name: String,
     display_name: String,
 }
@@ -21,7 +21,7 @@ impl NeobrewMetadata {
 
     const ENV_PREFIX: &str = "CARGO_PKG_METADATA_NEOBREW_";
 
-    pub fn setup() -> Result<()> {
+    pub(super) fn setup() -> Result<()> {
         Self::rerun_if_changed();
         Self::rerun_if_env_changed();
 

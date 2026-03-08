@@ -9,12 +9,12 @@ use bytes::Bytes;
 
 use super::PushOperator;
 
-pub struct Writer {
+pub(crate) struct Writer {
     inner: BufWriter<File>,
 }
 
 impl Writer {
-    pub fn new(path: impl AsRef<Path>) -> Result<Self> {
+    pub(crate) fn new(path: impl AsRef<Path>) -> Result<Self> {
         let file = File::create(path)?;
 
         let this = Self {

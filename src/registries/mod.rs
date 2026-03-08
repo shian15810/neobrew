@@ -15,7 +15,7 @@ mod cask;
 mod formula;
 
 #[derive(Copy, Clone)]
-pub enum ResolutionStrategy {
+pub(super) enum ResolutionStrategy {
     FormulaOnly,
     CaskOnly,
     Both,
@@ -43,7 +43,7 @@ trait Registrable {
     async fn resolve(self: Arc<Self>, package: String) -> Result<Arc<Self::ResolvedPackage>>;
 }
 
-pub struct Registries<FormulaFn, CaskFn> {
+pub(super) struct Registries<FormulaFn, CaskFn> {
     formula: LazyLock<Arc<FormulaRegistry>, FormulaFn>,
     cask: LazyLock<Arc<CaskRegistry>, CaskFn>,
 
@@ -51,7 +51,7 @@ pub struct Registries<FormulaFn, CaskFn> {
 }
 
 impl Registries<(), ()> {
-    pub fn new(
+    pub(super) fn new(
         context: Arc<Context>,
     ) -> Registries<impl FnOnce() -> Arc<FormulaRegistry>, impl FnOnce() -> Arc<CaskRegistry>> {
         let formula_registry = {
@@ -86,7 +86,7 @@ impl Registries<(), ()> {
 impl<FormulaFn: FnOnce() -> Arc<FormulaRegistry>, CaskFn: FnOnce() -> Arc<CaskRegistry>>
     Registries<FormulaFn, CaskFn>
 {
-    pub async fn resolve(
+    pub(super) async fn resolve(
         self,
         packages: impl IntoIterator<Item = String>,
         strategy: ResolutionStrategy,

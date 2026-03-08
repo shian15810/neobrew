@@ -23,7 +23,7 @@ use crate::{context::Context, registries::ResolutionStrategy};
 mod install;
 mod uninstall;
 
-#[derive(Parser)]
+#[derive(Parser, Debug)]
 #[command(
     name = crate_name!(),
     bin_name = env!("CARGO_PKG_METADATA_NEOBREW_BIN_NAME"),
@@ -40,7 +40,7 @@ mod uninstall;
 )]
 pub struct Cli {
     #[command(subcommand)]
-    pub command: Commands,
+    pub(super) command: Commands,
 
     #[command(flatten)]
     pub verbosity: Verbosity,
@@ -59,8 +59,8 @@ pub struct Cli {
     color: ColorChoice,
 }
 
-#[derive(Subcommand)]
-pub enum Commands {
+#[derive(Subcommand, Debug)]
+pub(super) enum Commands {
     #[command(flatten)]
     Internal(Internal),
 
@@ -69,7 +69,7 @@ pub enum Commands {
 }
 
 impl Commands {
-    pub async fn run(self, context: Arc<Context>) -> proc_exit::ExitResult {
+    pub(super) async fn run(self, context: Arc<Context>) -> proc_exit::ExitResult {
         match self {
             Self::Internal(internal) => {
                 let res = internal.run(context).await;
@@ -127,9 +127,9 @@ impl Commands {
     }
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 #[enum_dispatch]
-pub enum Internal {
+pub(super) enum Internal {
     Install(Install),
     Uninstall(Uninstall),
 }
@@ -139,7 +139,7 @@ trait Runner {
     async fn run(self, context: Arc<Context>) -> Result<()>;
 }
 
-#[derive(Args)]
+#[derive(Args, Debug)]
 struct Resolution {
     #[arg(long, alias = "formulae", conflicts_with = "cask")]
     formula: bool,

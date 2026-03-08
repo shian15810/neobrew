@@ -14,7 +14,7 @@ use super::{EnvConfig, ProviderConfig};
 
 #[serde_as]
 #[derive(Deserialize)]
-pub struct HomebrewEnvConfig {
+pub(super) struct HomebrewEnvConfig {
     prefix: String,
 
     #[serde_as(as = "Option<HomebrewBoolFromStr>")]

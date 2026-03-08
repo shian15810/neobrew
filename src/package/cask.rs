@@ -3,7 +3,7 @@ use serde::Deserialize;
 use super::Packageable;
 
 #[derive(Deserialize)]
-pub struct RawCask {
+pub(crate) struct RawCask {
     token: String,
     name: Vec<String>,
     url: String,
@@ -17,7 +17,7 @@ impl Packageable for RawCask {
     }
 }
 
-pub struct ResolvedCask {
+pub(crate) struct ResolvedCask {
     token: String,
     name: Vec<String>,
     url: String,

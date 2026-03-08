@@ -5,12 +5,12 @@ use serde::Deserialize;
 use super::Packageable;
 
 #[derive(Deserialize)]
-pub struct RawFormula {
+pub(crate) struct RawFormula {
     name: String,
     versions: Versions,
     revision: u64,
     bottle: Bottle,
-    pub dependencies: Vec<String>,
+    pub(crate) dependencies: Vec<String>,
 }
 
 impl Packageable for RawFormula {
@@ -19,7 +19,7 @@ impl Packageable for RawFormula {
     }
 }
 
-pub struct ResolvedFormula {
+pub(crate) struct ResolvedFormula {
     name: String,
     versions: Versions,
     revision: u64,
@@ -46,7 +46,7 @@ impl Packageable for ResolvedFormula {
 }
 
 impl ResolvedFormula {
-    pub fn iter(self: &Arc<Self>) -> impl Iterator<Item = Arc<Self>> + use<> {
+    pub(super) fn iter(self: &Arc<Self>) -> impl Iterator<Item = Arc<Self>> + use<> {
         let this = Arc::clone(self);
 
         ResolvedFormulaIter {

@@ -25,11 +25,10 @@
 
 use std::sync::Arc;
 
-use clap::CommandFactory;
-use proc_exit::prelude::*;
+use console_subscriber as _;
+use tracing_subscriber as _;
 
-pub use self::commands::Cli;
-use self::context::Context;
+pub use self::{commands::Cli, context::Context};
 
 mod commands;
 mod context;
@@ -38,10 +37,7 @@ mod pipeline;
 mod registries;
 
 #[allow(clippy::missing_errors_doc)]
-pub async fn run(cli: Cli) -> proc_exit::ExitResult {
-    let matches = Cli::command().get_matches();
-
-    let context = Context::new(&matches).with_code(proc_exit::sysexits::CONFIG_ERR)?;
+pub async fn run(cli: Cli, context: Context) -> proc_exit::ExitResult {
     let context = Arc::new(context);
 
     cli.command.run(context).await?;

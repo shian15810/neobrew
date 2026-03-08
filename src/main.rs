@@ -22,10 +22,11 @@
         unqualified_local_imports,
     )
 )]
+#![allow(unused_crate_dependencies)]
 
 use anyhow::Result;
-use clap::Parser;
-use neobrew::Cli;
+use clap::{CommandFactory, FromArgMatches};
+use neobrew::{Cli, Context};
 use proc_exit::prelude::*;
 use tokio::{
     signal,
@@ -35,7 +36,11 @@ use tracing_subscriber::prelude::*;
 
 #[tokio::main]
 async fn main() -> proc_exit::ExitResult {
-    let cli = Cli::parse();
+    let matches = Cli::command().get_matches();
+
+    let context = Context::new(&matches).with_code(proc_exit::sysexits::CONFIG_ERR)?;
+
+    let cli = Cli::from_arg_matches(&matches).with_code(proc_exit::sysexits::USAGE_ERR)?;
 
     init_tracing(&cli);
 
@@ -56,7 +61,7 @@ async fn main() -> proc_exit::ExitResult {
             proc_exit::bash::SIGINT.ok()
         },
 
-        res = neobrew::run(cli) => res,
+        res = neobrew::run(cli, context) => res,
     };
 
     result?;

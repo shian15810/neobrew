@@ -16,7 +16,7 @@ use crate::{
     },
 };
 
-pub struct FormulaRegistry {
+pub(crate) struct FormulaRegistry {
     store: Cache<String, Arc<ResolvedFormula>>,
 
     context: Arc<Context>,

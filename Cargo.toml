@@ -53,6 +53,10 @@ rustc_tools_util = "0.4.2"
 serde = "1.0.228"
 
 [lints.rust]
+deprecated_safe = { level = "warn", priority = -1 }
+# future_incompatible = { level = "warn", priority = -1 }
+keyword_idents = { level = "warn", priority = -1 }
+# let_underscore = { level = "warn", priority = -1 }
 # default = "allow"
 absolute_paths_not_starting_with_crate = "warn"
 ambiguous_negative_literals = "warn"
@@ -70,7 +74,7 @@ macro_use_extern_crate = "warn"
 meta_variable_misuse = "warn"
 missing_copy_implementations = "warn"
 missing_debug_implementations = "warn"
-missing_docs = "warn"
+# missing_docs = "warn"
 missing_unsafe_on_extern = "warn"
 non_ascii_idents = "warn"
 redundant_imports = "warn"

@@ -4,12 +4,12 @@ use sha2::{Digest, Sha256, digest};
 
 use super::PushOperator;
 
-pub struct Hasher {
+pub(crate) struct Hasher {
     inner: Sha256,
 }
 
 impl Hasher {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             inner: Sha256::new(),
         }

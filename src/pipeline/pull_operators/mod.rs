@@ -14,15 +14,15 @@ use tokio_util::{
     task::AbortOnDropHandle,
 };
 
-pub use self::pourer::Pourer;
+pub(crate) use self::pourer::Pourer;
 use super::Operator;
 use crate::context::Context;
 
 mod pourer;
 
-pub struct PullMarker;
+pub(crate) struct PullMarker;
 
-pub trait PullOperator {
+pub(crate) trait PullOperator {
     type Output;
 
     #[allow(clippy::wrong_self_convention)]

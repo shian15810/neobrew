@@ -10,7 +10,7 @@ use super::{EnvConfig, ProviderConfig};
 
 #[serde_as]
 #[derive(Deserialize)]
-pub struct GlobalEnvConfig {
+pub(super) struct GlobalEnvConfig {
     #[serde(default)]
     #[serde_as(as = "NoneAsEmptyString")]
     no_color: Option<String>,

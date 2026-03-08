@@ -7,14 +7,14 @@ use figment::{
 
 use super::ProviderConfig;
 
-pub struct CliConfig {
+pub(super) struct CliConfig {
     verbosity: Option<Verbosity>,
 
     color: Option<ColorChoice>,
 }
 
 impl CliConfig {
-    pub fn from_arg_matches(matches: &ArgMatches) -> Self {
+    pub(super) fn from_arg_matches(matches: &ArgMatches) -> Self {
         let is_from_cli = |id| matches.value_source(id) == Some(ValueSource::CommandLine);
 
         let verbosity = (is_from_cli("verbose") || is_from_cli("quiet")).then(|| {

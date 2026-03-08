@@ -17,8 +17,8 @@ use crate::{
     registries::Registries,
 };
 
-#[derive(Args)]
-pub struct Install {
+#[derive(Args, Debug)]
+pub(crate) struct Install {
     #[arg(value_name = "FORMULA|CASK")]
     packages: Vec<String>,
 

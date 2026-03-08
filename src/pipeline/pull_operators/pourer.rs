@@ -9,12 +9,12 @@ use tar::Archive;
 
 use super::PullOperator;
 
-pub struct Pourer {
+pub(crate) struct Pourer {
     path: PathBuf,
 }
 
 impl Pourer {
-    pub fn new(path: impl AsRef<Path>) -> Self {
+    pub(crate) fn new(path: impl AsRef<Path>) -> Self {
         Self {
             path: path.as_ref().to_path_buf(),
         }

@@ -11,7 +11,7 @@ use super::{EnvConfig, ProviderConfig};
 
 #[serde_as]
 #[derive(Deserialize)]
-pub struct NeobrewEnvConfig {
+pub(super) struct NeobrewEnvConfig {
     verbosity_filter: Option<VerbosityFilter>,
 
     #[serde_as(as = "Option<DisplayFromStr>")]

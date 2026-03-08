@@ -18,21 +18,23 @@ static CONCURRENCY_LIMIT: LazyLock<usize> = LazyLock::new(|| {
         .min(Context::MAX_CONCURRENCY)
 });
 
+#[derive(Debug)]
 pub struct Context {
-    pub proj_dirs: ChosenAppStrategy,
+    pub(super) proj_dirs: ChosenAppStrategy,
 
-    pub config: Config,
+    pub(super) config: Config,
 
-    pub client: LazyLock<reqwest::Client>,
+    pub(super) client: LazyLock<reqwest::Client>,
 
-    pub concurrency_limit: LazyLock<usize>,
-    pub channel_capacity: LazyLock<usize>,
+    pub(super) concurrency_limit: LazyLock<usize>,
+    pub(super) channel_capacity: LazyLock<usize>,
 }
 
 impl Context {
     const MAX_CONCURRENCY: usize = 1 << 4;
     const BUFFER_MULTIPLIER: usize = 1 << 4;
 
+    #[allow(clippy::missing_errors_doc)]
     pub fn new(matches: &ArgMatches) -> Result<Self> {
         let this = Self {
             proj_dirs: ProjectDirs::new()?.strategy(),

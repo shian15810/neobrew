@@ -68,12 +68,12 @@ trait EnvConfig: DeserializeOwned {
 }
 
 #[serde_as]
-#[derive(Serialize, Deserialize)]
-pub struct Config {
-    pub verbosity_filter: VerbosityFilter,
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct Config {
+    pub(crate) verbosity_filter: VerbosityFilter,
 
     #[serde_as(as = "DisplayFromStr")]
-    pub color_choice: ColorChoice,
+    pub(crate) color_choice: ColorChoice,
 }
 
 impl Default for Config {
@@ -87,7 +87,7 @@ impl Default for Config {
 }
 
 impl Config {
-    pub fn load(matches: &ArgMatches) -> Result<Self> {
+    pub(super) fn load(matches: &ArgMatches) -> Result<Self> {
         let this: Self = Self::figment(matches)?.extract()?;
 
         Ok(this)

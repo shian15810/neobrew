@@ -12,10 +12,10 @@ use tokio_util::{sync::PollSender, task::AbortOnDropHandle};
 
 use crate::context::Context;
 
-pub mod pull_operators;
-pub mod push_operators;
+pub(super) mod pull_operators;
+pub(super) mod push_operators;
 
-pub trait Operator<Item, _Marker> {
+pub(super) trait Operator<Item, _Marker> {
     type Output;
 
     fn spawn_blocking(
@@ -24,7 +24,7 @@ pub trait Operator<Item, _Marker> {
     ) -> (PollSender<Item>, AbortOnDropHandle<Result<Self::Output>>);
 }
 
-pub struct Pipeline<Item, St, Si, Handles> {
+pub(super) struct Pipeline<Item, St, Si, Handles> {
     stream: St,
     sink: Si,
     handles: Handles,
@@ -35,7 +35,7 @@ pub struct Pipeline<Item, St, Si, Handles> {
 }
 
 impl<Item, St> Pipeline<Item, St, sink::SinkErrInto<sink::Drain<Item>, Item, Error>, HNil> {
-    pub fn new(stream: St, context: Arc<Context>) -> Self {
+    pub(super) fn new(stream: St, context: Arc<Context>) -> Self {
         Self {
             stream,
             sink: sink::drain().sink_err_into(),
@@ -56,7 +56,7 @@ impl<
 > Pipeline<Item, St, Si, Handles>
 {
     #[allow(clippy::type_complexity)]
-    pub fn fanout<Op: Operator<Item, _Marker>, _Marker>(
+    pub(super) fn fanout<Op: Operator<Item, _Marker>, _Marker>(
         self,
         operator: Op,
     ) -> Pipeline<
@@ -81,7 +81,7 @@ impl<
         }
     }
 
-    pub async fn spawn(self) -> Result<Handles::Outputs> {
+    pub(super) async fn spawn(self) -> Result<Handles::Outputs> {
         let handle: JoinHandle<Result<()>> = task::spawn(async move {
             let forward = self.stream.err_into().forward(self.sink);
 
@@ -99,7 +99,7 @@ impl<
     }
 }
 
-pub trait Collect {
+pub(super) trait Collect {
     type Outputs;
 
     async fn collect(self) -> Result<Self::Outputs>;

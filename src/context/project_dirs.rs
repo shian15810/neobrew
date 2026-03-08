@@ -5,15 +5,15 @@ use etcetera::app_strategy::{self, AppStrategyArgs};
 
 cfg_if! {
     if #[cfg(target_os = "windows")] {
-        pub type ChosenAppStrategy = app_strategy::Windows;
+        pub(super) type ChosenAppStrategy = app_strategy::Windows;
     } else if #[cfg(any(target_os = "macos", target_os = "ios"))] {
-        pub type ChosenAppStrategy = app_strategy::Xdg;
+        pub(super) type ChosenAppStrategy = app_strategy::Xdg;
     } else {
-        pub type ChosenAppStrategy = app_strategy::Xdg;
+        pub(super) type ChosenAppStrategy = app_strategy::Xdg;
     }
 }
 
-pub struct ProjectDirs {
+pub(super) struct ProjectDirs {
     strategy: ChosenAppStrategy,
 }
 
@@ -21,7 +21,7 @@ impl ProjectDirs {
     const TOP_LEVEL_DOMAIN: &str = "sh";
     const AUTHOR: &str = "shian15810";
 
-    pub fn new() -> Result<Self> {
+    pub(super) fn new() -> Result<Self> {
         let author = crate_authors!()
             .split_once(':')
             .and_then(|(head, _)| head.split_once('('))
@@ -41,7 +41,7 @@ impl ProjectDirs {
         Ok(this)
     }
 
-    pub fn strategy(self) -> ChosenAppStrategy {
+    pub(super) fn strategy(self) -> ChosenAppStrategy {
         self.strategy
     }
 }
