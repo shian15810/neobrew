@@ -17,7 +17,7 @@ use crate::{
     registries::Registries,
 };
 
-#[derive(Args, Debug)]
+#[derive(Args)]
 pub(crate) struct Install {
     #[arg(value_name = "FORMULA|CASK")]
     packages: Vec<String>,
@@ -55,7 +55,7 @@ impl Runner for Install {
 
             let context = Arc::clone(&context);
 
-            let _handle = set.spawn(async move {
+            set.spawn(async move {
                 let id = resolved_package.id();
 
                 let resp = context

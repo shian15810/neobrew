@@ -68,9 +68,9 @@ trait EnvConfig: DeserializeOwned {
 }
 
 #[serde_as]
-#[derive(Debug, Serialize, Deserialize)]
-pub(crate) struct Config {
-    pub(crate) verbosity_filter: VerbosityFilter,
+#[derive(Serialize, Deserialize)]
+pub struct Config {
+    pub verbosity_filter: VerbosityFilter,
 
     #[serde_as(as = "DisplayFromStr")]
     pub(crate) color_choice: ColorChoice,

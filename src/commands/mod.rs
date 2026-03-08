@@ -23,7 +23,7 @@ use crate::{context::Context, registries::ResolutionStrategy};
 mod install;
 mod uninstall;
 
-#[derive(Parser, Debug)]
+#[derive(Parser)]
 #[command(
     name = crate_name!(),
     bin_name = env!("CARGO_PKG_METADATA_NEOBREW_BIN_NAME"),
@@ -43,7 +43,7 @@ pub struct Cli {
     pub(super) command: Commands,
 
     #[command(flatten)]
-    pub verbosity: Verbosity,
+    verbosity: Verbosity,
 
     #[arg(
         long,
@@ -59,7 +59,7 @@ pub struct Cli {
     color: ColorChoice,
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand)]
 pub(super) enum Commands {
     #[command(flatten)]
     Internal(Internal),
@@ -82,14 +82,14 @@ impl Commands {
             Self::External(args) => {
                 let mut cmd = Command::new("brew");
 
-                let _ = cmd.args(args);
+                cmd.args(args);
 
                 match context.config.verbosity_filter {
                     VerbosityFilter::Debug => {
-                        let _ = cmd.env("HOMEBREW_DEBUG", "1");
+                        cmd.env("HOMEBREW_DEBUG", "1");
                     },
                     VerbosityFilter::Info => {
-                        let _ = cmd.env("HOMEBREW_VERBOSE", "1");
+                        cmd.env("HOMEBREW_VERBOSE", "1");
                     },
                     _ => {},
                 }
@@ -97,16 +97,15 @@ impl Commands {
                 #[allow(clippy::match_wildcard_for_single_variants)]
                 match context.config.color_choice {
                     ColorChoice::Never => {
-                        let _ = cmd.env("HOMEBREW_NO_COLOR", "1");
+                        cmd.env("HOMEBREW_NO_COLOR", "1");
                     },
                     ColorChoice::Always => {
-                        let _ = cmd.env("HOMEBREW_COLOR", "1");
+                        cmd.env("HOMEBREW_COLOR", "1");
                     },
                     _ => {},
                 }
 
-                let _ = cmd
-                    .env("HOMEBREW_NO_ANALYTICS", "1")
+                cmd.env("HOMEBREW_NO_ANALYTICS", "1")
                     .env("HOMEBREW_NO_AUTOREMOVE", "1")
                     .env("HOMEBREW_NO_AUTO_UPDATE", "1")
                     .env("HOMEBREW_NO_ENV_HINTS", "1")
@@ -127,7 +126,7 @@ impl Commands {
     }
 }
 
-#[derive(Subcommand, Debug)]
+#[derive(Subcommand)]
 #[enum_dispatch]
 pub(super) enum Internal {
     Install(Install),
@@ -139,7 +138,7 @@ trait Runner {
     async fn run(self, context: Arc<Context>) -> Result<()>;
 }
 
-#[derive(Args, Debug)]
+#[derive(Args)]
 struct Resolution {
     #[arg(long, alias = "formulae", conflicts_with = "cask")]
     formula: bool,
