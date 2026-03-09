@@ -8,8 +8,8 @@ use self::{
     formula::{RawFormula, ResolvedFormula},
 };
 
-pub(super) mod cask;
-pub(super) mod formula;
+pub(crate) mod cask;
+pub(crate) mod formula;
 
 #[enum_dispatch]
 enum Package {
@@ -18,19 +18,19 @@ enum Package {
 }
 
 #[enum_dispatch]
-pub(super) enum RawPackage {
+enum RawPackage {
     Formula(RawFormula),
     Cask(RawCask),
 }
 
 #[enum_dispatch]
-pub(super) enum ResolvedPackage {
+pub(crate) enum ResolvedPackage {
     Formula(Arc<ResolvedFormula>),
     Cask(Arc<ResolvedCask>),
 }
 
 impl ResolvedPackage {
-    pub(super) fn iter(&self) -> impl Iterator<Item = Self> + use<> {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = Self> + use<> {
         match self {
             Self::Formula(formula) => {
                 let formulae = formula.iter().map(Self::Formula);
@@ -50,7 +50,7 @@ impl ResolvedPackage {
 }
 
 #[enum_dispatch(Package, RawPackage, ResolvedPackage)]
-pub(super) trait Packageable {
+pub(crate) trait Packageable {
     fn id(&self) -> &str;
 }
 

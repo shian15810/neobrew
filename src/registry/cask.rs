@@ -14,7 +14,7 @@ use crate::{
     },
 };
 
-pub(crate) struct CaskRegistry {
+pub(super) struct CaskRegistry {
     store: Cache<String, Arc<ResolvedCask>>,
 
     context: Arc<Context>,

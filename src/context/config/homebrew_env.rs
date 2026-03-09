@@ -62,16 +62,17 @@ impl HomebrewEnvConfig {
 
         let err = anyhow!(
             indoc! {r#"
-                Unsupported `HOMEBREW_PREFIX`: "{}"
+                Unsupported `HOMEBREW_PREFIX` detected: "{}"
 
                 Neobrew requires the default prefix to use pre-compiled bottles and casks:
 
-                  • Apple Silicon  →  "/opt/homebrew"
-                  • Intel x86_64   →  "/usr/local"
+                    - macOS (Apple Silicon)     -->     "/opt/homebrew"
+                    - macOS (Intel x86_64)      -->     "/usr/local"
+                    - Linux                     -->     "/home/linuxbrew/.linuxbrew"
 
                 The default prefix is essential for Neobrew's high-performance guarantees,
                 seamless developer experience, and smooth interoperability with your local
-                Homebrew installation — so you can use `nbrew` and `brew` interchangeably.
+                Homebrew installation - so you can use `nbrew` and `brew` interchangeably.
 
                 See https://docs.brew.sh/Installation"#
             },

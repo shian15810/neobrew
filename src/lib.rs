@@ -23,10 +23,8 @@
     )
 )]
 
-use std::sync::Arc;
-
-use console_subscriber as _;
-use tracing_subscriber as _;
+use clap::{ArgMatches, FromArgMatches};
+use proc_exit::prelude::*;
 
 pub use self::{commands::Cli, context::Context};
 
@@ -34,13 +32,17 @@ mod commands;
 mod context;
 mod package;
 mod pipeline;
-mod registries;
+mod registry;
+
+use console_subscriber as _;
+use tracing_subscriber as _;
 
 #[allow(clippy::missing_errors_doc)]
-pub async fn run(cli: Cli, context: Context) -> proc_exit::ExitResult {
-    let context = Arc::new(context);
+pub async fn run(matches: &ArgMatches, context: Context) -> proc_exit::ExitResult {
+    let cli = Cli::from_arg_matches(matches);
+    let cli = cli.with_code(proc_exit::sysexits::USAGE_ERR)?;
 
-    cli.command.run(context).await?;
+    cli.run(context).await?;
 
     proc_exit::Code::SUCCESS.ok()
 }

@@ -3,16 +3,6 @@ use cfg_if::cfg_if;
 use clap::{crate_authors, crate_name};
 use etcetera::app_strategy::{self, AppStrategyArgs};
 
-cfg_if! {
-    if #[cfg(target_os = "windows")] {
-        pub(super) type ChosenAppStrategy = app_strategy::Windows;
-    } else if #[cfg(any(target_os = "macos", target_os = "ios"))] {
-        pub(super) type ChosenAppStrategy = app_strategy::Xdg;
-    } else {
-        pub(super) type ChosenAppStrategy = app_strategy::Xdg;
-    }
-}
-
 pub(super) struct ProjectDirs {
     strategy: ChosenAppStrategy,
 }
@@ -43,5 +33,15 @@ impl ProjectDirs {
 
     pub(super) fn strategy(self) -> ChosenAppStrategy {
         self.strategy
+    }
+}
+
+cfg_if! {
+    if #[cfg(target_os = "windows")] {
+        pub(super) type ChosenAppStrategy = app_strategy::Windows;
+    } else if #[cfg(any(target_os = "macos", target_os = "ios"))] {
+        pub(super) type ChosenAppStrategy = app_strategy::Xdg;
+    } else {
+        pub(super) type ChosenAppStrategy = app_strategy::Xdg;
     }
 }

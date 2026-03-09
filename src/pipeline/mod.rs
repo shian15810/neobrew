@@ -12,19 +12,10 @@ use tokio_util::{sync::PollSender, task::AbortOnDropHandle};
 
 use crate::context::Context;
 
-pub(super) mod pull_operators;
-pub(super) mod push_operators;
+pub(crate) mod pull_operators;
+pub(crate) mod push_operators;
 
-pub(super) trait Operator<Item, _Marker> {
-    type Output;
-
-    fn spawn_blocking(
-        self,
-        context: &Context,
-    ) -> (PollSender<Item>, AbortOnDropHandle<Result<Self::Output>>);
-}
-
-pub(super) struct Pipeline<Item, St, Si, Handles> {
+pub(crate) struct Pipeline<Item, St, Si, Handles> {
     stream: St,
     sink: Si,
     handles: Handles,
@@ -35,7 +26,7 @@ pub(super) struct Pipeline<Item, St, Si, Handles> {
 }
 
 impl<Item, St> Pipeline<Item, St, sink::SinkErrInto<sink::Drain<Item>, Item, Error>, HNil> {
-    pub(super) fn new(stream: St, context: Arc<Context>) -> Self {
+    pub(crate) fn new(stream: St, context: Arc<Context>) -> Self {
         Self {
             stream,
             sink: sink::drain().sink_err_into(),
@@ -56,7 +47,7 @@ impl<
 > Pipeline<Item, St, Si, Handles>
 {
     #[allow(clippy::type_complexity)]
-    pub(super) fn fanout<Op: Operator<Item, _Marker>, _Marker>(
+    pub(crate) fn fanout<Op: Operator<Item, _Marker>, _Marker>(
         self,
         operator: Op,
     ) -> Pipeline<
@@ -81,7 +72,7 @@ impl<
         }
     }
 
-    pub(super) async fn spawn(self) -> Result<Handles::Outputs> {
+    pub(crate) async fn run_parallel(self) -> Result<Handles::Outputs> {
         let handle: JoinHandle<Result<()>> = task::spawn(async move {
             let forward = self.stream.err_into().forward(self.sink);
 
@@ -99,7 +90,7 @@ impl<
     }
 }
 
-pub(super) trait Collect {
+pub(crate) trait Collect {
     type Outputs;
 
     async fn collect(self) -> Result<Self::Outputs>;
@@ -128,4 +119,13 @@ impl<Item, Handles: Collect> Collect for HCons<AbortOnDropHandle<Result<Item>>, 
 
         Ok(outputs)
     }
+}
+
+pub(crate) trait Operator<Item, _Marker> {
+    type Output;
+
+    fn spawn_blocking(
+        self,
+        context: &Context,
+    ) -> (PollSender<Item>, AbortOnDropHandle<Result<Self::Output>>);
 }

@@ -1,4 +1,4 @@
-use std::sync::{Arc, LazyLock};
+use std::sync::{Arc, OnceLock};
 
 use anyhow::{Result, anyhow};
 use enum_dispatch::enum_dispatch;
@@ -14,79 +14,24 @@ use crate::{
 mod cask;
 mod formula;
 
-#[derive(Copy, Clone)]
-pub(super) enum ResolutionStrategy {
-    FormulaOnly,
-    CaskOnly,
-    Both,
-}
-
-#[enum_dispatch]
-enum Registry {
-    Formula(Arc<FormulaRegistry>),
-    Cask(Arc<CaskRegistry>),
-}
-
-#[enum_dispatch(Arc<Registry>)]
-trait Registrable {
-    type ResolvedPackage;
-
-    const API_URL: &str;
-
-    const JSON_URL: &str;
-    const JWS_JSON_URL: &str;
-    const TAP_MIGRATIONS_URL: &str;
-    const TAP_MIGRATIONS_JWS_URL: &str;
-
-    fn new(context: Arc<Context>) -> Self;
-
-    async fn resolve(self: Arc<Self>, package: String) -> Result<Arc<Self::ResolvedPackage>>;
-}
-
-pub(super) struct Registries<FormulaFn, CaskFn> {
-    formula: LazyLock<Arc<FormulaRegistry>, FormulaFn>,
-    cask: LazyLock<Arc<CaskRegistry>, CaskFn>,
+pub(crate) struct Registry {
+    formula: OnceLock<Arc<FormulaRegistry>>,
+    cask: OnceLock<Arc<CaskRegistry>>,
 
     context: Arc<Context>,
 }
 
-impl Registries<(), ()> {
-    pub(super) fn new(
-        context: Arc<Context>,
-    ) -> Registries<impl FnOnce() -> Arc<FormulaRegistry>, impl FnOnce() -> Arc<CaskRegistry>> {
-        let formula_registry = {
-            let context = Arc::clone(&context);
-
-            LazyLock::new(|| {
-                let formula_registry = FormulaRegistry::new(context);
-
-                Arc::new(formula_registry)
-            })
-        };
-
-        let cask_registry = {
-            let context = Arc::clone(&context);
-
-            LazyLock::new(|| {
-                let cask_registry = CaskRegistry::new(context);
-
-                Arc::new(cask_registry)
-            })
-        };
-
-        Registries {
-            formula: formula_registry,
-            cask: cask_registry,
+impl Registry {
+    pub(crate) fn new(context: Arc<Context>) -> Self {
+        Self {
+            formula: OnceLock::new(),
+            cask: OnceLock::new(),
 
             context,
         }
     }
-}
 
-impl<FormulaFn: FnOnce() -> Arc<FormulaRegistry>, CaskFn: FnOnce() -> Arc<CaskRegistry>>
-    Registries<FormulaFn, CaskFn>
-{
-    pub(super) async fn resolve(
+    pub(crate) async fn resolve(
         self,
         packages: impl IntoIterator<Item = String>,
         strategy: ResolutionStrategy,
@@ -125,7 +70,8 @@ impl<FormulaFn: FnOnce() -> Arc<FormulaRegistry>, CaskFn: FnOnce() -> Arc<CaskRe
             strategy,
             ResolutionStrategy::FormulaOnly | ResolutionStrategy::Both,
         ) {
-            let formula_registry = Arc::clone(&self.formula);
+            let formula_registry = self.formula();
+            let formula_registry = Arc::clone(formula_registry);
 
             let resolved_formula = formula_registry.resolve(package.clone()).await;
 
@@ -140,7 +86,8 @@ impl<FormulaFn: FnOnce() -> Arc<FormulaRegistry>, CaskFn: FnOnce() -> Arc<CaskRe
             strategy,
             ResolutionStrategy::CaskOnly | ResolutionStrategy::Both,
         ) {
-            let cask_registry = Arc::clone(&self.cask);
+            let cask_registry = self.cask();
+            let cask_registry = Arc::clone(cask_registry);
 
             let resolved_cask = cask_registry.resolve(package.clone()).await;
 
@@ -155,4 +102,53 @@ impl<FormulaFn: FnOnce() -> Arc<FormulaRegistry>, CaskFn: FnOnce() -> Arc<CaskRe
 
         Err(err)
     }
+
+    fn formula(&self) -> &Arc<FormulaRegistry> {
+        self.formula.get_or_init(|| {
+            let context = Arc::clone(&self.context);
+
+            let formula_registry = FormulaRegistry::new(context);
+
+            Arc::new(formula_registry)
+        })
+    }
+
+    fn cask(&self) -> &Arc<CaskRegistry> {
+        self.cask.get_or_init(|| {
+            let context = Arc::clone(&self.context);
+
+            let cask_registry = CaskRegistry::new(context);
+
+            Arc::new(cask_registry)
+        })
+    }
+}
+
+#[derive(Copy, Clone)]
+pub(crate) enum ResolutionStrategy {
+    FormulaOnly,
+    CaskOnly,
+    Both,
+}
+
+#[enum_dispatch]
+enum RegistryKind {
+    Formula(Arc<FormulaRegistry>),
+    Cask(Arc<CaskRegistry>),
+}
+
+#[enum_dispatch(Arc<RegistryKind>)]
+trait Registrable {
+    type ResolvedPackage;
+
+    const API_URL: &str;
+
+    const JSON_URL: &str;
+    const JWS_JSON_URL: &str;
+    const TAP_MIGRATIONS_URL: &str;
+    const TAP_MIGRATIONS_JWS_URL: &str;
+
+    fn new(context: Arc<Context>) -> Self;
+
+    async fn resolve(self: Arc<Self>, package: String) -> Result<Arc<Self::ResolvedPackage>>;
 }

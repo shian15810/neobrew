@@ -20,8 +20,6 @@ use crate::context::Context;
 
 mod pourer;
 
-pub(crate) struct PullMarker;
-
 pub(crate) trait PullOperator {
     type Output;
 
@@ -61,3 +59,5 @@ impl<
         (sink, handle)
     }
 }
+
+pub(crate) struct PullMarker;

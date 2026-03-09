@@ -24,6 +24,48 @@ mod global_env;
 mod homebrew_env;
 mod neobrew_env;
 
+#[serde_as]
+#[derive(Serialize, Deserialize)]
+pub struct Config {
+    pub(crate) verbosity_filter: VerbosityFilter,
+
+    #[serde_as(as = "DisplayFromStr")]
+    pub(crate) color_choice: ColorChoice,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            verbosity_filter: <Verbosity>::default().filter(),
+
+            color_choice: ColorChoice::default(),
+        }
+    }
+}
+
+impl Config {
+    pub(super) fn load(matches: &ArgMatches) -> Result<Self> {
+        let this: Self = Self::figment(matches)?.extract()?;
+
+        Ok(this)
+    }
+
+    fn figment(matches: &ArgMatches) -> Result<Figment> {
+        let figment = Figment::new()
+            .merge(Serialized::defaults(Self::default()))
+            .merge(GlobalEnvConfig::from_env()?.into_provider())
+            .merge(HomebrewEnvConfig::from_env()?.into_provider())
+            .merge(NeobrewEnvConfig::from_env()?.into_provider())
+            .merge(CliConfig::from_arg_matches(matches).into_provider());
+
+        Ok(figment)
+    }
+
+    pub fn verbosity_filter(&self) -> &VerbosityFilter {
+        &self.verbosity_filter
+    }
+}
+
 struct FigmentProvider<ProviderConf>(ProviderConf);
 
 impl<ProviderConf: ProviderConfig> Provider for FigmentProvider<ProviderConf> {
@@ -64,47 +106,5 @@ trait EnvConfig: DeserializeOwned {
         let this: Self = envy::prefixed(Self::ENV_PREFIX).from_env()?;
 
         Ok(this)
-    }
-}
-
-#[serde_as]
-#[derive(Serialize, Deserialize)]
-pub struct Config {
-    pub(crate) verbosity_filter: VerbosityFilter,
-
-    #[serde_as(as = "DisplayFromStr")]
-    pub(crate) color_choice: ColorChoice,
-}
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            verbosity_filter: <Verbosity>::default().filter(),
-
-            color_choice: ColorChoice::default(),
-        }
-    }
-}
-
-impl Config {
-    pub(super) fn load(matches: &ArgMatches) -> Result<Self> {
-        let this: Self = Self::figment(matches)?.extract()?;
-
-        Ok(this)
-    }
-
-    fn figment(matches: &ArgMatches) -> Result<Figment> {
-        let figment = Figment::new()
-            .merge(Serialized::defaults(Self::default()))
-            .merge(GlobalEnvConfig::from_env()?.into_provider())
-            .merge(HomebrewEnvConfig::from_env()?.into_provider())
-            .merge(NeobrewEnvConfig::from_env()?.into_provider())
-            .merge(CliConfig::from_arg_matches(matches).into_provider());
-
-        Ok(figment)
-    }
-
-    pub fn verbosity_filter(&self) -> &VerbosityFilter {
-        &self.verbosity_filter
     }
 }

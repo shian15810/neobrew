@@ -12,22 +12,15 @@ use self::{
 mod config;
 mod project_dirs;
 
-static CONCURRENCY_LIMIT: LazyLock<usize> = LazyLock::new(|| {
-    thread::available_parallelism()
-        .unwrap_or(NonZeroUsize::MIN)
-        .get()
-        .min(Context::MAX_CONCURRENCY)
-});
-
 pub struct Context {
-    pub(super) proj_dirs: ChosenAppStrategy,
+    pub(crate) proj_dirs: ChosenAppStrategy,
 
-    pub(super) config: Config,
+    pub(crate) config: Config,
 
-    pub(super) client: LazyLock<reqwest::Client>,
+    pub(crate) client: LazyLock<reqwest::Client>,
 
-    pub(super) concurrency_limit: LazyLock<usize>,
-    pub(super) channel_capacity: LazyLock<usize>,
+    pub(crate) concurrency_limit: LazyLock<usize>,
+    pub(crate) channel_capacity: LazyLock<usize>,
 }
 
 impl Context {
@@ -36,11 +29,12 @@ impl Context {
 
     #[allow(clippy::missing_errors_doc)]
     pub fn new(matches: &ArgMatches) -> Result<Self, proc_exit::Exit> {
-        let proj_dirs = ProjectDirs::new()
-            .with_code(proc_exit::sysexits::OS_ERR)?
-            .strategy();
+        let proj_dirs = ProjectDirs::new();
+        let proj_dirs = proj_dirs.with_code(proc_exit::sysexits::OS_ERR)?;
+        let proj_dirs = proj_dirs.strategy();
 
-        let config = Config::load(matches).with_code(proc_exit::sysexits::CONFIG_ERR)?;
+        let config = Config::load(matches);
+        let config = config.with_code(proc_exit::sysexits::CONFIG_ERR)?;
 
         let this = Self {
             proj_dirs,
@@ -60,3 +54,10 @@ impl Context {
         &self.config
     }
 }
+
+static CONCURRENCY_LIMIT: LazyLock<usize> = LazyLock::new(|| {
+    thread::available_parallelism()
+        .unwrap_or(NonZeroUsize::MIN)
+        .get()
+        .min(Context::MAX_CONCURRENCY)
+});

@@ -12,8 +12,6 @@ use crate::context::Context;
 mod hasher;
 mod writer;
 
-pub(crate) struct PushMarker;
-
 pub(crate) trait PushOperator {
     type Item;
     type Output;
@@ -53,3 +51,5 @@ impl<
         (sink, handle)
     }
 }
+
+pub(crate) struct PushMarker;

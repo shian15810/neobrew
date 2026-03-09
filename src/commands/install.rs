@@ -14,33 +14,33 @@ use crate::{
         pull_operators::Pourer,
         push_operators::{Hasher, Writer},
     },
-    registries::Registries,
+    registry::Registry,
 };
 
 #[derive(Args)]
-pub(crate) struct Install {
-    #[arg(value_name = "FORMULA|CASK")]
-    packages: Vec<String>,
-
+pub(super) struct Install {
     #[command(flatten)]
     resolution: Resolution,
+
+    #[arg(value_name = "FORMULA|CASK")]
+    packages: Vec<String>,
 }
 
 impl Runner for Install {
-    async fn run(self, context: Arc<Context>) -> Result<()> {
+    async fn run_concurrent(self, context: Arc<Context>) -> Result<()> {
         if self.packages.is_empty() {
             return Ok(());
         }
 
-        let registries = {
+        let registry = {
             let context = Arc::clone(&context);
 
-            Registries::new(context)
+            Registry::new(context)
         };
 
         let strategy = self.resolution.strategy();
 
-        let resolved_packages = registries.resolve(self.packages, strategy).await?;
+        let resolved_packages = registry.resolve(self.packages, strategy).await?;
 
         let mut set: JoinSet<Result<()>> = JoinSet::new();
 
@@ -71,7 +71,7 @@ impl Runner for Install {
                     .fanout(Hasher::new())
                     .fanout(Pourer::new(id))
                     .fanout(Writer::new(format!("{id}.json"))?)
-                    .spawn()
+                    .run_parallel()
                     .await?;
 
                 dbg!(hash, path, file);

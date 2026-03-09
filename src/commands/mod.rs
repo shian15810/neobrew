@@ -18,7 +18,7 @@ use proc_exit::prelude::*;
 use tokio::process::Command;
 
 use self::{install::Install, uninstall::Uninstall};
-use crate::{context::Context, registries::ResolutionStrategy};
+use crate::{context::Context, registry::ResolutionStrategy};
 
 mod install;
 mod uninstall;
@@ -40,7 +40,7 @@ mod uninstall;
 )]
 pub struct Cli {
     #[command(subcommand)]
-    pub(super) command: Commands,
+    command: Commands,
 
     #[command(flatten)]
     verbosity: Verbosity,
@@ -59,8 +59,16 @@ pub struct Cli {
     color: ColorChoice,
 }
 
+impl Cli {
+    pub(super) async fn run(self, context: Context) -> proc_exit::ExitResult {
+        self.command.run(context).await?;
+
+        proc_exit::Code::SUCCESS.ok()
+    }
+}
+
 #[derive(Subcommand)]
-pub(super) enum Commands {
+enum Commands {
     #[command(flatten)]
     Internal(Internal),
 
@@ -69,10 +77,12 @@ pub(super) enum Commands {
 }
 
 impl Commands {
-    pub(super) async fn run(self, context: Arc<Context>) -> proc_exit::ExitResult {
+    async fn run(self, context: Context) -> proc_exit::ExitResult {
         match self {
             Self::Internal(internal) => {
-                let res = internal.run(context).await;
+                let context = Arc::new(context);
+
+                let res = internal.run_concurrent(context).await;
 
                 res.with_code(proc_exit::sysexits::SOFTWARE_ERR)?;
 
@@ -128,14 +138,14 @@ impl Commands {
 
 #[derive(Subcommand)]
 #[enum_dispatch]
-pub(super) enum Internal {
+enum Internal {
     Install(Install),
     Uninstall(Uninstall),
 }
 
 #[enum_dispatch(Internal)]
 trait Runner {
-    async fn run(self, context: Arc<Context>) -> Result<()>;
+    async fn run_concurrent(self, context: Arc<Context>) -> Result<()>;
 }
 
 #[derive(Args)]

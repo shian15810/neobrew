@@ -25,7 +25,7 @@
 #![allow(unused_crate_dependencies)]
 
 use anyhow::Result;
-use clap::{CommandFactory, FromArgMatches};
+use clap::CommandFactory;
 use clap_verbosity_flag::VerbosityFilter;
 use neobrew::{Cli, Context};
 use proc_exit::prelude::*;
@@ -33,7 +33,7 @@ use tokio::{
     signal,
     task::{self, JoinHandle},
 };
-use tracing_subscriber::{filter::LevelFilter, prelude::*};
+use tracing_subscriber::prelude::*;
 
 #[tokio::main]
 async fn main() -> proc_exit::ExitResult {
@@ -49,8 +49,6 @@ async fn main() -> proc_exit::ExitResult {
         Ok(())
     });
 
-    let cli = Cli::from_arg_matches(&matches).with_code(proc_exit::sysexits::USAGE_ERR)?;
-
     #[allow(clippy::disallowed_macros)]
     let result = tokio::select! {
         biased;
@@ -62,7 +60,7 @@ async fn main() -> proc_exit::ExitResult {
             proc_exit::bash::SIGINT.ok()
         },
 
-        res = neobrew::run(cli, context) => res,
+        res = neobrew::run(&matches, context) => res,
     };
 
     result?;
@@ -80,7 +78,7 @@ fn init_tracing(verbosity_filter: VerbosityFilter) {
         registry.with(console_layer)
     };
 
-    let level_filter = LevelFilter::from(verbosity_filter);
+    let level_filter = tracing_subscriber::filter::LevelFilter::from(verbosity_filter);
 
     let filter = tracing_subscriber::EnvFilter::builder()
         .with_default_directive(level_filter.into())
