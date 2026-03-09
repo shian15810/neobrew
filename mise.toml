@@ -1,10 +1,15 @@
 #:schema https://mise.jdx.dev/schema/mise.json
 
+[settings]
+task.output = "keep-order"
+
 [env]
 MACOSX_DEPLOYMENT_TARGET = { required = true }
 
 [tasks.setup]
 run = "brew bundle check || brew bundle install"
+
+# Cargo Tasks
 
 [tasks.run]
 run = "cargo +nightly run"
@@ -12,12 +17,14 @@ alias = "default"
 
 [tasks.fmt]
 run = "cargo +nightly fmt"
+alias = "format:rustfmt"
 
 [tasks.check]
 run = "cargo +nightly check"
 
 [tasks.clippy]
 run = "cargo +nightly clippy"
+alias = "lint:clippy"
 
 [tasks.test]
 run = "cargo +nightly test"
@@ -37,3 +44,35 @@ run = "cargo build --release"
 
 [tasks.bench]
 run = "cargo bench"
+
+# Other Tasks
+
+[tasks.format]
+depends = ["format:*"]
+
+[tasks.lint]
+depends = ["lint:*"]
+
+[tasks."format:taplo"]
+run = "taplo format"
+
+[tasks."lint:taplo:format"]
+run = "taplo format --check"
+
+[tasks."lint:taplo:lint"]
+run = "taplo lint --default-schema-catalogs"
+
+[tasks."lint:markdownlint"]
+run = 'markdownlint-cli2 "**/*.md" "#target"'
+
+[tasks."format:prettier"]
+run = 'prettier --write "**/*.md"'
+
+[tasks."lint:prettier"]
+run = 'prettier --check "**/*.md"'
+
+[tasks."format:biome"]
+run = "biome format --config-path=biome.jsonc --write"
+
+[tasks."lint:biome"]
+run = "biome check --config-path=biome.jsonc"

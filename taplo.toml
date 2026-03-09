@@ -1,5 +1,8 @@
 #:schema https://www.schemastore.org/taplo.json
 
+include = ["**/*.toml"]
+exclude = ["target/**"]
+
 [formatting]
 indent_string = "    "
 allowed_blank_lines = 1
