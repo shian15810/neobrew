@@ -1,6 +1,7 @@
 {
     "recommendations": [
         "hverlin.mise-vscode",
+        "vadimcn.vscode-lldb",
         "rust-lang.rust-analyzer",
         "tamasfe.even-better-toml",
         "DavidAnson.vscode-markdownlint",

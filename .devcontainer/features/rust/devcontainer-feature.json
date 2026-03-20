@@ -1,0 +1,44 @@
+{
+    "$schema": "https://raw.githubusercontent.com/devcontainers/spec/HEAD/schemas/devContainerFeature.schema.json",
+
+    "name": "Rust",
+    "id": "rust",
+    "version": "0.1.0",
+
+    "options": {
+        "version": {
+            "type": "string",
+            "proposals": [
+                "latest",
+                "lts",
+                "stable",
+                "beta",
+                "nightly",
+                "current",
+                "none",
+            ],
+            "default": "latest",
+        },
+        "profile": {
+            "type": "string",
+            "enum": [
+                "minimal",
+                "default",
+                "complete",
+            ],
+            "default": "minimal",
+        },
+        "targets": {
+            "type": "string",
+            "default": "",
+        },
+        "components": {
+            "type": "string",
+            "default": "rust-analyzer,rust-src,rustfmt,clippy",
+        },
+    },
+
+    "installsAfter": [
+        "ghcr.io/devcontainers/features/rust",
+    ],
+}

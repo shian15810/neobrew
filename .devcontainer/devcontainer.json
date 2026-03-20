@@ -1,0 +1,89 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/rust
+{
+    "$schema": "https://raw.githubusercontent.com/devcontainers/spec/HEAD/schemas/devContainer.schema.json",
+
+    "name": "Rust",
+
+    // Or use a Dockerfile or Docker Compose file. More info: https://containers.dev/guide/dockerfile
+    "image": "mcr.microsoft.com/devcontainers/rust:2-1-trixie",
+
+    // Use 'mounts' to make the cargo cache persistent in a Docker Volume.
+    "mounts": [
+        {
+            "source": "devcontainer-cargo-cache-${devcontainerId}",
+            "target": "/usr/local/cargo",
+            "type": "volume",
+        },
+        {
+            "source": "devcontainer-sccache-cache-${devcontainerId}",
+            "target": "/var/cache/sccache",
+            "type": "volume",
+        },
+    ],
+
+    // Features to add to the dev container. More info: https://containers.dev/features.
+    "features": {
+        "ghcr.io/devcontainers/features/rust:1": {
+            "version": "none",
+        },
+        "./features/rust": {
+            "version": "stable,nightly",
+            "profile": "minimal",
+            "targets": "aarch64-apple-darwin,aarch64-unknown-linux-gnu,x86_64-apple-darwin,x86_64-unknown-linux-gnu",
+            "components": "rustfmt,clippy,rust-src",
+        },
+
+        "ghcr.io/devcontainers-extra/features/homebrew-package:1": {
+            "package": "mise",
+        },
+        "./features/homebrew-package": {
+            "package": "sccache,rust-analyzer,cargo-nextest,taplo,markdownlint-cli2,prettier,biome",
+        },
+    },
+
+    // Use 'forwardPorts' to make a list of ports inside the container available locally.
+    // "forwardPorts": [],
+
+    // Use 'postCreateCommand' to run commands after the container is created.
+    "postCreateCommand": [
+        "/bin/sh",
+        ".devcontainer/post-create-command.sh",
+    ],
+
+    // Configure tool-specific properties.
+    "customizations": {
+        // Configure properties specific to VS Code.
+        "vscode": {
+            // Set *default* container specific settings.json values on container create.
+            "settings": {
+                "rust-analyzer.server.path": "${containerWorkspaceFolder}/.devcontainer/bin/rust-analyzer",
+            },
+
+            "extensions": [
+                "hverlin.mise-vscode",
+                "vadimcn.vscode-lldb",
+                "rust-lang.rust-analyzer",
+                "tamasfe.even-better-toml",
+                "DavidAnson.vscode-markdownlint",
+                "esbenp.prettier-vscode",
+                "biomejs.biome",
+                "EditorConfig.EditorConfig",
+            ],
+        },
+    },
+
+    "remoteEnv": {
+        "DEVCONTAINER": "true",
+        "HOMEBREW_DEVCONTAINER": "true",
+
+        "HOMEBREW_NO_ANALYTICS": "1",
+        "HOMEBREW_NO_ENV_HINTS": "1",
+
+        "SCCACHE_SERVER_UDS": "\\x00sccache.sock",
+        "SCCACHE_DIR": "/var/cache/sccache",
+    },
+
+    // Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
+    // "remoteUser": "root",
+}

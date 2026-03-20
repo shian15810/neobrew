@@ -1,10 +1,8 @@
 #:schema https://mise.jdx.dev/schema/mise.json
 
 [settings]
+disable_hints = ["*"]
 task.output = "keep-order"
-
-[env]
-MACOSX_DEPLOYMENT_TARGET = { required = true }
 
 [tasks.setup]
 run = "brew bundle check || brew bundle install"
@@ -63,13 +61,13 @@ run = "taplo format --check"
 run = "taplo lint --default-schema-catalogs"
 
 [tasks."lint:markdownlint"]
-run = 'markdownlint-cli2 "**/*.md" "#target"'
+run = "markdownlint-cli2 \"**/*.md\" \"#target\""
 
 [tasks."format:prettier"]
-run = 'prettier --write "**/*.md"'
+run = "prettier --write \"**/*.md\""
 
 [tasks."lint:prettier"]
-run = 'prettier --check "**/*.md"'
+run = "prettier --check \"**/*.md\""
 
 [tasks."format:biome"]
 run = "biome format --config-path=biome.jsonc --write"

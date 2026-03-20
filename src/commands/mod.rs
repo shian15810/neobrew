@@ -92,7 +92,9 @@ impl Commands {
             Self::External(args) => {
                 let mut cmd = Command::new("brew");
 
-                cmd.args(args);
+                cmd.args(args)
+                    .env("HOMEBREW_NO_ANALYTICS", "1")
+                    .env("HOMEBREW_NO_ENV_HINTS", "1");
 
                 match context.config.verbosity_filter {
                     VerbosityFilter::Debug => {
@@ -114,15 +116,6 @@ impl Commands {
                     },
                     _ => {},
                 }
-
-                cmd.env("HOMEBREW_NO_ANALYTICS", "1")
-                    .env("HOMEBREW_NO_AUTOREMOVE", "1")
-                    .env("HOMEBREW_NO_AUTO_UPDATE", "1")
-                    .env("HOMEBREW_NO_ENV_HINTS", "1")
-                    .env("HOMEBREW_NO_INSECURE_REDIRECT", "1")
-                    .env("HOMEBREW_NO_INSTALLED_DEPENDENTS_CHECK", "1")
-                    .env("HOMEBREW_NO_INSTALL_CLEANUP", "1")
-                    .env("HOMEBREW_NO_INSTALL_UPGRADE", "1");
 
                 let res = cmd.status().await;
 

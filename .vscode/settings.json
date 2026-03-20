@@ -3,6 +3,10 @@
         "**/mod.rs": "${dirname}/mod.rs",
     },
 
+    "files.watcherExclude": {
+        "target/**": true,
+    },
+
     "json.schemaDownload.trustedDomains": {
         "https://raw.githubusercontent.com/DavidAnson/markdownlint/": true,
         "https://biomejs.dev/": true,
@@ -46,4 +50,8 @@
     "rust-analyzer.imports.granularity.enforce": true,
     "rust-analyzer.imports.preferPrelude": true,
     "rust-analyzer.imports.prefix": "self",
+
+    "lldb.script": {
+        "lang.rust.toolchain": "nightly",
+    },
 }

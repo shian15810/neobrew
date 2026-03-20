@@ -16,6 +16,9 @@ keys = [
     "target.*.dependencies",
     "target.*.dev-dependencies",
     "target.*.build-dependencies",
+    "patch.*",
+    "replace.*",
+    "workspace.dependencies",
 ]
 
 [rule.formatting]

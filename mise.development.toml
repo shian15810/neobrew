@@ -1,10 +1,4 @@
 #:schema https://mise.jdx.dev/schema/mise.json
 
 [env]
-MACOSX_DEPLOYMENT_TARGET = '''
-{% if os() == "macos" -%}
-    {{ exec(command='sw_vers --productVersion | cut -d . -f 1,2') }}
-{%- else -%}
-    {{ exec(command='rustc --print=deployment-target | cut -d = -f 2') }}
-{%- endif -%}
-'''
+_.source = "mise.development.env.sh"

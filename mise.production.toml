@@ -1,4 +1,4 @@
 #:schema https://mise.jdx.dev/schema/mise.json
 
 [env]
-MACOSX_DEPLOYMENT_TARGET = "{{ exec(command='rustc --print=deployment-target | cut -d = -f 2') }}"
+_.source = "mise.production.env.sh"

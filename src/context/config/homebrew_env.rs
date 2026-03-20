@@ -48,7 +48,7 @@ impl HomebrewEnvConfig {
             const DEFAULT_PREFIX: &str = "/opt/homebrew";
         } else if #[cfg(all(target_os = "macos", target_arch = "x86_64"))] {
             const DEFAULT_PREFIX: &str = "/usr/local";
-        } else if #[cfg(all(target_os = "linux"))] {
+        } else if #[cfg(target_os = "linux")] {
             const DEFAULT_PREFIX: &str = "/home/linuxbrew/.linuxbrew";
         } else {
             compile_error!("This crate only supports macOS (aarch64 and x86_64) and Linux.");

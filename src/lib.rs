@@ -46,3 +46,6 @@ pub async fn run(matches: &ArgMatches, context: Context) -> proc_exit::ExitResul
 
     proc_exit::Code::SUCCESS.ok()
 }
+
+use oci_client as _;
+use os_info as _;

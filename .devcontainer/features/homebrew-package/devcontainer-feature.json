@@ -1,0 +1,26 @@
+{
+    "$schema": "https://raw.githubusercontent.com/devcontainers/spec/HEAD/schemas/devContainerFeature.schema.json",
+
+    "name": "Homebrew Package",
+    "id": "homebrew-package",
+    "version": "0.1.0",
+
+    "options": {
+        "package": {
+            "type": "string",
+            "default": "",
+        },
+        "version": {
+            "type": "string",
+            "default": "latest",
+        },
+        "installation_flags": {
+            "type": "string",
+            "default": "",
+        },
+    },
+
+    "installsAfter": [
+        "ghcr.io/devcontainers-extra/features/homebrew-package",
+    ],
+}
