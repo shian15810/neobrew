@@ -1,0 +1,8 @@
+# Allow opening any 'source'd file, even if not specified as input
+external-sources=true
+
+# Turn on warnings for all optional checks
+enable=all
+
+disable=SC2250 # require-variable-braces
+disable=SC2312 # check-extra-masked-return

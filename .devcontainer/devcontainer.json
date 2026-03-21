@@ -38,7 +38,7 @@
             "package": "mise",
         },
         "./features/homebrew-package": {
-            "package": "sccache,rust-analyzer,cargo-nextest,taplo,markdownlint-cli2,prettier,biome",
+            "package": "sccache,rust-analyzer,cargo-nextest,taplo,markdownlint-cli2,prettier,biome,shfmt,shellcheck",
         },
     },
 
@@ -57,7 +57,7 @@
         "vscode": {
             // Set *default* container specific settings.json values on container create.
             "settings": {
-                "rust-analyzer.server.path": "${containerWorkspaceFolder}/.devcontainer/bin/rust-analyzer",
+                "rust-analyzer.server.path": "${containerWorkspaceFolder}/.devcontainer/bin/rust-analyzer.sh",
             },
 
             "extensions": [
@@ -69,6 +69,7 @@
                 "esbenp.prettier-vscode",
                 "biomejs.biome",
                 "EditorConfig.EditorConfig",
+                "mads-hartmann.bash-ide-vscode",
             ],
         },
     },

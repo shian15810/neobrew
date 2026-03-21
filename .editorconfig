@@ -9,3 +9,14 @@ insert_final_newline = true
 [*.{rs,toml,md,jsonc,json}]
 indent_style = space
 indent_size = 4
+
+[[shell]]
+indent_style = space
+indent_size = 4
+simplify = true
+binary_next_line = true
+switch_case_indent = true
+space_redirects = true
+
+[target/**]
+ignore = true

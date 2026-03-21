@@ -2,6 +2,10 @@
 
 set -euvx
 
+RUSTUP_HOME="${RUSTUP_HOME:?}"
+CARGO_HOME="${CARGO_HOME:?}"
+RUST_VERSION="${RUST_VERSION:?}"
+
 export PATH="$CARGO_HOME/bin:$PATH"
 
 rustup self update

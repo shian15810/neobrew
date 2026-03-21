@@ -24,6 +24,9 @@
     "[jsonc]": {
         "editor.defaultFormatter": "biomejs.biome",
     },
+    "[shellscript]": {
+        "editor.defaultFormatter": "mads-hartmann.bash-ide-vscode",
+    },
 
     "mise.configureExtensionsAutomatically": true,
     "mise.configureExtensionsIncludeGlobalTools": false,
@@ -31,6 +34,8 @@
 
     "mise.updateEnvAutomaticallyIncludePath": true,
     "mise.updateOpenTerminalsEnvAutomatically": true,
+
+    "bashIde.enableSourceErrorDiagnostics": true,
 
     "rust-analyzer.runnables.extraEnv": {
         "RUSTUP_TOOLCHAIN": "nightly",

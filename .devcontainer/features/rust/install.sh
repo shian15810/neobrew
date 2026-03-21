@@ -14,11 +14,21 @@ COMPONENTS="${COMPONENTS:-"rust-analyzer,rust-src,rustfmt,clippy"}"
 # remoteUser or containerUser is useful.
 # For more details, see https://containers.dev/implementors/features#user-env-var
 
+_REMOTE_USER="${_REMOTE_USER:?}"
+_REMOTE_USER_HOME="${_REMOTE_USER_HOME:?}"
+
 echo "The effective dev container remoteUser is '$_REMOTE_USER'"
 echo "The effective dev container remoteUser's home directory is '$_REMOTE_USER_HOME'"
 
+_CONTAINER_USER="${_CONTAINER_USER:?}"
+_CONTAINER_USER_HOME="${_CONTAINER_USER_HOME:?}"
+
 echo "The effective dev container containerUser is '$_CONTAINER_USER'"
 echo "The effective dev container containerUser's home directory is '$_CONTAINER_USER_HOME'"
+
+RUSTUP_HOME="${RUSTUP_HOME:?}"
+CARGO_HOME="${CARGO_HOME:?}"
+RUST_VERSION="${RUST_VERSION:?}"
 
 if [ "$VERSION" = "none" ]; then
     set -- "$RUST_VERSION"

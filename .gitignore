@@ -1,5 +1,5 @@
 # mise
-.vscode/mise-tools/
+.vscode/mise-tools/**
 
 # rustup
-/target/
+target/**

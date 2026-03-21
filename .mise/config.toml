@@ -70,7 +70,16 @@ run = "prettier --write \"**/*.md\""
 run = "prettier --check \"**/*.md\""
 
 [tasks."format:biome"]
-run = "biome format --config-path=biome.jsonc --write"
+run = "biome format --config-path=.biome.jsonc --write"
 
 [tasks."lint:biome"]
-run = "biome check --config-path=biome.jsonc"
+run = "biome check --config-path=.biome.jsonc"
+
+[tasks."format:shfmt"]
+run = "shfmt --list --write ."
+
+[tasks."lint:shfmt"]
+run = "shfmt --list ."
+
+[tasks."lint:shellcheck"]
+run = "shfmt --find=0 . | xargs -0 shellcheck"

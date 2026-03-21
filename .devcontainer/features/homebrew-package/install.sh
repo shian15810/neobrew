@@ -13,8 +13,14 @@ INSTALLATION_FLAGS="${INSTALLATION_FLAGS:-""}"
 # remoteUser or containerUser is useful.
 # For more details, see https://containers.dev/implementors/features#user-env-var
 
+_REMOTE_USER="${_REMOTE_USER:?}"
+_REMOTE_USER_HOME="${_REMOTE_USER_HOME:?}"
+
 echo "The effective dev container remoteUser is '$_REMOTE_USER'"
 echo "The effective dev container remoteUser's home directory is '$_REMOTE_USER_HOME'"
+
+_CONTAINER_USER="${_CONTAINER_USER:?}"
+_CONTAINER_USER_HOME="${_CONTAINER_USER_HOME:?}"
 
 echo "The effective dev container containerUser is '$_CONTAINER_USER'"
 echo "The effective dev container containerUser's home directory is '$_CONTAINER_USER_HOME'"
@@ -45,7 +51,7 @@ set -- -- "$@"
 if [ -n "$INSTALLATION_FLAGS" ]; then
     while IFS='' read -r INSTALLATION_FLAG; do
         set -- "$INSTALLATION_FLAG" "$@"
-    done <<-EOF
+    done <<- EOF
 		$(printf '%s' "$INSTALLATION_FLAGS" | xargs -n1)
 	EOF
 fi

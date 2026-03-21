@@ -8,6 +8,7 @@
         "esbenp.prettier-vscode",
         "biomejs.biome",
         "EditorConfig.EditorConfig",
+        "mads-hartmann.bash-ide-vscode",
     ],
 
     "unwantedRecommendations": [],

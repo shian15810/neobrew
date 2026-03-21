@@ -1,4 +1,4 @@
 #:schema https://mise.jdx.dev/schema/mise.json
 
 [env]
-_.source = "mise.development.env.sh"
+_.source = ".mise/config.production.env.sh"
