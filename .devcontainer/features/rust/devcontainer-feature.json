@@ -38,6 +38,10 @@
         },
     },
 
+    "containerEnv": {
+        "RUSTUP_PERMIT_COPY_RENAME": "1",
+    },
+
     "installsAfter": [
         "ghcr.io/devcontainers/features/rust",
     ],

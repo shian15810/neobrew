@@ -2,15 +2,16 @@
 
 set -euvx
 
-SCCACHE_DIR="${SCCACHE_DIR:?}"
-
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
 
-cd -- "$SCRIPT_DIR/.."
+SCCACHE_DIR="${SCCACHE_DIR:?}"
+
+HOMEBREW_DEVCONTAINER="${HOMEBREW_DEVCONTAINER:?}"
+
+cd -- "$SCRIPT_DIR/../.."
 
 sudo chown -- "$(id -un):$(id -gn)" "$SCCACHE_DIR"
 
-brew analytics off
 brew bundle
 
 mise trust

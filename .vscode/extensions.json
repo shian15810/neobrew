@@ -1,4 +1,6 @@
 {
+    "$schema": "vscode://schemas/extensions",
+
     "recommendations": [
         "hverlin.mise-vscode",
         "vadimcn.vscode-lldb",
@@ -6,6 +8,7 @@
         "tamasfe.even-better-toml",
         "DavidAnson.vscode-markdownlint",
         "esbenp.prettier-vscode",
+        "redhat.vscode-yaml",
         "biomejs.biome",
         "EditorConfig.EditorConfig",
         "mads-hartmann.bash-ide-vscode",

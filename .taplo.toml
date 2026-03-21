@@ -1,7 +1,7 @@
 #:schema https://www.schemastore.org/taplo.json
 
 include = ["**/*.toml"]
-exclude = ["target/**"]
+exclude = [".git/**", ".vscode/mise-tools/**", "target/**"]
 
 [formatting]
 indent_string = "    "

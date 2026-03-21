@@ -2,9 +2,14 @@
 
 set -euvx
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
+
 PACKAGE="${PACKAGE:-""}"
 VERSION="${VERSION:-"latest"}"
 INSTALLATION_FLAGS="${INSTALLATION_FLAGS:-""}"
+
+HOMEBREW_NO_ANALYTICS="${HOMEBREW_NO_ANALYTICS:?}"
+HOMEBREW_NO_ENV_HINTS="${HOMEBREW_NO_ENV_HINTS:?}"
 
 # The 'install.sh' entrypoint script is always executed as the root user.
 #
@@ -16,11 +21,11 @@ INSTALLATION_FLAGS="${INSTALLATION_FLAGS:-""}"
 _REMOTE_USER="${_REMOTE_USER:?}"
 _REMOTE_USER_HOME="${_REMOTE_USER_HOME:?}"
 
-echo "The effective dev container remoteUser is '$_REMOTE_USER'"
-echo "The effective dev container remoteUser's home directory is '$_REMOTE_USER_HOME'"
-
 _CONTAINER_USER="${_CONTAINER_USER:?}"
 _CONTAINER_USER_HOME="${_CONTAINER_USER_HOME:?}"
+
+echo "The effective dev container remoteUser is '$_REMOTE_USER'"
+echo "The effective dev container remoteUser's home directory is '$_REMOTE_USER_HOME'"
 
 echo "The effective dev container containerUser is '$_CONTAINER_USER'"
 echo "The effective dev container containerUser's home directory is '$_CONTAINER_USER_HOME'"
@@ -56,8 +61,8 @@ if [ -n "$INSTALLATION_FLAGS" ]; then
 	EOF
 fi
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
-
 sudo --user="$_REMOTE_USER" \
+    HOMEBREW_NO_ANALYTICS="$HOMEBREW_NO_ANALYTICS" \
+    HOMEBREW_NO_ENV_HINTS="$HOMEBREW_NO_ENV_HINTS" \
     --login exec \
     /bin/sh -- "$SCRIPT_DIR/install-feature.sh" "$@"

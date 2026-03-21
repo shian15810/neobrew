@@ -2,10 +2,18 @@
 
 set -euvx
 
+SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
+
 VERSION="${VERSION:-"latest"}"
 PROFILE="${PROFILE:-"minimal"}"
 TARGETS="${TARGETS:-""}"
 COMPONENTS="${COMPONENTS:-"rust-analyzer,rust-src,rustfmt,clippy"}"
+
+RUSTUP_PERMIT_COPY_RENAME="${RUSTUP_PERMIT_COPY_RENAME:?}"
+
+RUSTUP_HOME="${RUSTUP_HOME:?}"
+CARGO_HOME="${CARGO_HOME:?}"
+RUST_VERSION="${RUST_VERSION:?}"
 
 # The 'install.sh' entrypoint script is always executed as the root user.
 #
@@ -17,18 +25,14 @@ COMPONENTS="${COMPONENTS:-"rust-analyzer,rust-src,rustfmt,clippy"}"
 _REMOTE_USER="${_REMOTE_USER:?}"
 _REMOTE_USER_HOME="${_REMOTE_USER_HOME:?}"
 
-echo "The effective dev container remoteUser is '$_REMOTE_USER'"
-echo "The effective dev container remoteUser's home directory is '$_REMOTE_USER_HOME'"
-
 _CONTAINER_USER="${_CONTAINER_USER:?}"
 _CONTAINER_USER_HOME="${_CONTAINER_USER_HOME:?}"
 
+echo "The effective dev container remoteUser is '$_REMOTE_USER'"
+echo "The effective dev container remoteUser's home directory is '$_REMOTE_USER_HOME'"
+
 echo "The effective dev container containerUser is '$_CONTAINER_USER'"
 echo "The effective dev container containerUser's home directory is '$_CONTAINER_USER_HOME'"
-
-RUSTUP_HOME="${RUSTUP_HOME:?}"
-CARGO_HOME="${CARGO_HOME:?}"
-RUST_VERSION="${RUST_VERSION:?}"
 
 if [ "$VERSION" = "none" ]; then
     set -- "$RUST_VERSION"
@@ -93,9 +97,8 @@ fi
 
 set -- --profile="$PROFILE" "$@"
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
-
 sudo --user="$_REMOTE_USER" \
+    RUSTUP_PERMIT_COPY_RENAME="$RUSTUP_PERMIT_COPY_RENAME" \
     RUSTUP_HOME="$RUSTUP_HOME" \
     CARGO_HOME="$CARGO_HOME" \
     RUST_VERSION="$RUST_VERSION" \

@@ -52,28 +52,28 @@ depends = ["format:*"]
 depends = ["lint:*"]
 
 [tasks."format:taplo"]
-run = "taplo format"
+run = "RUST_LOG=error taplo format"
 
 [tasks."lint:taplo:format"]
-run = "taplo format --check"
+run = "RUST_LOG=error taplo format --check"
 
 [tasks."lint:taplo:lint"]
-run = "taplo lint --default-schema-catalogs"
+run = "RUST_LOG=error taplo lint --default-schema-catalogs"
 
 [tasks."lint:markdownlint"]
-run = "markdownlint-cli2 \"**/*.md\" \"#target\""
+run = "markdownlint-cli2 \"**/*.md\" \"#.git\" \"#.vscode/mise-tools\" \"#target\""
 
 [tasks."format:prettier"]
-run = "prettier --write \"**/*.md\""
+run = "prettier \"**/*.{md,yaml,yml}\" --write --list-different"
 
 [tasks."lint:prettier"]
-run = "prettier --check \"**/*.md\""
+run = "prettier \"**/*.{md,yaml,yml}\" --check"
 
 [tasks."format:biome"]
-run = "biome format --config-path=.biome.jsonc --write"
+run = "biome format --write"
 
 [tasks."lint:biome"]
-run = "biome check --config-path=.biome.jsonc"
+run = "biome check"
 
 [tasks."format:shfmt"]
 run = "shfmt --list --write ."

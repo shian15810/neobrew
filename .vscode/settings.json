@@ -1,9 +1,12 @@
 {
+    "$schema": "vscode://schemas/settings/folder",
+
     "workbench.editor.customLabels.patterns": {
-        "**/mod.rs": "${dirname}/mod.rs",
+        "**/mod.rs": "${dirname}/${filename}.${extname}",
     },
 
     "files.watcherExclude": {
+        ".vscode/mise-tools/**": true,
         "target/**": true,
     },
 
@@ -12,6 +15,23 @@
         "https://biomejs.dev/": true,
     },
 
+    "json.schemas": [
+        {
+            "fileMatch": [
+                "**/*.jsonc",
+
+                ".vscode/**",
+                ".devcontainer/**",
+            ],
+            "schema": {
+                "$schema": "https://json-schema.org/schema",
+
+                "allowComments": true,
+                "allowTrailingCommas": true,
+            },
+        },
+    ],
+
     "[rust]": {
         "editor.defaultFormatter": "rust-lang.rust-analyzer",
     },
@@ -19,6 +39,9 @@
         "editor.defaultFormatter": "tamasfe.even-better-toml",
     },
     "[markdown]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+    },
+    "[yaml]": {
         "editor.defaultFormatter": "esbenp.prettier-vscode",
     },
     "[jsonc]": {
@@ -37,6 +60,17 @@
 
     "bashIde.enableSourceErrorDiagnostics": true,
 
+    "rust-analyzer.assist.preferSelf": true,
+    "rust-analyzer.assist.emitMustUse": true,
+    "rust-analyzer.imports.merge.glob": false,
+    "rust-analyzer.imports.granularity.enforce": true,
+    "rust-analyzer.imports.preferPrelude": true,
+    "rust-analyzer.imports.prefix": "self",
+
+    "rust-analyzer.files.exclude": [
+        ".vscode/mise-tools",
+    ],
+
     "rust-analyzer.runnables.extraEnv": {
         "RUSTUP_TOOLCHAIN": "nightly",
     },
@@ -48,13 +82,6 @@
     "rust-analyzer.rustfmt.extraArgs": [
         "+nightly",
     ],
-
-    "rust-analyzer.assist.emitMustUse": true,
-    "rust-analyzer.assist.preferSelf": true,
-    "rust-analyzer.imports.merge.glob": false,
-    "rust-analyzer.imports.granularity.enforce": true,
-    "rust-analyzer.imports.preferPrelude": true,
-    "rust-analyzer.imports.prefix": "self",
 
     "lldb.script": {
         "lang.rust.toolchain": "nightly",

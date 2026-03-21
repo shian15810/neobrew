@@ -28,4 +28,19 @@
             "expand": "always",
         },
     },
+
+    "overrides": [
+        {
+            "includes": [
+                ".vscode/**",
+                ".devcontainer/**",
+            ],
+            "json": {
+                "parser": {
+                    "allowComments": true,
+                    "allowTrailingCommas": true,
+                },
+            },
+        },
+    ],
 }
