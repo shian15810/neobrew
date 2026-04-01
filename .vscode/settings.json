@@ -1,6 +1,8 @@
 {
     "$schema": "vscode://schemas/settings/folder",
 
+    "cSpell.mergeCSpellSettings": false,
+
     "workbench.editor.customLabels.patterns": {
         "**/mod.rs": "${dirname}/${filename}.${extname}",
     },
@@ -11,7 +13,6 @@
     },
 
     "json.schemaDownload.trustedDomains": {
-        "https://raw.githubusercontent.com/DavidAnson/markdownlint/": true,
         "https://biomejs.dev/": true,
     },
 

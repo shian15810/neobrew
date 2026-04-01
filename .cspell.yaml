@@ -1,0 +1,50 @@
+# $schema: https://raw.githubusercontent.com/streetsidesoftware/cspell/HEAD/cspell.schema.json
+
+version: "0.2"
+
+enableGlobDot: true
+useGitignore: true
+ignorePaths:
+  - .git/**
+  - .cspell/**
+  - Cargo.lock
+
+validateDirectives: true
+caseSensitive: true
+
+dictionaryDefinitions:
+  - name: custom-companies
+    path: .cspell/companies.txt
+    addWords: true
+    supportNonStrictSearches: false
+  - name: custom-software-tools
+    path: .cspell/software-tools.txt
+    addWords: true
+    supportNonStrictSearches: false
+  - name: custom-rust
+    path: .cspell/rust.txt
+    addWords: true
+    supportNonStrictSearches: false
+  - name: custom-rust-crates
+    path: .cspell/rust-crates.txt
+    addWords: true
+    supportNonStrictSearches: false
+  - name: custom-shellscript
+    path: .cspell/shellscript.txt
+    addWords: true
+    supportNonStrictSearches: false
+  - name: custom-people-names
+    path: .cspell/people-names.txt
+    addWords: true
+    supportNonStrictSearches: false
+
+dictionaries:
+  - rust
+  - rust-crates
+  - shellscript
+  - custom-companies
+  - custom-software-tools
+  - custom-rust
+  - custom-rust-crates
+  - custom-shellscript
+  - custom-people-names

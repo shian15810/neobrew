@@ -1,0 +1,18 @@
+# Custom Dictionary Words
+catalina
+darwin
+devcontainers
+linux
+linuxbrew
+nbrew
+neobrew
+Neobrew
+NEOBREW
+Neobrew's
+sccache
+SCCACHE
+sonoma
+tahoe
+taplo
+trixie
+ventura

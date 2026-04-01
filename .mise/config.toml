@@ -51,35 +51,60 @@ depends = ["format:*"]
 [tasks.lint]
 depends = ["lint:*"]
 
+[tasks.fix]
+depends = ["fix:*"]
+
 [tasks."format:taplo"]
-run = "RUST_LOG=error taplo format"
+run = "RUST_LOG=error taplo fmt"
 
-[tasks."lint:taplo:format"]
-run = "RUST_LOG=error taplo format --check"
+[tasks."lint:taplo:fmt"]
+run = "RUST_LOG=error taplo fmt --diff --check"
 
-[tasks."lint:taplo:lint"]
-run = "RUST_LOG=error taplo lint --default-schema-catalogs"
+[tasks."lint:taplo:check"]
+run = "RUST_LOG=error taplo check --default-schema-catalogs"
 
 [tasks."lint:markdownlint"]
 run = "markdownlint-cli2 \"**/*.md\" \"#.git\" \"#.vscode/mise-tools\" \"#target\""
 
+[tasks."fix:markdownlint"]
+run = "markdownlint-cli2 \"**/*.md\" \"#.git\" \"#.vscode/mise-tools\" \"#target\" --fix"
+
 [tasks."format:prettier"]
-run = "prettier \"**/*.{md,yaml,yml}\" --write --list-different"
+run = "prettier \"**/*.{md,yaml,yml}\" --no-error-on-unmatched-pattern --check --write"
 
 [tasks."lint:prettier"]
-run = "prettier \"**/*.{md,yaml,yml}\" --check"
+run = "prettier \"**/*.{md,yaml,yml}\" --no-error-on-unmatched-pattern --check"
 
 [tasks."format:biome"]
-run = "biome format --write"
+run = "biome format --no-errors-on-unmatched --write"
 
-[tasks."lint:biome"]
-run = "biome check"
+[tasks."lint:biome:format"]
+run = "biome format --no-errors-on-unmatched"
+
+[tasks."lint:biome:lint"]
+run = "biome lint --no-errors-on-unmatched"
+
+[tasks."fix:biome:safe"]
+run = "biome lint --no-errors-on-unmatched --write"
+
+[tasks."fix:biome:unsafe"]
+run = "biome lint --no-errors-on-unmatched --unsafe"
 
 [tasks."format:shfmt"]
 run = "shfmt --list --write ."
 
 [tasks."lint:shfmt"]
-run = "shfmt --list ."
+run = "shfmt --list --diff ."
 
 [tasks."lint:shellcheck"]
-run = "shfmt --find=0 . | xargs -0 shellcheck"
+run = "shfmt --find=0 . | xargs -r -0 shellcheck"
+
+[tasks."fix:shellcheck"]
+run = "shfmt --find=0 . | xargs -r -0 shellcheck --format=diff | patch -p1"
+
+[tasks."lint:cspell:lint"]
+run = "cspell . --no-must-find-files --no-progress --show-suggestions --show-context"
+
+[tasks."lint:cspell:dictionaries"]
+shell = "/bin/sh -o errexit"
+run = ".mise/scripts/lint-cspell-dictionaries.sh"

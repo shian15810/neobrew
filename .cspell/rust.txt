@@ -1,0 +1,19 @@
+# Custom Dictionary Words
+ascii
+bufread
+clicolor
+doctest
+fanout
+Fanout
+hlist
+idents
+OBJC
+OBJCXX
+overcaptures
+Packageable
+recv
+rescope
+rustflags
+supertrait
+sysexits
+upcastable

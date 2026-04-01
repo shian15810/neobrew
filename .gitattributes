@@ -1,5 +1,23 @@
 * text=auto eol=lf
 
+*.toml text
+*.yaml text
+*.yml text
+*.jsonc text
+*.json text
+*.txt text
+
 *.rs text diff=rust
 *.md text diff=markdown
 *.sh text diff=bash
+
+.gitattributes text
+.gitignore text
+LICENSE-MIT text
+LICENSE-APACHE text
+
+Brewfile text diff=ruby
+.editorconfig text diff=ini
+.shellcheckrc text diff=ini
+
+Cargo.lock text -diff

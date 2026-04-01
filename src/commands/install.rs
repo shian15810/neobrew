@@ -22,7 +22,7 @@ pub(super) struct Install {
     #[command(flatten)]
     resolution: Resolution,
 
-    #[arg(value_name = "FORMULA|CASK")]
+    #[arg(value_name = "PACKAGE")]
     packages: Vec<String>,
 }
 

@@ -2,7 +2,9 @@
 
 set -euvx
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
+export LC_ALL=C
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd -P)"
 
 PACKAGE="${PACKAGE:-""}"
 VERSION="${VERSION:-"latest"}"
@@ -47,17 +49,22 @@ IFS="$OLDIFS"
 if [ "$#" -eq 1 ] && [ "$VERSION" != "latest" ]; then
     case "$1" in
         *@*) ;;
-        *) set -- "$1@$VERSION" ;;
+        *) set -- "${1}@${VERSION}" ;;
     esac
 fi
 
 set -- -- "$@"
 
 if [ -n "$INSTALLATION_FLAGS" ]; then
+    INSTALLATION_FLAGS="$(printf '%s' "$INSTALLATION_FLAGS" | xargs -E '' -n1)"
+    INSTALLATION_FLAGS="$(
+        printf '%s' "$INSTALLATION_FLAGS" | sed '1!G; h; $!d'
+    )"
+
     while IFS='' read -r INSTALLATION_FLAG; do
         set -- "$INSTALLATION_FLAG" "$@"
     done <<- EOF
-		$(printf '%s' "$INSTALLATION_FLAGS" | xargs -n1)
+		$INSTALLATION_FLAGS
 	EOF
 fi
 
@@ -65,4 +72,4 @@ sudo --user="$_REMOTE_USER" \
     HOMEBREW_NO_ANALYTICS="$HOMEBREW_NO_ANALYTICS" \
     HOMEBREW_NO_ENV_HINTS="$HOMEBREW_NO_ENV_HINTS" \
     --login exec \
-    /bin/sh -- "$SCRIPT_DIR/install-feature.sh" "$@"
+    /bin/sh -- "${SCRIPT_DIR}/install-feature.sh" "$@"

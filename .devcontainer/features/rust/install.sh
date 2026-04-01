@@ -2,7 +2,9 @@
 
 set -euvx
 
-SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd)"
+export LC_ALL=C
+
+SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd -P)"
 
 VERSION="${VERSION:-"latest"}"
 PROFILE="${PROFILE:-"minimal"}"
@@ -71,9 +73,9 @@ else
             TOOLCHAIN="$CURRENT_VERSION"
         fi
 
-        case " $TOOLCHAINS " in
-            *" $TOOLCHAIN "*) ;;
-            *) TOOLCHAINS="$TOOLCHAINS $TOOLCHAIN" ;;
+        case " ${TOOLCHAINS} " in
+            *" ${TOOLCHAIN} "*) ;;
+            *) TOOLCHAINS="${TOOLCHAINS} ${TOOLCHAIN}" ;;
         esac
     done
 
@@ -103,4 +105,4 @@ sudo --user="$_REMOTE_USER" \
     CARGO_HOME="$CARGO_HOME" \
     RUST_VERSION="$RUST_VERSION" \
     --login exec \
-    /bin/sh -- "$SCRIPT_DIR/install-feature.sh" "$@"
+    /bin/sh -- "${SCRIPT_DIR}/install-feature.sh" "$@"

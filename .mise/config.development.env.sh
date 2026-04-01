@@ -2,11 +2,15 @@
 
 set -eu
 
-if [ "$(uname -s)" = "Darwin" ]; then
-    MACOSX_DEPLOYMENT_TARGET="$(sw_vers -productVersion)"
-    MACOSX_DEPLOYMENT_TARGET="$(printf '%s' "$MACOSX_DEPLOYMENT_TARGET" | cut -d'.' -f1,2)"
+export LC_ALL=C
 
-    export MACOSX_DEPLOYMENT_TARGET
+if [ "$(uname)" = "Darwin" ]; then
+    MDT="$(sw_vers -productVersion)"
+    MDT="$(printf '%s' "$MDT" | cut -d'.' -f1-2)"
 
-    export CARGO_PKG_METADATA_SCCACHE_MACOSX_DEPLOYMENT_TARGET="$MACOSX_DEPLOYMENT_TARGET"
+    export MACOSX_DEPLOYMENT_TARGET="$MDT"
+
+    export CARGO_PKG_METADATA_SCCACHE_MACOSX_DEPLOYMENT_TARGET="$MDT"
 fi
+
+unset -v LC_ALL

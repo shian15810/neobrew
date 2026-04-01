@@ -12,6 +12,7 @@
         "biomejs.biome",
         "EditorConfig.EditorConfig",
         "mads-hartmann.bash-ide-vscode",
+        "streetsidesoftware.code-spell-checker",
     ],
 
     "unwantedRecommendations": [],

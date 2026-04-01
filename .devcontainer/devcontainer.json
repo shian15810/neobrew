@@ -38,7 +38,7 @@
             "package": "mise",
         },
         "./features/homebrew-package": {
-            "package": "sccache,rust-analyzer,cargo-nextest,taplo,markdownlint-cli2,prettier,biome,shfmt,shellcheck",
+            "package": "sccache,rust-analyzer,cargo-nextest,taplo,markdownlint-cli2,prettier,biome,shfmt,shellcheck,cspell",
         },
     },
 
@@ -76,6 +76,7 @@
                 "biomejs.biome",
                 "EditorConfig.EditorConfig",
                 "mads-hartmann.bash-ide-vscode",
+                "streetsidesoftware.code-spell-checker",
             ],
         },
     },
