@@ -17,7 +17,7 @@ LICENSE-MIT text
 LICENSE-APACHE text
 
 Brewfile text diff=ruby
-.editorconfig text diff=ini
 .shellcheckrc text diff=ini
+.editorconfig text diff=ini
 
 Cargo.lock text -diff

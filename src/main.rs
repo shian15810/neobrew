@@ -71,7 +71,7 @@ async fn main() -> proc_exit::ExitResult {
 fn init_tracing(verbosity_filter: VerbosityFilter) {
     let registry = tracing_subscriber::registry();
 
-    #[cfg(debug_assertions)]
+    #[cfg(all(not(test), debug_assertions))]
     let registry = {
         let console_layer = console_subscriber::spawn();
 

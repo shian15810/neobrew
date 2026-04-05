@@ -1,0 +1,100 @@
+# $schema: https://www.schemastore.org/github-workflow.json
+
+name: Reusable workflow
+
+on:
+  workflow_call:
+    inputs:
+      task:
+        required: true
+        type: string
+      cache:
+        default: true
+        type: boolean
+
+env:
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    shell: /bin/sh -eu -- "{0}"
+
+jobs:
+  rust:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-26
+            target: aarch64-apple-darwin
+          - os: macos-26-intel
+            target: x86_64-apple-darwin
+
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+
+    runs-on: ${{ matrix.os }}
+
+    env:
+      HOMEBREW_NO_ANALYTICS: 1
+      HOMEBREW_NO_ENV_HINTS: 1
+
+      MISE_ENV: production
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable,nightly
+          target: ${{ matrix.target }}
+          components: rustfmt,clippy
+          cache: ${{ inputs.cache }}
+          rustflags: --cfg=tokio_unstable --deny=warnings
+      - run: echo "RUSTDOCFLAGS=--deny=warnings" >> "$GITHUB_ENV"
+      - name: Rustfmt Check
+        uses: actions-rust-lang/rustfmt@v1
+      - run: rustup override set stable
+      - run: |
+          set -euvx
+
+          echo "$PATH" || true
+          ls -al ~/.rustup/bin || true
+          ls -al ~/.cargo/bin || true
+          which -a rustup || true
+          which -a rustc || true
+          which -a cargo || true
+          ~/.cargo/bin/rustup --version || true
+          ~/.cargo/bin/rustc --version || true
+          ~/.cargo/bin/cargo --version || true
+          rustup --version || true
+          rustc --version || true
+          cargo --version || true
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+      - run: brew analytics off
+      - name: Cache Homebrew prefix from Brewfile
+        env:
+          HOMEBREW_BUNDLE_BREW_SKIP: mise sccache rustup rust-analyzer
+        uses: Homebrew/actions/cache-homebrew-prefix@main
+        with:
+          brewfile: true
+          uninstall: true
+
+      - uses: jdx/mise-action@v4
+        with:
+          log_level: debug
+
+      - name: Run sccache-cache
+        uses: Mozilla-Actions/sccache-action@v0.0.9
+      - name: Set Rust caching env vars only on non-release runs
+        if: ${{ inputs.cache }}
+        run: echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
+
+      - name: Run ${{ inputs.task }} for ${{ matrix.target }} on ${{ matrix.os }}
+        env:
+          CARGO_BUILD_TARGET: ${{ matrix.target }}
+        run: mise run "${{ inputs.task }}"

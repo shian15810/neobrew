@@ -2,13 +2,12 @@
 
 set -euvx
 
-export LC_ALL=C
+export LC_ALL='C'
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd -P)"
 
+HOMEBREW_BUNDLE_BREW_SKIP="${HOMEBREW_BUNDLE_BREW_SKIP:?}"
 SCCACHE_DIR="${SCCACHE_DIR:?}"
-
-HOMEBREW_DEVCONTAINER="${HOMEBREW_DEVCONTAINER:?}"
 
 cd -- "${SCRIPT_DIR}/../.."
 

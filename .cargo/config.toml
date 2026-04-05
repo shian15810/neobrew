@@ -1,6 +1,5 @@
 [build]
 rustc-wrapper = "sccache"
-rustflags = ["--cfg=tokio_unstable"]
 
 [env]
 CC = "sccache cc"
@@ -11,3 +10,6 @@ CMAKE_C_COMPILER_LAUNCHER = "sccache"
 CMAKE_CXX_COMPILER_LAUNCHER = "sccache"
 CMAKE_OBJC_COMPILER_LAUNCHER = "sccache"
 CMAKE_OBJCXX_COMPILER_LAUNCHER = "sccache"
+
+[target.'cfg(all())']
+rustflags = ["--cfg=tokio_unstable"]

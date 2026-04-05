@@ -11,14 +11,14 @@ brew analytics off
 
 brew update
 
-brew untap homebrew/core || true
-brew untap homebrew/cask || true
+brew untap "homebrew/core" || true
+brew untap "homebrew/cask" || true
 
 brew upgrade
 
 brew install "$@"
 
 brew autoremove
-brew cleanup --prune=all --scrub
+brew cleanup --prune="all" --scrub
 
 rm -rf -- "$(brew --cache)"

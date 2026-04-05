@@ -1,10 +1,24 @@
 #!/bin/sh
 
-set -eu
+set -euvx
 
-export LC_ALL=C
+export LC_ALL='C'
 
 if [ "$(uname)" = "Darwin" ]; then
+    echo "$PATH"
+    echo "$(ls -al ~/.rustup/bin || true)"
+    echo "$(ls -al ~/.cargo/bin || true)"
+    echo "$(which -a rustup || true)"
+    echo "$(which -a rustc || true)"
+    echo "$(which -a cargo || true)"
+    echo "$(~/.cargo/bin/rustup --version || true)"
+    echo "$(~/.cargo/bin/rustc --version || true)"
+    echo "$(~/.cargo/bin/cargo --version || true)"
+    echo "$(rustup --version || true)"
+    echo "$(rustc --version || true)"
+    echo "$(cargo --version || true)"
+    echo "$(ls -al /opt/homebrew/bin || true)"
+
     MDT="$(sw_vers -productVersion)"
     MDT="$(printf '%s' "$MDT" | cut -d'.' -f1-2)"
 
