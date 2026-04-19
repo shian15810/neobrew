@@ -5,6 +5,7 @@
 
     "workbench.editor.customLabels.patterns": {
         "**/mod.rs": "${dirname}/${filename}.${extname}",
+        "**/action.{yml,yaml}": "${dirname}/${filename}.${extname}",
     },
 
     "files.watcherExclude": {
@@ -40,6 +41,9 @@
         "editor.defaultFormatter": "tamasfe.even-better-toml",
     },
     "[markdown]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+    },
+    "[github-actions-workflow]": {
         "editor.defaultFormatter": "esbenp.prettier-vscode",
     },
     "[yaml]": {

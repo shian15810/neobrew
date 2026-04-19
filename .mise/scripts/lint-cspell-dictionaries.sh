@@ -2,15 +2,15 @@
 
 set -eu
 
-export LC_ALL=C
+export LC_ALL='C'
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd -P)"
 
 cd -- "${SCRIPT_DIR}/../.."
 
 ACTUAL="$(
-    find -L .cspell/. ! -name . -prune -name '*.txt' -type f -exec cat {} + \
-        || true
+    find -L ".cspell/." ! -name "." -prune -name "*.txt" -type 'f' -exec \
+        cat {} +
 )"
 ACTUAL="$(
     printf '%s' "$ACTUAL" \
@@ -20,7 +20,7 @@ ACTUAL="$(
     printf '%s' "$ACTUAL" \
         | sed -e's/#.*//' -e's/^[^[:graph:]]*//' -e's/[^[:graph:]]*$//'
 )"
-ACTUAL="$(printf '%s' "$ACTUAL" | LC_ALL='' sort -f)"
+ACTUAL="$(printf '%s' "$ACTUAL" | LC_ALL='en_US.UTF-8' sort -f)"
 
 EXPECTED="$(cspell dictionaries --no-show-location --enabled)"
 
@@ -35,14 +35,26 @@ EXPECTED="$(
     printf '%s' "$EXPECTED" | grep '^custom-[[:graph:]]\{1,\}\*$' || true
 )"
 EXPECTED="$(
-    printf '%s' "$EXPECTED" | sed -e's/\*$//' -e's/^/--disable-dictionary=/'
+    printf '%s' "$EXPECTED" \
+        | sed \
+            -e's/\*$//' \
+            -e's/"/"\\""/g' \
+            -e's/.*/"&"/' \
+            -e's/^/--disable-dictionary=/'
+)"
+EXPECTED="$(
+    {
+        printf '%s' "$EXPECTED"
+        printf '\n%s' "$@"
+    }
 )"
 
+echo "$EXPECTED"
+
 if [ -n "$EXPECTED" ]; then
-    EXPECTED="$(printf '%s' "$EXPECTED" | sed 's/[^[:alnum:]]/\\&/g')"
     EXPECTED="$(
         printf '%s' "$EXPECTED" \
-            | xargs -E '' cspell . \
+            | xargs -E '' cspell "." \
                 --no-must-find-files \
                 --no-progress \
                 --no-summary \
@@ -52,7 +64,7 @@ if [ -n "$EXPECTED" ]; then
     )"
 else
     EXPECTED="$(
-        cspell . \
+        cspell "." \
             --no-must-find-files \
             --no-progress \
             --no-summary \
@@ -62,8 +74,8 @@ else
     )"
 fi
 
-EXPECTED="$(printf '%s' "$EXPECTED" | LC_ALL='' sort -f)"
+EXPECTED="$(printf '%s' "$EXPECTED" | LC_ALL='en_US.UTF-8' sort -f)"
 
-printf '%s\n' "$ACTUAL" | diff -u - /dev/fd/3 3<<- EOF
+printf '%s\n' "$ACTUAL" | diff -u - "/dev/fd/3" 3<<- EOF
 	$EXPECTED
 EOF

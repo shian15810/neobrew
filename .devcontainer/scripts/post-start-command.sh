@@ -2,7 +2,7 @@
 
 set -euvx
 
-export LC_ALL=C
+export LC_ALL='C'
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd -P)"
 

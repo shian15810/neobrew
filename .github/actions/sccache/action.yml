@@ -1,0 +1,39 @@
+# $schema: https://www.schemastore.org/github-action.json
+
+name: Sccache Action
+
+description: Setup Sccache
+
+runs:
+  using: composite
+
+  steps:
+    - shell: /bin/sh -eu -- "{0}"
+      run: |
+        : "${GITHUB_ENV:?}"
+
+    - shell: /bin/sh -eu -- "{0}"
+      env:
+        LC_ALL: C
+      run: |
+        {
+          echo "LC_ALL=${LC_ALL}"
+        } >> "$GITHUB_ENV"
+
+    - name: Run sccache-cache
+      id: sccache-action
+      uses: Mozilla-Actions/sccache-action@v0.0.9
+
+    - shell: /bin/sh -eu -- "{0}"
+      env:
+        SCCACHE_GHA_ENABLED: true
+      run: |
+        {
+          echo "SCCACHE_GHA_ENABLED=${SCCACHE_GHA_ENABLED}"
+        } >> "$GITHUB_ENV"
+
+    - uses: ./.github/actions/summary
+      with:
+        step_id: ${{ github.action }}
+        inputs: ${{ toJSON(inputs) }}
+        steps: ${{ toJSON(steps) }}

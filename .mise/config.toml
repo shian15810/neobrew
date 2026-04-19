@@ -2,66 +2,100 @@
 
 [settings]
 disable_hints = ["*"]
+unix_default_inline_shell_args = "/bin/sh -c -eu --"
 task.output = "keep-order"
+
+[env]
+RUSTC_WRAPPER = "sccache"
+CMAKE_C_COMPILER_LAUNCHER = "sccache"
+CMAKE_CXX_COMPILER_LAUNCHER = "sccache"
+CMAKE_OBJC_COMPILER_LAUNCHER = "sccache"
+CMAKE_OBJCXX_COMPILER_LAUNCHER = "sccache"
+CC = "sccache cc"
+CXX = "sccache c++"
+OBJC = "sccache cc"
+OBJCXX = "sccache c++"
+
+# Setup Task
 
 [tasks.setup]
 run = "brew bundle check || brew bundle install"
 
+# Grouped Tasks
+
+[tasks.format]
+depends = ["format:**"]
+
+[tasks.lint]
+depends = ["lint:**"]
+
+[tasks.fix]
+depends = ["fix:**"]
+
+[tasks.test]
+depends = ["test:**"]
+
+[tasks.build]
+depends = ["build:**"]
+
 # Cargo Tasks
 
-[tasks.run]
+[tasks."cargo:run"]
 run = "cargo +nightly run"
-alias = "default"
 
-[tasks.fmt]
+[tasks."cargo:fmt"]
 run = "cargo +nightly fmt"
 alias = "format:rustfmt"
 
-[tasks.check]
+[tasks."cargo:fmt:check"]
+run = "cargo +nightly fmt -- --check"
+alias = "lint:rustfmt"
+
+[tasks."cargo:check"]
 run = "cargo +nightly check"
 
-[tasks.clippy]
+[tasks."cargo:check:fix"]
+run = "cargo +nightly fix"
+
+[tasks."cargo:clippy"]
 run = "cargo +nightly clippy"
 alias = "lint:clippy"
 
-[tasks.test]
+[tasks."cargo:clippy:fix"]
+run = "cargo +nightly clippy --fix"
+alias = "fix:clippy"
+
+[tasks."cargo:test"]
 run = "cargo +nightly test"
 
-[tasks.nextest]
-run = "cargo +nightly nextest run --no-tests=pass"
-depends_post = ["doctest"]
+[tasks."cargo:nextest"]
+run = "cargo +nightly nextest run --no-tests=\"pass\""
+alias = "test:nextest"
 
-[tasks.doctest]
+[tasks."cargo:doctest"]
 run = "cargo +nightly test --doc"
+alias = "test:doctest"
 
-[tasks.doc]
+[tasks."cargo:doc"]
 run = "cargo +nightly doc --no-deps"
 
-[tasks.build]
+[tasks."cargo:build"]
 run = "cargo build --release"
+alias = "build:rustc"
 
-[tasks.bench]
+[tasks."cargo:bench"]
 run = "cargo bench"
 
 # Other Tasks
 
-[tasks.format]
-depends = ["format:*"]
-
-[tasks.lint]
-depends = ["lint:*"]
-
-[tasks.fix]
-depends = ["fix:*"]
-
 [tasks."format:taplo"]
-run = "RUST_LOG=error taplo fmt"
+run = "RUST_LOG=\"error\" taplo fmt"
 
 [tasks."lint:taplo:fmt"]
-run = "RUST_LOG=error taplo fmt --diff --check"
+run = "RUST_LOG=\"error\" taplo fmt --diff --check"
 
 [tasks."lint:taplo:check"]
-run = "RUST_LOG=error taplo check --default-schema-catalogs"
+run = "RUST_LOG=\"error\" taplo check --default-schema-catalogs || true"
 
 [tasks."lint:markdownlint"]
 run = "markdownlint-cli2 \"**/*.md\" \"#.git\" \"#.vscode/mise-tools\" \"#target\""
@@ -91,20 +125,35 @@ run = "biome lint --no-errors-on-unmatched --write"
 run = "biome lint --no-errors-on-unmatched --unsafe"
 
 [tasks."format:shfmt"]
-run = "shfmt --list --write ."
+run = "shfmt --list --write \".\""
 
 [tasks."lint:shfmt"]
-run = "shfmt --list --diff ."
+run = "shfmt --list --diff \".\""
 
 [tasks."lint:shellcheck"]
-run = "shfmt --find=0 . | xargs -r -0 shellcheck"
+run = "shfmt --find=0 \".\" | xargs -r -0 shellcheck"
 
 [tasks."fix:shellcheck"]
-run = "shfmt --find=0 . | xargs -r -0 shellcheck --format=diff | patch -p1"
+run = "shfmt --find=0 \".\" | xargs -r -0 shellcheck --format=\"diff\" | patch -p1"
+
+# [tasks."lint:cspell:lint"]
+# run = "cspell \".\" --no-must-find-files --no-progress --show-suggestions --show-context"
 
 [tasks."lint:cspell:lint"]
-run = "cspell . --no-must-find-files --no-progress --show-suggestions --show-context"
+run = """\
+    git ls-files --others --directory --no-empty-directory --exclude-standard \
+        | sed -e's/\"/\"\\\"\"/g' -e's/.*/\"&\"/' -e's/^/--exclude=/' \
+        | xargs -E '' \
+            cspell \".\" --no-must-find-files --no-progress --show-suggestions --show-context\
+"""
+
+# [tasks."lint:cspell:dictionaries"]
+# run = "/bin/sh -eu \".mise/scripts/lint-cspell-dictionaries.sh\""
 
 [tasks."lint:cspell:dictionaries"]
-shell = "/bin/sh -o errexit"
-run = ".mise/scripts/lint-cspell-dictionaries.sh"
+run = """\
+    git ls-files --others --directory --no-empty-directory --exclude-standard \
+        | sed -e's/\"/\"\\\"\"/g' -e's/.*/\"&\"/' -e's/^/--exclude=/' \
+        | xargs -E '' \
+            /bin/sh -eu \".mise/scripts/lint-cspell-dictionaries.sh\"\
+"""

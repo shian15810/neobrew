@@ -1,6 +1,6 @@
 brew "mise"
 brew "sccache"
-brew "rustup" if ENV["HOMEBREW_DEVCONTAINER"].to_s.empty?
+brew "rustup"
 brew "rust-analyzer"
 brew "cargo-nextest"
 brew "taplo"

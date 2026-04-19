@@ -1,0 +1,100 @@
+# $schema: https://www.schemastore.org/github-action.json
+
+name: Rust Action
+
+description: Setup Rust
+
+inputs:
+  toolchain:
+    description: Rust toolchain
+    required: true
+  target:
+    description: Target tuple
+    required: true
+
+runs:
+  using: composite
+
+  steps:
+    - shell: /bin/sh -eu -- "{0}"
+      run: |
+        : "${GITHUB_ENV:?}"
+
+    - shell: /bin/sh -eu -- "{0}"
+      env:
+        LC_ALL: C
+      run: |
+        {
+          echo "LC_ALL=${LC_ALL}"
+        } >> "$GITHUB_ENV"
+
+    - shell: /bin/sh -eu -- "{0}"
+      env:
+        RUSTUP_TOOLCHAIN: ${{ inputs.toolchain }}
+
+        CARGO_INCREMENTAL: 0
+        CARGO_TERM_COLOR: always
+      run: |
+        {
+          echo "RUSTUP_TOOLCHAIN=${RUSTUP_TOOLCHAIN}"
+
+          echo "CARGO_INCREMENTAL=${CARGO_INCREMENTAL}"
+          echo "CARGO_TERM_COLOR=${CARGO_TERM_COLOR}"
+        } >> "$GITHUB_ENV"
+
+    - id: rust-toolchain
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ inputs.toolchain }}
+        targets: ${{ inputs.target }}
+        components: rustfmt,clippy
+
+    - id: rust-cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        prefix-key: ${{ github.action }}
+        key: ${{ steps.rust-toolchain.outputs.cachekey }}
+        add-job-id-key: false
+        cache-targets: false
+        cache-bin: false
+        save-if: |-
+          ${{
+            github.event_name == 'push'
+            &&
+            github.ref_name == github.event.repository.default_branch
+          }}
+
+    - shell: /bin/sh -eu -- "{0}"
+      env:
+        RUST_BACKTRACE: 1
+
+        RUSTDOCFLAGS: --deny=warnings
+        RUSTFLAGS: |-
+          ${{
+            case(
+              contains(fromJSON('["stable"]'), inputs.toolchain),
+              '--deny=warnings --force-warn=linker-messages',
+
+              contains(fromJSON('["beta", "nightly"]'), inputs.toolchain),
+              '--deny=warnings --force-warn=linker-info',
+
+              '--deny=warnings'
+            )
+          }}
+
+        CARGO_BUILD_TARGET: ${{ inputs.target }}
+      run: |
+        {
+          echo "RUST_BACKTRACE=${RUST_BACKTRACE}"
+
+          echo "RUSTDOCFLAGS=${RUSTDOCFLAGS}"
+          echo "RUSTFLAGS=${RUSTFLAGS}"
+
+          echo "CARGO_BUILD_TARGET=${CARGO_BUILD_TARGET}"
+        } >> "$GITHUB_ENV"
+
+    - uses: ./.github/actions/summary
+      with:
+        step_id: ${{ github.action }}
+        inputs: ${{ toJSON(inputs) }}
+        steps: ${{ toJSON(steps) }}

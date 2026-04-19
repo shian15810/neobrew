@@ -1,0 +1,53 @@
+# $schema: https://www.schemastore.org/github-action.json
+
+name: Homebrew Action
+
+description: Setup Homebrew
+
+runs:
+  using: composite
+
+  steps:
+    - shell: /bin/sh -eu -- "{0}"
+      run: |
+        : "${GITHUB_ENV:?}"
+
+    - shell: /bin/sh -eu -- "{0}"
+      env:
+        LC_ALL: C
+      run: |
+        {
+          echo "LC_ALL=${LC_ALL}"
+        } >> "$GITHUB_ENV"
+
+    - shell: /bin/sh -eu -- "{0}"
+      env:
+        HOMEBREW_NO_ANALYTICS: 1
+        HOMEBREW_NO_ENV_HINTS: 1
+      run: |
+        {
+          echo "HOMEBREW_NO_ANALYTICS=${HOMEBREW_NO_ANALYTICS}"
+          echo "HOMEBREW_NO_ENV_HINTS=${HOMEBREW_NO_ENV_HINTS}"
+        } >> "$GITHUB_ENV"
+
+    - name: Set up Homebrew
+      id: setup-homebrew
+      uses: Homebrew/actions/setup-homebrew@main
+
+    - shell: /bin/sh -eu -- "{0}"
+      run: brew analytics off
+
+    - name: Cache Homebrew prefix from Brewfile
+      id: cache-homebrew-prefix
+      uses: Homebrew/actions/cache-homebrew-prefix@main
+      env:
+        HOMEBREW_BUNDLE_BREW_SKIP: mise sccache rustup rust-analyzer
+      with:
+        brewfile: true
+        uninstall: true
+
+    - uses: ./.github/actions/summary
+      with:
+        step_id: ${{ github.action }}
+        inputs: ${{ toJSON(inputs) }}
+        steps: ${{ toJSON(steps) }}

@@ -2,7 +2,7 @@
 
 set -eu
 
-export LC_ALL=C
+export LC_ALL='C'
 
 if [ "$(uname)" = "Darwin" ]; then
     MDT="$(sw_vers -productVersion)"

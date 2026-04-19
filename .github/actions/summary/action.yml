@@ -1,0 +1,186 @@
+# $schema: https://www.schemastore.org/github-action.json
+
+name: Summary Action
+
+description: Summarize step
+
+inputs:
+  step_id:
+    description: Step ID
+    required: false
+  inputs:
+    description: Inputs context
+    required: false
+  steps:
+    description: Steps context
+    required: false
+
+runs:
+  using: composite
+
+  steps:
+    - shell: /bin/sh -eu -- "{0}"
+      run: |
+        : "${GITHUB_ENV:?}"
+        : "${GITHUB_STEP_SUMMARY:?}"
+
+    - shell: /bin/sh -eu -- "{0}"
+      env:
+        LC_ALL: C
+      run: |
+        {
+          echo "LC_ALL=${LC_ALL}"
+        } >> "$GITHUB_ENV"
+
+    - shell: /bin/sh -eu -- "{0}"
+      env:
+        INPUT_STEP_ID: ${{ inputs.step_id }}
+        INPUT_INPUTS: ${{ inputs.inputs }}
+        INPUT_STEPS: ${{ inputs.steps }}
+      run: |
+        INPUT_OUTPUTS="$(
+          printf '%s' "$INPUT_STEPS" \
+            | jq --compact-output --arg step_id "$INPUT_STEP_ID" '.
+              | select(. == "") // (.
+                | (select($step_id != "") | .[$step_id].outputs) // (.
+                  | with_entries(.key as $step_id
+                    | .value = (.value.outputs
+                      | with_entries(.key as $output_id
+                        | .key = $step_id + "." + $output_id
+                      )
+                    )
+                  ) | add
+                )
+              )
+            '
+        )"
+
+        GITHUB_STEP_SUMMARY_INPUTS_TABLE_DATA="$(
+          printf '%s' "$INPUT_INPUTS" \
+            | jq --raw-output '.
+              | select(. == "") // (.
+                | to_entries[]
+                | map_values((select(length > 0) | " `" + . + "` ") // " ")
+                | "|" + .key + "|" + .value + "|"
+              )
+            '
+        )"
+
+        GITHUB_STEP_SUMMARY_OUTPUTS_TABLE_DATA="$(
+          printf '%s' "$INPUT_OUTPUTS" \
+            | jq --raw-output '.
+              | select(. == "") // (.
+                | to_entries[]
+                | map_values((select(length > 0) | " `" + . + "` ") // " ")
+                | "|" + .key + "|" + .value + "|"
+              )
+            '
+        )"
+
+        GITHUB_STEP_SUMMARY_INPUTS_DETAILS_JSON="$(
+          printf '%s' "$INPUT_INPUTS" \
+            | jq '.
+              | select(. == "") // (.
+                | with_entries(.)
+              )
+            '
+        )"
+
+        GITHUB_STEP_SUMMARY_OUTPUTS_DETAILS_JSON="$(
+          printf '%s' "$INPUT_OUTPUTS" \
+            | jq '.
+              | select(. == "") // (.
+                | with_entries(.)
+              )
+            '
+        )"
+
+        GITHUB_STEP_SUMMARY_HEADING="$(
+          if [ -n "$INPUT_STEP_ID" ]; then
+            echo "## \`${INPUT_STEP_ID}\`"
+          fi
+        )"
+
+        GITHUB_STEP_SUMMARY_INPUTS_TABLE="$(
+          if [ -n "$GITHUB_STEP_SUMMARY_INPUTS_TABLE_DATA" ]; then
+            echo "| Input | Value |"
+            echo "| --- | --- |"
+            echo "$GITHUB_STEP_SUMMARY_INPUTS_TABLE_DATA"
+          fi
+        )"
+
+        GITHUB_STEP_SUMMARY_OUTPUTS_TABLE="$(
+          if [ -n "$GITHUB_STEP_SUMMARY_OUTPUTS_TABLE_DATA" ]; then
+            echo "| Output | Value |"
+            echo "| --- | --- |"
+            echo "$GITHUB_STEP_SUMMARY_OUTPUTS_TABLE_DATA"
+          fi
+        )"
+
+        GITHUB_STEP_SUMMARY_INPUTS_DETAILS="$(
+          if [ -n "$GITHUB_STEP_SUMMARY_INPUTS_DETAILS_JSON" ]; then
+            echo "<details>"
+            echo ""
+            echo "<summary>Full JSON Inputs</summary>"
+            echo ""
+            echo "\`\`\`json"
+            echo "$GITHUB_STEP_SUMMARY_INPUTS_DETAILS_JSON"
+            echo "\`\`\`"
+            echo ""
+            echo "</details>"
+          fi
+        )"
+
+        GITHUB_STEP_SUMMARY_OUTPUTS_DETAILS="$(
+          if [ -n "$GITHUB_STEP_SUMMARY_OUTPUTS_DETAILS_JSON" ]; then
+            echo "<details>"
+            echo ""
+            echo "<summary>Full JSON Outputs</summary>"
+            echo ""
+            echo "\`\`\`json"
+            echo "$GITHUB_STEP_SUMMARY_OUTPUTS_DETAILS_JSON"
+            echo "\`\`\`"
+            echo ""
+            echo "</details>"
+          fi
+        )"
+
+        {
+          GITHUB_STEP_SUMMARY_HAS_PREVIOUS_CONTENT=""
+
+          if [ -n "$GITHUB_STEP_SUMMARY_HEADING" ]; then
+            echo "$GITHUB_STEP_SUMMARY_HEADING"
+
+            GITHUB_STEP_SUMMARY_HAS_PREVIOUS_CONTENT=true
+          fi
+
+          if [ -n "$GITHUB_STEP_SUMMARY_INPUTS_TABLE" ]; then
+            [ -n "$GITHUB_STEP_SUMMARY_HAS_PREVIOUS_CONTENT" ] && echo ""
+
+            echo "$GITHUB_STEP_SUMMARY_INPUTS_TABLE"
+
+            GITHUB_STEP_SUMMARY_HAS_PREVIOUS_CONTENT=true
+          fi
+
+          if [ -n "$GITHUB_STEP_SUMMARY_OUTPUTS_TABLE" ]; then
+            [ -n "$GITHUB_STEP_SUMMARY_HAS_PREVIOUS_CONTENT" ] && echo ""
+
+            echo "$GITHUB_STEP_SUMMARY_OUTPUTS_TABLE"
+
+            GITHUB_STEP_SUMMARY_HAS_PREVIOUS_CONTENT=true
+          fi
+
+          if [ -n "$GITHUB_STEP_SUMMARY_INPUTS_DETAILS" ]; then
+            [ -n "$GITHUB_STEP_SUMMARY_HAS_PREVIOUS_CONTENT" ] && echo ""
+
+            echo "$GITHUB_STEP_SUMMARY_INPUTS_DETAILS"
+
+            GITHUB_STEP_SUMMARY_HAS_PREVIOUS_CONTENT=true
+          fi
+
+          if [ -n "$GITHUB_STEP_SUMMARY_OUTPUTS_DETAILS" ]; then
+            [ -n "$GITHUB_STEP_SUMMARY_HAS_PREVIOUS_CONTENT" ] && echo ""
+
+            echo "$GITHUB_STEP_SUMMARY_OUTPUTS_DETAILS"
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"

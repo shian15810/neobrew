@@ -1,0 +1,46 @@
+# $schema: https://www.schemastore.org/github-action.json
+
+name: Mise Action
+
+description: Setup Mise
+
+runs:
+  using: composite
+
+  steps:
+    - shell: /bin/sh -eu -- "{0}"
+      run: |
+        : "${GITHUB_ENV:?}"
+
+    - shell: /bin/sh -eu -- "{0}"
+      env:
+        LC_ALL: C
+      run: |
+        {
+          echo "LC_ALL=${LC_ALL}"
+        } >> "$GITHUB_ENV"
+
+    - shell: /bin/sh -eu -- "{0}"
+      env:
+        MISE_ENV: production
+      run: |
+        {
+          echo "MISE_ENV=${MISE_ENV}"
+        } >> "$GITHUB_ENV"
+
+    - id: mise-action
+      uses: jdx/mise-action@v4
+      with:
+        cache_key_prefix: ${{ github.action }}
+        cache_save: |-
+          ${{
+            github.event_name == 'push'
+            &&
+            github.ref_name == github.event.repository.default_branch
+          }}
+
+    - uses: ./.github/actions/summary
+      with:
+        step_id: ${{ github.action }}
+        inputs: ${{ toJSON(inputs) }}
+        steps: ${{ toJSON(steps) }}

@@ -2,10 +2,10 @@
 
 set -eu
 
-export LC_ALL=C
+export LC_ALL='C'
 
 if [ "$(uname)" = "Darwin" ]; then
-    MDT="$(rustc --print=deployment-target)"
+    MDT="$(rustc --print="deployment-target")"
     MDT="$(printf '%s' "$MDT" | cut -d'=' -f2)"
 
     export MACOSX_DEPLOYMENT_TARGET="$MDT"

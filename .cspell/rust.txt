@@ -1,6 +1,7 @@
 # Custom Dictionary Words
 ascii
 bufread
+cachekey
 clicolor
 doctest
 fanout
@@ -13,7 +14,9 @@ overcaptures
 Packageable
 recv
 rescope
+RUSTDOCFLAGS
 rustflags
+RUSTFLAGS
 supertrait
 sysexits
 upcastable
