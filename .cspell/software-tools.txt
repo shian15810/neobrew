@@ -1,5 +1,4 @@
 # Custom Dictionary Words
-catalina
 darwin
 devcontainers
 linux
@@ -10,9 +9,8 @@ Neobrew
 NEOBREW
 Neobrew's
 sccache
+Sccache
 SCCACHE
-sonoma
-tahoe
 taplo
+Taplo
 trixie
-ventura

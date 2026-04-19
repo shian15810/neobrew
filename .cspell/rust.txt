@@ -13,7 +13,9 @@ overcaptures
 Packageable
 recv
 rescope
+RUSTDOCFLAGS
 rustflags
+RUSTFLAGS
 supertrait
 sysexits
 upcastable

@@ -13,6 +13,7 @@
     debug_assertions,
     warn(
         fuzzy_provenance_casts,
+        linker_info,
         lossy_provenance_casts,
         multiple_supertrait_upcastable,
         must_not_suspend,

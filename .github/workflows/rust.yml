@@ -1,22 +1,47 @@
-name: Rust
+# $schema: https://www.schemastore.org/github-workflow.json
+
+name: Rust Workflow
 
 on:
   push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
+    branches: [main]
 
-env:
-  CARGO_TERM_COLOR: always
+  pull_request:
+    branches: [main]
+
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: /bin/sh -eu -- "{0}"
 
 jobs:
+  lint:
+    uses: ./.github/workflows/reusable.yml
+    with:
+      task: lint
+
+  fix:
+    uses: ./.github/workflows/reusable.yml
+    with:
+      task: fix
+
+  test:
+    uses: ./.github/workflows/reusable.yml
+    with:
+      task: test
+
+  doc:
+    uses: ./.github/workflows/reusable.yml
+    with:
+      task: doc
+
   build:
+    uses: ./.github/workflows/reusable.yml
+    with:
+      task: build
 
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v4
-    - name: Build
-      run: cargo build --verbose
-    - name: Run tests
-      run: cargo test --verbose
+  bench:
+    uses: ./.github/workflows/reusable.yml
+    with:
+      task: bench

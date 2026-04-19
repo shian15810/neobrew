@@ -1,0 +1,78 @@
+# $schema: https://www.schemastore.org/github-workflow.json
+
+name: Reusable Workflow
+
+on:
+  workflow_call:
+    inputs:
+      task:
+        required: true
+        type: string
+
+  workflow_dispatch:
+    inputs:
+      task:
+        required: true
+        default: build
+        type: choice
+        options:
+          - lint
+          - fix
+          - test
+          - doc
+          - build
+          - bench
+
+defaults:
+  run:
+    shell: /bin/sh -eu -- "{0}"
+
+jobs:
+  task:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-26
+            target: aarch64-apple-darwin
+          - os: macos-26-intel
+            target: x86_64-apple-darwin
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - id: checkout
+        uses: actions/checkout@v6
+
+      - uses: ./.github/actions/summary
+        with:
+          inputs: ${{ toJSON(inputs) }}
+
+      - uses: ./.github/actions/summary
+        with:
+          step_id: checkout
+          inputs: ${{ toJSON(fromJSON('{}')) }}
+          steps: ${{ toJSON(steps) }}
+
+      - id: homebrew
+        uses: ./.github/actions/homebrew
+
+      - id: rust
+        uses: ./.github/actions/rust
+        with:
+          target: ${{ matrix.target }}
+
+      - id: sccache
+        uses: ./.github/actions/sccache
+
+      - id: mise
+        uses: ./.github/actions/mise
+
+      - name: Run mise run "${{ inputs.task }}"
+        run: |
+          mise --env="production" --yes \
+            run --continue-on-error "${{ inputs.task }}"

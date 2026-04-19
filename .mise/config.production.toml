@@ -1,4 +1,188 @@
 #:schema https://mise.jdx.dev/schema/mise.json
 
+# Dev Tools
+
+[tools]
+rust = [
+    {
+        version = "stable",
+        components = "rustfmt,clippy",
+        profile = "minimal",
+        targets = "{{ env.CARGO_BUILD_TARGET }}",
+    },
+    {
+        version = "nightly",
+        components = "rustfmt,clippy",
+        profile = "minimal",
+        targets = "{{ env.CARGO_BUILD_TARGET }}",
+    },
+]
+
+# Environment Variables
+
 [env]
-_.source = ".mise/config.production.env.sh"
+_.source = { path = ".mise/config.production.env.sh", tools = true }
+RUSTDOCFLAGS = "--deny=warnings"
+RUSTFLAGS = { required = true, tools = true }
+CARGO_INCREMENTAL = 0
+CARGO_BUILD_TARGET = "{{ get_env(name='CARGO_BUILD_TARGET', default='host-tuple') }}"
+CARGO_TERM_COLOR = "always"
+
+# Cargo Tasks
+
+[tasks."cargo:run"]
+tools = { rust = "nightly" }
+run = "cargo +nightly run --all-features --color=\"always\" --locked --keep-going"
+alias = "default"
+
+[tasks."cargo:fmt:check"]
+tools = { rust = "nightly" }
+run = "cargo +nightly fmt -- --check --color=\"always\""
+alias = "lint:rustfmt"
+
+[tasks."cargo:check"]
+tools = { rust = "nightly" }
+run = "cargo +nightly check --all-targets --all-features --color=\"always\" --locked --keep-going"
+
+[tasks."cargo:check:fix"]
+tools = { rust = "nightly" }
+run = """\
+    cargo +nightly fix --broken-code --edition-idioms --allow-dirty --all-targets --all-features --color=\"always\" --locked --keep-going \
+        && git diff --exit-code --color=\"always\"\
+"""
+
+[tasks."cargo:clippy"]
+tools = { rust = "nightly" }
+run = "cargo +nightly clippy --all-targets --all-features --color=\"always\" --locked --keep-going"
+alias = "lint:clippy"
+
+[tasks."cargo:clippy:fix"]
+tools = { rust = "nightly" }
+run = """\
+    cargo +nightly clippy --fix --broken-code --edition-idioms --allow-dirty --all-targets --all-features --color=\"always\" --locked --keep-going \
+        && git diff --exit-code --color=\"always\"\
+"""
+alias = "fix:clippy"
+
+[tasks."cargo:nextest"]
+tools = { rust = "nightly" }
+run = "cargo +nightly nextest run --no-tests=\"pass\" --all-features --color=\"always\" --locked --no-fail-fast"
+alias = "test:nextest"
+
+[tasks."cargo:test"]
+tools = { rust = "nightly" }
+run = "cargo +nightly test --all-features --color=\"always\" --locked --no-fail-fast"
+
+[tasks."cargo:doctest"]
+tools = { rust = "nightly" }
+run = "cargo +nightly test --doc --all-features --color=\"always\" --locked --no-fail-fast"
+alias = "test:doctest"
+
+[tasks."cargo:doc"]
+tools = { rust = "nightly" }
+run = "cargo +nightly doc --no-deps --document-private-items --all-features --color=\"always\" --locked --keep-going"
+alias = "doc:rustdoc"
+
+[tasks."cargo:build"]
+tools = { rust = "nightly" }
+run = "cargo +nightly build --all-targets --all-features --color=\"always\" --locked --keep-going"
+alias = "build:rustc:debug"
+
+[tasks."cargo:build:release"]
+tools = { rust = "stable" }
+run = "cargo +stable build --release --all-targets --all-features --color=\"always\" --locked --keep-going"
+alias = "build:rustc:release"
+
+[tasks."cargo:bench"]
+tools = { rust = "stable" }
+run = "cargo +stable bench --all-features --color=\"always\" --locked --no-fail-fast"
+alias = "bench:test"
+
+# Taplo Tasks
+
+[tasks."taplo:fmt:check"]
+env = { RUST_LOG = "error" }
+run = "taplo fmt --diff --check --colors=\"always\" || true"
+alias = "lint:taplo:fmt"
+
+[tasks."taplo:check"]
+env = { RUST_LOG = "error" }
+run = "taplo check --default-schema-catalogs --colors=\"always\" || true"
+alias = "lint:taplo:check"
+
+# markdownlint Tasks
+
+[tasks.markdownlint]
+env = { FORCE_COLOR = 1, FORCE_HYPERLINK = 1 }
+run = "markdownlint-cli2 \"**/*.md\" \"#.git\" \"#.vscode/mise-tools\" \"#target\""
+alias = "lint:markdownlint"
+
+# Prettier Tasks
+
+[tasks.prettier]
+env = { FORCE_COLOR = 1 }
+run = "prettier \"**/*.{md,yaml,yml}\" --no-error-on-unmatched-pattern --check --color"
+alias = "lint:prettier"
+
+# Biome Tasks
+
+[tasks."biome:format"]
+run = "biome format --no-errors-on-unmatched --colors=\"force\""
+alias = "lint:biome:format"
+
+[tasks."biome:lint"]
+run = "biome lint --no-errors-on-unmatched --colors=\"force\""
+alias = "lint:biome:lint"
+
+# shfmt Tasks
+
+[tasks.shfmt]
+env = { FORCE_COLOR = 1 }
+run = "shfmt --list --diff \".\""
+alias = "lint:shfmt"
+
+# ShellCheck Tasks
+
+[tasks.shellcheck]
+run = "shfmt --find=0 \".\" | xargs -r -0 shellcheck --color=\"always\""
+alias = "lint:shellcheck"
+
+# CSpell Tasks
+
+[tasks.cspell]
+run = """\
+    git ls-files --others --directory --no-empty-directory --exclude-standard \
+        | sed -e's/\"/\"\\\"\"/g' -e's/.*/\"&\"/' -e's/^/--exclude=/' \
+        | xargs -E '' \
+            cspell \".\" --no-must-find-files --no-progress --show-suggestions --show-context --color\
+"""
+alias = "lint:cspell:lint"
+
+[tasks."cspell:dictionaries"]
+run = """\
+    git ls-files --others --directory --no-empty-directory --exclude-standard \
+        | sed -e's/\"/\"\\\"\"/g' -e's/.*/\"&\"/' -e's/^/--exclude=/' \
+        | xargs -E '' \
+            /bin/sh -eu \".mise/scripts/tasks-cspell-dictionaries.sh\" --color\
+"""
+alias = "lint:cspell:dictionaries"
+
+# Grouped Tasks
+
+[tasks.lint]
+depends = ["lint:**"]
+
+[tasks.fix]
+depends = ["fix:**"]
+
+[tasks.test]
+depends = ["test:**"]
+
+[tasks.doc]
+depends = ["doc:**"]
+
+[tasks.build]
+depends = ["build:**"]
+
+[tasks.bench]
+depends = ["bench:**"]

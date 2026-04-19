@@ -1,13 +1,8 @@
 [build]
-rustc-wrapper = "sccache"
-rustflags = ["--cfg=tokio_unstable"]
+target = "host-tuple"
 
 [env]
-CC = "sccache cc"
-CXX = "sccache c++"
-OBJC = "sccache cc"
-OBJCXX = "sccache c++"
-CMAKE_C_COMPILER_LAUNCHER = "sccache"
-CMAKE_CXX_COMPILER_LAUNCHER = "sccache"
-CMAKE_OBJC_COMPILER_LAUNCHER = "sccache"
-CMAKE_OBJCXX_COMPILER_LAUNCHER = "sccache"
+RUST_BACKTRACE = "1"
+
+[target.'cfg(all())']
+rustflags = ["--cfg=tokio_unstable"]

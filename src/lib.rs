@@ -1,6 +1,8 @@
+#![cfg_attr(all(debug_assertions, doc), feature(rustdoc_missing_doc_code_examples))]
 #![cfg_attr(
     debug_assertions,
     feature(
+        doc_cfg,
         multiple_supertrait_upcastable,
         must_not_suspend,
         non_exhaustive_omitted_patterns_lint,
@@ -20,8 +22,10 @@
         resolving_to_items_shadowing_supertrait_items,
         shadowing_supertrait_items,
         unqualified_local_imports,
+        rustdoc::missing_doc_code_examples,
     )
 )]
+#![allow(rustdoc::missing_crate_level_docs)]
 
 use clap::{ArgMatches, FromArgMatches};
 use proc_exit::prelude::*;
@@ -37,7 +41,7 @@ mod registry;
 use console_subscriber as _;
 use tracing_subscriber as _;
 
-#[allow(clippy::missing_errors_doc)]
+#[allow(rustdoc::missing_doc_code_examples, clippy::missing_errors_doc)]
 pub async fn run(matches: &ArgMatches, context: Context) -> proc_exit::ExitResult {
     let cli = Cli::from_arg_matches(matches);
     let cli = cli.with_code(proc_exit::sysexits::USAGE_ERR)?;

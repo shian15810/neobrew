@@ -1,6 +1,8 @@
+#![cfg_attr(all(debug_assertions, doc), feature(rustdoc_missing_doc_code_examples))]
 #![cfg_attr(
     debug_assertions,
     feature(
+        doc_cfg,
         multiple_supertrait_upcastable,
         must_not_suspend,
         non_exhaustive_omitted_patterns_lint,
@@ -13,6 +15,7 @@
     debug_assertions,
     warn(
         fuzzy_provenance_casts,
+        linker_info,
         lossy_provenance_casts,
         multiple_supertrait_upcastable,
         must_not_suspend,
@@ -20,9 +23,10 @@
         resolving_to_items_shadowing_supertrait_items,
         shadowing_supertrait_items,
         unqualified_local_imports,
+        rustdoc::missing_doc_code_examples,
     )
 )]
-#![allow(unused_crate_dependencies)]
+#![allow(unused_crate_dependencies, rustdoc::missing_crate_level_docs)]
 
 use anyhow::Result;
 use clap::CommandFactory;
@@ -71,7 +75,7 @@ async fn main() -> proc_exit::ExitResult {
 fn init_tracing(verbosity_filter: VerbosityFilter) {
     let registry = tracing_subscriber::registry();
 
-    #[cfg(debug_assertions)]
+    #[cfg(all(debug_assertions, not(test)))]
     let registry = {
         let console_layer = console_subscriber::spawn();
 

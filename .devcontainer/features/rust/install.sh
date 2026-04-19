@@ -2,7 +2,7 @@
 
 set -euvx
 
-export LC_ALL=C
+export LC_ALL="C"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd -P)"
 
@@ -58,8 +58,9 @@ else
             TOOLCHAIN="stable"
         elif [ "$TOOLCHAIN" = "current" ]; then
             CURRENT_VERSION="$(
-                git ls-remote --tags --refs --sort=-version:refname \
-                    https://github.com/rust-lang/rust.git '[0-9]*.[0-9]*.[0-9]*'
+                git ls-remote --tags --refs --sort="-version:refname" \
+                    "https://github.com/rust-lang/rust.git" \
+                    "[0-9]*.[0-9]*.[0-9]*"
             )"
             CURRENT_VERSION="$(
                 printf '%s' "$CURRENT_VERSION" \
@@ -105,4 +106,4 @@ sudo --user="$_REMOTE_USER" \
     CARGO_HOME="$CARGO_HOME" \
     RUST_VERSION="$RUST_VERSION" \
     --login exec \
-    /bin/sh -- "${SCRIPT_DIR}/install-feature.sh" "$@"
+    /bin/sh -euvx -- "${SCRIPT_DIR}/install-feature.sh" "$@"

@@ -1,0 +1,28 @@
+# $schema: https://www.schemastore.org/github-action.json
+
+name: Summary Action
+
+description: Summarize step
+
+inputs:
+  step_id:
+    description: Step ID
+    required: false
+  inputs:
+    description: Inputs context
+    required: false
+  steps:
+    description: Steps context
+    required: false
+
+runs:
+  using: composite
+
+  steps:
+    - shell: /bin/sh -eu -- "{0}"
+      working-directory: ${{ github.action_path }}
+      env:
+        INPUT_STEP_ID: ${{ inputs.step_id }}
+        INPUT_INPUTS: ${{ inputs.inputs }}
+        INPUT_STEPS: ${{ inputs.steps }}
+      run: /bin/sh -eu "action.sh"

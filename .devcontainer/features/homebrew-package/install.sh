@@ -2,7 +2,7 @@
 
 set -euvx
 
-export LC_ALL=C
+export LC_ALL="C"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd -P)"
 
@@ -72,4 +72,4 @@ sudo --user="$_REMOTE_USER" \
     HOMEBREW_NO_ANALYTICS="$HOMEBREW_NO_ANALYTICS" \
     HOMEBREW_NO_ENV_HINTS="$HOMEBREW_NO_ENV_HINTS" \
     --login exec \
-    /bin/sh -- "${SCRIPT_DIR}/install-feature.sh" "$@"
+    /bin/sh -euvx -- "${SCRIPT_DIR}/install-feature.sh" "$@"

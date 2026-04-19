@@ -1,0 +1,78 @@
+# $schema: https://www.schemastore.org/github-action.json
+
+name: Rust Action
+
+description: Setup Rust
+
+inputs:
+  target:
+    description: Target tuple
+    required: true
+
+runs:
+  using: composite
+
+  steps:
+    - shell: /bin/sh -eu -- "{0}"
+      env:
+        RUSTUP_HOME: "{0}/.rustup"
+
+        CARGO_INCREMENTAL: 0
+        CARGO_TERM_COLOR: always
+      run: |
+        {
+          echo "RUSTUP_HOME=${{ format(env.RUSTUP_HOME, '${HOME}') }}"
+
+          echo "CARGO_INCREMENTAL=${CARGO_INCREMENTAL}"
+          echo "CARGO_TERM_COLOR=${CARGO_TERM_COLOR}"
+        } >> "$GITHUB_ENV"
+
+    - id: rust-toolchain-stable
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: stable
+        targets: ${{ inputs.target }}
+        components: rustfmt,clippy
+
+    - id: rust-toolchain-nightly
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: nightly
+        targets: ${{ inputs.target }}
+        components: rustfmt,clippy
+
+    - shell: /bin/sh -eu -- "{0}"
+      working-directory: ${{ github.action_path }}
+      run: /bin/sh -eu "action.sh"
+
+    - id: rust-cache
+      uses: Swatinem/rust-cache@v2
+      with:
+        prefix-key: ${{ github.action }}
+        add-job-id-key: false
+        cache-targets: false
+        cache-bin: false
+        save-if: |-
+          ${{
+            github.event_name == 'push'
+            &&
+            github.ref_name == github.event.repository.default_branch
+          }}
+
+    - shell: /bin/sh -eu -- "{0}"
+      env:
+        RUST_BACKTRACE: 1
+
+        CARGO_BUILD_TARGET: ${{ inputs.target }}
+      run: |
+        {
+          echo "RUST_BACKTRACE=${RUST_BACKTRACE}"
+
+          echo "CARGO_BUILD_TARGET=${CARGO_BUILD_TARGET}"
+        } >> "$GITHUB_ENV"
+
+    - uses: ./.github/actions/summary
+      with:
+        step_id: ${{ github.action }}
+        inputs: ${{ toJSON(inputs) }}
+        steps: ${{ toJSON(steps) }}

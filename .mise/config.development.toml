@@ -1,4 +1,210 @@
 #:schema https://mise.jdx.dev/schema/mise.json
 
+# Dev Tools
+
+[tools]
+rust = [
+    {
+        version = "stable",
+        components = "rustfmt,clippy,rust-src",
+        profile = "minimal",
+        targets = "aarch64-apple-darwin,aarch64-unknown-linux-gnu,x86_64-apple-darwin,x86_64-unknown-linux-gnu",
+    },
+    {
+        version = "nightly",
+        components = "rustfmt,clippy,rust-src",
+        profile = "minimal",
+        targets = "aarch64-apple-darwin,aarch64-unknown-linux-gnu,x86_64-apple-darwin,x86_64-unknown-linux-gnu",
+    },
+]
+
+# Environment Variables
+
 [env]
-_.source = ".mise/config.development.env.sh"
+_.source = { path = ".mise/config.development.env.sh", tools = true }
+RUSTDOCFLAGS = ""
+RUSTFLAGS = "--cfg=tokio_unstable"
+CARGO_BUILD_TARGET = "host-tuple"
+
+# Cargo Tasks
+
+[tasks."cargo:run"]
+tools = { rust = "nightly" }
+run = "cargo +nightly run --all-features"
+alias = "default"
+
+[tasks."cargo:fmt"]
+tools = { rust = "nightly" }
+run = "cargo +nightly fmt -- --files-with-diff"
+alias = "format:rustfmt"
+
+[tasks."cargo:fmt:check"]
+tools = { rust = "nightly" }
+run = "cargo +nightly fmt -- --check"
+alias = "lint:rustfmt"
+
+[tasks."cargo:check"]
+tools = { rust = "nightly" }
+run = "cargo +nightly check --all-targets --all-features"
+
+[tasks."cargo:check:fix"]
+tools = { rust = "nightly" }
+run = "cargo +nightly fix --broken-code --edition-idioms --allow-dirty --all-targets --all-features"
+
+[tasks."cargo:clippy"]
+tools = { rust = "nightly" }
+run = "cargo +nightly clippy --all-targets --all-features"
+alias = "lint:clippy"
+
+[tasks."cargo:clippy:fix"]
+tools = { rust = "nightly" }
+run = "cargo +nightly clippy --fix --broken-code --edition-idioms --allow-dirty --all-targets --all-features"
+alias = "fix:clippy"
+
+[tasks."cargo:nextest"]
+tools = { rust = "nightly" }
+run = "cargo +nightly nextest run --no-tests=\"pass\" --all-features"
+alias = "test:nextest"
+
+[tasks."cargo:test"]
+tools = { rust = "nightly" }
+run = "cargo +nightly test --all-features"
+
+[tasks."cargo:doctest"]
+tools = { rust = "nightly" }
+run = "cargo +nightly test --doc --all-features"
+alias = "test:doctest"
+
+[tasks."cargo:doc"]
+tools = { rust = "nightly" }
+run = "cargo +nightly doc --no-deps --document-private-items --all-features"
+alias = "doc:rustdoc"
+
+[tasks."cargo:build"]
+tools = { rust = "nightly" }
+run = "cargo +nightly build --all-targets --all-features"
+alias = "build:rustc:debug"
+
+[tasks."cargo:build:release"]
+tools = { rust = "stable" }
+run = "cargo +stable build --release --all-targets --all-features"
+alias = "build:rustc:release"
+
+[tasks."cargo:bench"]
+tools = { rust = "stable" }
+run = "cargo +stable bench --all-features"
+alias = "bench:test"
+
+# Taplo Tasks
+
+[tasks."taplo:fmt"]
+env = { RUST_LOG = "error" }
+run = "taplo fmt"
+alias = "format:taplo"
+
+[tasks."taplo:fmt:check"]
+env = { RUST_LOG = "error" }
+run = "taplo fmt --diff --check"
+alias = "lint:taplo:fmt"
+
+[tasks."taplo:check"]
+env = { RUST_LOG = "error" }
+run = "taplo check --default-schema-catalogs"
+alias = "lint:taplo:check"
+
+# markdownlint Tasks
+
+[tasks.markdownlint]
+run = "markdownlint-cli2 \"**/*.md\" \"#.git\" \"#.vscode/mise-tools\" \"#target\""
+alias = "lint:markdownlint"
+
+[tasks."markdownlint:fix"]
+run = "markdownlint-cli2 \"**/*.md\" \"#.git\" \"#.vscode/mise-tools\" \"#target\" --fix"
+alias = "fix:markdownlint"
+
+# Prettier Tasks
+
+[tasks.prettier]
+run = "prettier \"**/*.{md,yaml,yml}\" --no-error-on-unmatched-pattern --check"
+alias = "lint:prettier"
+
+[tasks."prettier:write"]
+run = "prettier \"**/*.{md,yaml,yml}\" --no-error-on-unmatched-pattern --check --write"
+alias = "format:prettier"
+
+# Biome Tasks
+
+[tasks."biome:format"]
+run = "biome format --no-errors-on-unmatched"
+alias = "lint:biome:format"
+
+[tasks."biome:format:write"]
+run = "biome format --no-errors-on-unmatched --write"
+alias = "format:biome"
+
+[tasks."biome:lint"]
+run = "biome lint --no-errors-on-unmatched"
+alias = "lint:biome:lint"
+
+[tasks."biome:lint:write"]
+run = "biome lint --no-errors-on-unmatched --write --unsafe"
+
+[tasks."biome:lint:write:safe"]
+run = "biome lint --no-errors-on-unmatched --write"
+alias = "fix:biome"
+
+[tasks."biome:lint:write:unsafe"]
+run = "biome lint --no-errors-on-unmatched --unsafe"
+
+# shfmt Tasks
+
+[tasks.shfmt]
+run = "shfmt --list --diff \".\""
+alias = "lint:shfmt"
+
+[tasks."shfmt:write"]
+run = "shfmt --list --write \".\""
+alias = "format:shfmt"
+
+# ShellCheck Tasks
+
+[tasks.shellcheck]
+run = "shfmt --find=0 \".\" | xargs -r -0 shellcheck"
+alias = "lint:shellcheck"
+
+[tasks."shellcheck:patch"]
+run = "shfmt --find=0 \".\" | xargs -r -0 shellcheck --format=\"diff\" | patch -p1"
+alias = "fix:shellcheck"
+
+# CSpell Tasks
+
+[tasks.cspell]
+run = "cspell \".\" --no-must-find-files --no-progress --show-suggestions --show-context"
+alias = "lint:cspell:lint"
+
+[tasks."cspell:dictionaries"]
+run = "/bin/sh -eu \".mise/scripts/tasks-cspell-dictionaries.sh\""
+alias = "lint:cspell:dictionaries"
+
+# Grouped Tasks
+
+[tasks.format]
+depends = ["format:**"]
+
+[tasks.lint]
+depends = ["lint:**"]
+
+[tasks.fix]
+depends = ["fix:**"]
+
+[tasks.test]
+depends = ["test:**"]
+
+[tasks.doc]
+depends = ["doc:**"]
+
+[tasks.build]
+depends = ["build:**"]
+
+[tasks.bench]
+depends = ["bench:**"]

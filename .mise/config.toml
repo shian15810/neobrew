@@ -1,110 +1,39 @@
 #:schema https://mise.jdx.dev/schema/mise.json
 
+# Settings
+
 [settings]
+experimental = true
+auto_install = false
 disable_hints = ["*"]
+unix_default_file_shell_args = "/bin/sh -eu --"
+unix_default_inline_shell_args = "/bin/sh -c -eu --"
 task.output = "keep-order"
+task.show_full_cmd = true
+
+# Environment Variables
+
+[env]
+HOMEBREW_NO_ANALYTICS = 1
+HOMEBREW_NO_ENV_HINTS = 1
+HOMEBREW_BUNDLE_BREW_SKIP = "{{ get_env(name='HOMEBREW_BUNDLE_BREW_SKIP', default='') }}"
+RUST_BACKTRACE = 1
+RUSTC_WRAPPER = "sccache"
+CMAKE_C_COMPILER_LAUNCHER = "sccache"
+CMAKE_CXX_COMPILER_LAUNCHER = "sccache"
+CMAKE_OBJC_COMPILER_LAUNCHER = "sccache"
+CMAKE_OBJCXX_COMPILER_LAUNCHER = "sccache"
+CC = "sccache cc"
+CXX = "sccache c++"
+OBJC = "sccache cc"
+OBJCXX = "sccache c++"
+
+# Hooks
+
+[hooks]
+preinstall = { task = "setup" }
+
+# Setup Task
 
 [tasks.setup]
 run = "brew bundle check || brew bundle install"
-
-# Cargo Tasks
-
-[tasks.run]
-run = "cargo +nightly run"
-alias = "default"
-
-[tasks.fmt]
-run = "cargo +nightly fmt"
-alias = "format:rustfmt"
-
-[tasks.check]
-run = "cargo +nightly check"
-
-[tasks.clippy]
-run = "cargo +nightly clippy"
-alias = "lint:clippy"
-
-[tasks.test]
-run = "cargo +nightly test"
-
-[tasks.nextest]
-run = "cargo +nightly nextest run --no-tests=pass"
-depends_post = ["doctest"]
-
-[tasks.doctest]
-run = "cargo +nightly test --doc"
-
-[tasks.doc]
-run = "cargo +nightly doc --no-deps"
-
-[tasks.build]
-run = "cargo build --release"
-
-[tasks.bench]
-run = "cargo bench"
-
-# Other Tasks
-
-[tasks.format]
-depends = ["format:*"]
-
-[tasks.lint]
-depends = ["lint:*"]
-
-[tasks.fix]
-depends = ["fix:*"]
-
-[tasks."format:taplo"]
-run = "RUST_LOG=error taplo fmt"
-
-[tasks."lint:taplo:fmt"]
-run = "RUST_LOG=error taplo fmt --diff --check"
-
-[tasks."lint:taplo:check"]
-run = "RUST_LOG=error taplo check --default-schema-catalogs"
-
-[tasks."lint:markdownlint"]
-run = "markdownlint-cli2 \"**/*.md\" \"#.git\" \"#.vscode/mise-tools\" \"#target\""
-
-[tasks."fix:markdownlint"]
-run = "markdownlint-cli2 \"**/*.md\" \"#.git\" \"#.vscode/mise-tools\" \"#target\" --fix"
-
-[tasks."format:prettier"]
-run = "prettier \"**/*.{md,yaml,yml}\" --no-error-on-unmatched-pattern --check --write"
-
-[tasks."lint:prettier"]
-run = "prettier \"**/*.{md,yaml,yml}\" --no-error-on-unmatched-pattern --check"
-
-[tasks."format:biome"]
-run = "biome format --no-errors-on-unmatched --write"
-
-[tasks."lint:biome:format"]
-run = "biome format --no-errors-on-unmatched"
-
-[tasks."lint:biome:lint"]
-run = "biome lint --no-errors-on-unmatched"
-
-[tasks."fix:biome:safe"]
-run = "biome lint --no-errors-on-unmatched --write"
-
-[tasks."fix:biome:unsafe"]
-run = "biome lint --no-errors-on-unmatched --unsafe"
-
-[tasks."format:shfmt"]
-run = "shfmt --list --write ."
-
-[tasks."lint:shfmt"]
-run = "shfmt --list --diff ."
-
-[tasks."lint:shellcheck"]
-run = "shfmt --find=0 . | xargs -r -0 shellcheck"
-
-[tasks."fix:shellcheck"]
-run = "shfmt --find=0 . | xargs -r -0 shellcheck --format=diff | patch -p1"
-
-[tasks."lint:cspell:lint"]
-run = "cspell . --no-must-find-files --no-progress --show-suggestions --show-context"
-
-[tasks."lint:cspell:dictionaries"]
-shell = "/bin/sh -o errexit"
-run = ".mise/scripts/lint-cspell-dictionaries.sh"

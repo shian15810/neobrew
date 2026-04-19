@@ -5,6 +5,7 @@
 
     "workbench.editor.customLabels.patterns": {
         "**/mod.rs": "${dirname}/${filename}.${extname}",
+        "**/action.{yml,yaml}": "${dirname}/${filename}.${extname}",
     },
 
     "files.watcherExclude": {
@@ -42,6 +43,9 @@
     "[markdown]": {
         "editor.defaultFormatter": "esbenp.prettier-vscode",
     },
+    "[github-actions-workflow]": {
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+    },
     "[yaml]": {
         "editor.defaultFormatter": "esbenp.prettier-vscode",
     },
@@ -72,14 +76,15 @@
         ".vscode/mise-tools",
     ],
 
-    "rust-analyzer.runnables.extraEnv": {
-        "RUSTUP_TOOLCHAIN": "nightly",
-    },
+    "rust-analyzer.check.command": "clippy",
+    "rust-analyzer.cargo.features": "all",
+    "rust-analyzer.cargo.targetDir": true,
     "rust-analyzer.cargo.extraEnv": {
         "RUSTUP_TOOLCHAIN": "nightly",
     },
-    "rust-analyzer.cargo.targetDir": true,
-    "rust-analyzer.check.command": "clippy",
+    "rust-analyzer.runnables.extraEnv": {
+        "RUSTUP_TOOLCHAIN": "nightly",
+    },
     "rust-analyzer.rustfmt.extraArgs": [
         "+nightly",
     ],

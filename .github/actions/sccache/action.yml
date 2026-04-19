@@ -1,0 +1,52 @@
+# $schema: https://www.schemastore.org/github-action.json
+
+name: Sccache Action
+
+description: Setup Sccache
+
+runs:
+  using: composite
+
+  steps:
+    - name: Run sccache-cache
+      id: sccache-action
+      uses: Mozilla-Actions/sccache-action@v0.0.10
+
+    - shell: /bin/sh -eu -- "{0}"
+      env:
+        SCCACHE_GHA_ENABLED: true
+
+        RUSTC_WRAPPER: sccache
+
+        CMAKE_C_COMPILER_LAUNCHER: sccache
+        CMAKE_CXX_COMPILER_LAUNCHER: sccache
+        CMAKE_OBJC_COMPILER_LAUNCHER: sccache
+        CMAKE_OBJCXX_COMPILER_LAUNCHER: sccache
+
+        CC: sccache cc
+        CXX: sccache c++
+        OBJC: sccache cc
+        OBJCXX: sccache c++
+      run: |
+        {
+          echo "SCCACHE_GHA_ENABLED=${SCCACHE_GHA_ENABLED}"
+
+          echo "RUSTC_WRAPPER=${RUSTC_WRAPPER}"
+
+          echo "CMAKE_C_COMPILER_LAUNCHER=${CMAKE_C_COMPILER_LAUNCHER}"
+          echo "CMAKE_CXX_COMPILER_LAUNCHER=${CMAKE_CXX_COMPILER_LAUNCHER}"
+          echo "CMAKE_OBJC_COMPILER_LAUNCHER=${CMAKE_OBJC_COMPILER_LAUNCHER}"
+          echo \
+            "CMAKE_OBJCXX_COMPILER_LAUNCHER=${CMAKE_OBJCXX_COMPILER_LAUNCHER}"
+
+          echo "CC=${CC}"
+          echo "CXX=${CXX}"
+          echo "OBJC=${OBJC}"
+          echo "OBJCXX=${OBJCXX}"
+        } >> "$GITHUB_ENV"
+
+    - uses: ./.github/actions/summary
+      with:
+        step_id: ${{ github.action }}
+        inputs: ${{ toJSON(inputs) }}
+        steps: ${{ toJSON(steps) }}
