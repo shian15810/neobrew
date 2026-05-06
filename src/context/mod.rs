@@ -27,7 +27,7 @@ impl Context {
     const MAX_CONCURRENCY: usize = 1 << 4;
     const BUFFER_MULTIPLIER: usize = 1 << 4;
 
-    #[allow(clippy::missing_errors_doc)]
+    #[expect(clippy::missing_errors_doc)]
     pub fn new(matches: &ArgMatches) -> Result<Self, proc_exit::Exit> {
         let proj_dirs = ProjectDirs::new();
         let proj_dirs = proj_dirs.with_code(proc_exit::sysexits::OS_ERR)?;

@@ -2,20 +2,20 @@
 
 set -euvx
 
-export LC_ALL=C
+export LC_ALL="C"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd -P)"
+
+RUSTUP_HOME="${RUSTUP_HOME:?}"
+CARGO_HOME="${CARGO_HOME:?}"
+RUST_VERSION="${RUST_VERSION:?}"
+
+RUSTUP_PERMIT_COPY_RENAME="${RUSTUP_PERMIT_COPY_RENAME:?}"
 
 VERSION="${VERSION:-"latest"}"
 PROFILE="${PROFILE:-"minimal"}"
 TARGETS="${TARGETS:-""}"
 COMPONENTS="${COMPONENTS:-"rust-analyzer,rust-src,rustfmt,clippy"}"
-
-RUSTUP_PERMIT_COPY_RENAME="${RUSTUP_PERMIT_COPY_RENAME:?}"
-
-RUSTUP_HOME="${RUSTUP_HOME:?}"
-CARGO_HOME="${CARGO_HOME:?}"
-RUST_VERSION="${RUST_VERSION:?}"
 
 # The 'install.sh' entrypoint script is always executed as the root user.
 #
@@ -58,8 +58,9 @@ else
             TOOLCHAIN="stable"
         elif [ "$TOOLCHAIN" = "current" ]; then
             CURRENT_VERSION="$(
-                git ls-remote --tags --refs --sort=-version:refname \
-                    https://github.com/rust-lang/rust.git '[0-9]*.[0-9]*.[0-9]*'
+                git ls-remote --tags --refs --sort="-version:refname" \
+                    "https://github.com/rust-lang/rust.git" \
+                    "[0-9]*.[0-9]*.[0-9]*"
             )"
             CURRENT_VERSION="$(
                 printf '%s' "$CURRENT_VERSION" \
@@ -100,9 +101,9 @@ fi
 set -- --profile="$PROFILE" "$@"
 
 sudo --user="$_REMOTE_USER" \
-    RUSTUP_PERMIT_COPY_RENAME="$RUSTUP_PERMIT_COPY_RENAME" \
     RUSTUP_HOME="$RUSTUP_HOME" \
     CARGO_HOME="$CARGO_HOME" \
     RUST_VERSION="$RUST_VERSION" \
+    RUSTUP_PERMIT_COPY_RENAME="$RUSTUP_PERMIT_COPY_RENAME" \
     --login exec \
-    /bin/sh -- "${SCRIPT_DIR}/install-feature.sh" "$@"
+    /bin/sh -euvx -- "${SCRIPT_DIR}/install-feature.sh" "$@"

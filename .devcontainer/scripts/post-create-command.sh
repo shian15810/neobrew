@@ -2,31 +2,40 @@
 
 set -euvx
 
-export LC_ALL=C
+export LC_ALL="C"
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "$0")" && pwd -P)"
 
+cd -- "${SCRIPT_DIR}/../.."
+
+HOMEBREW_BUNDLE_BREW_SKIP="${HOMEBREW_BUNDLE_BREW_SKIP:?}"
+MISE_USE_VERSIONS_HOST_TRACK="${MISE_USE_VERSIONS_HOST_TRACK:?}"
+MISE_DISABLE_HINTS="${MISE_DISABLE_HINTS:?}"
+MISE_EXPERIMENTAL="${MISE_EXPERIMENTAL:?}"
 SCCACHE_DIR="${SCCACHE_DIR:?}"
 
-HOMEBREW_DEVCONTAINER="${HOMEBREW_DEVCONTAINER:?}"
-
-cd -- "${SCRIPT_DIR}/../.."
+export MISE_ENV="development"
+export MISE_YES=true
 
 sudo chown -- "$(id -un):$(id -gn)" "$SCCACHE_DIR"
 
 brew bundle
 
-mise trust
-mise install
-mise upgrade
+mise --env="development" --yes trust
+mise --env="development" --yes install
+mise --env="development" --yes upgrade
 
 rustup self update
 rustup update
 
-rustup --version
-cargo --version
-rustc --version
+rustup +stable show --verbose
+rustup +stable --version --verbose
+rustc +stable --version --verbose
+cargo +stable --version --verbose
+rustup +stable component list --installed
 
-rustup +nightly --version
-cargo +nightly --version
-rustc +nightly --version
+rustup +nightly show --verbose
+rustup +nightly --version --verbose
+rustc +nightly --version --verbose
+cargo +nightly --version --verbose
+rustup +nightly component list --installed

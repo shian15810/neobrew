@@ -1,4 +1,6 @@
 # Custom Dictionary Words
+Eeuo
 euvx
 OLDIFS
+postlint
 untap

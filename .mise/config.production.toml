@@ -1,4 +1,225 @@
 #:schema https://mise.jdx.dev/schema/mise.json
 
+# Dev Tools
+
+[tools]
+rust = [
+    {
+        version = "stable",
+        components = "rustfmt,clippy",
+        profile = "minimal",
+        targets = "{{ env.CARGO_BUILD_TARGET }}",
+    },
+    {
+        version = "nightly",
+        components = "rustfmt,clippy",
+        profile = "minimal",
+        targets = "{{ env.CARGO_BUILD_TARGET }}",
+    },
+]
+
+# Environment Variables
+
 [env]
-_.source = ".mise/config.production.env.sh"
+_.source = { path = ".mise/config.production.env.bash", tools = true }
+RUSTFLAGS = { required = true, tools = true }
+RUSTDOCFLAGS = { required = true, tools = true }
+CARGO_INCREMENTAL = 0
+CARGO_TERM_COLOR = "always"
+CARGO_CLIPPYFLAGS = { required = true, tools = true }
+
+# Cargo Tasks
+
+[tasks."cargo:run"]
+tools = { rust = "nightly" }
+run = "cargo +nightly run --all-features --keep-going --locked --color=\"always\""
+alias = "default"
+
+[tasks."cargo:fmt"]
+tools = { rust = "nightly" }
+run = "cargo +nightly fmt -- --color=\"always\" --files-with-diff"
+alias = "format:rustfmt"
+
+[tasks."cargo:fmt:check"]
+tools = { rust = "nightly" }
+run = "cargo +nightly fmt -- --color=\"always\" --check"
+alias = "lint:rustfmt"
+
+[tasks."cargo:check"]
+tools = { rust = "nightly" }
+run = "cargo +nightly check --all-targets --all-features --keep-going --locked --color=\"always\""
+
+[tasks."cargo:fix"]
+tools = { rust = "nightly" }
+run = "cargo +nightly fix --broken-code --edition-idioms --allow-dirty --all-targets --all-features --keep-going --locked --color=\"always\""
+
+[tasks."cargo:fix:diff"]
+tools = { rust = "nightly" }
+run = """\
+    cargo +nightly fix --broken-code --edition-idioms --allow-dirty --all-targets --all-features --keep-going --locked --color=\"always\" \
+        && git diff --exit-code --color=\"always\"\
+"""
+
+[tasks."cargo:clippy"]
+tools = { rust = "nightly" }
+run = "cargo +nightly clippy --all-targets --all-features --keep-going --locked --color=\"always\" -- {{ env.CARGO_CLIPPYFLAGS }}"
+alias = "lint:clippy"
+
+[tasks."cargo:clippy:fix"]
+tools = { rust = "nightly" }
+run = "cargo +nightly clippy --fix --broken-code --edition-idioms --allow-dirty --all-targets --all-features --keep-going --locked --color=\"always\" -- {{ env.CARGO_CLIPPYFLAGS }}"
+alias = "fix:clippy"
+
+[tasks."cargo:clippy:fix:diff"]
+tools = { rust = "nightly" }
+run = """\
+    cargo +nightly clippy --fix --broken-code --edition-idioms --allow-dirty --all-targets --all-features --keep-going --locked --color=\"always\" -- {{ env.CARGO_CLIPPYFLAGS }} \
+        && git diff --exit-code --color=\"always\"\
+"""
+alias = "postlint:clippy"
+
+[tasks."cargo:nextest:run"]
+tools = { rust = "nightly" }
+run = "cargo +nightly nextest run --no-pager --no-tests=\"pass\" --all-features --no-fail-fast --locked --color=\"always\""
+alias = "test:nextest"
+
+[tasks."cargo:test"]
+tools = { rust = "nightly" }
+run = "cargo +nightly test --all-features --no-fail-fast --locked --color=\"always\" -- --color=\"always\""
+
+[tasks."cargo:test:doc"]
+tools = { rust = "nightly" }
+run = "cargo +nightly test --doc --all-features --no-fail-fast --locked --color=\"always\" -- --color=\"always\""
+alias = "test:doctest"
+
+[tasks."cargo:doc"]
+tools = { rust = "nightly" }
+run = "cargo +nightly doc --no-deps --document-private-items --all-features --keep-going --locked --color=\"always\""
+alias = "build:rustdoc"
+
+[tasks."cargo:build"]
+tools = { rust = "nightly" }
+run = "cargo +nightly build --all-targets --all-features --keep-going --locked --color=\"always\""
+alias = "build:rustc:debug"
+
+[tasks."cargo:build:release"]
+tools = { rust = "stable" }
+run = "cargo +stable build --release --all-targets --all-features --keep-going --locked --color=\"always\""
+alias = "build:rustc:release"
+
+[tasks."cargo:bench"]
+tools = { rust = "stable" }
+run = "cargo +stable bench --all-features --no-fail-fast --locked --color=\"always\" -- --color=\"always\""
+alias = "bench:test"
+
+[tasks."cargo:nextest:bench"]
+tools = { rust = "stable" }
+env = { NEXTEST_EXPERIMENTAL_BENCHMARKS = 1 }
+run = "cargo +stable nextest bench --no-pager --no-tests=\"pass\" --all-features --no-fail-fast --locked --color=\"always\""
+
+# Taplo Tasks
+
+[tasks."taplo:fmt"]
+env = { RUST_LOG = "error" }
+run = "taplo fmt --colors=\"always\""
+alias = "format:taplo"
+
+[tasks."taplo:fmt:check"]
+env = { RUST_LOG = "error" }
+run = "taplo fmt --diff --check --colors=\"always\" || true"
+alias = "lint:taplo:fmt"
+
+[tasks."taplo:check"]
+env = { RUST_LOG = "error" }
+run = "taplo check --default-schema-catalogs --colors=\"always\" || true"
+alias = "lint:taplo:check"
+
+# markdownlint Tasks
+
+[tasks.markdownlint]
+env = { FORCE_COLOR = 1, FORCE_HYPERLINK = 1 }
+run = "markdownlint-cli2 \"**/*.md\" \"#.git\" \"#.vscode/mise-tools\" \"#target\""
+alias = "lint:markdownlint"
+
+[tasks."markdownlint:fix"]
+env = { FORCE_COLOR = 1, FORCE_HYPERLINK = 1 }
+run = "markdownlint-cli2 \"**/*.md\" \"#.git\" \"#.vscode/mise-tools\" \"#target\" --fix"
+alias = "fix:markdownlint"
+
+# Prettier Tasks
+
+[tasks.prettier]
+env = { FORCE_COLOR = 1 }
+run = "prettier \"**/*.{md,yaml,yml}\" --no-error-on-unmatched-pattern --check --color"
+alias = "lint:prettier"
+
+[tasks."prettier:write"]
+env = { FORCE_COLOR = 1 }
+run = "prettier \"**/*.{md,yaml,yml}\" --no-error-on-unmatched-pattern --check --write --color"
+alias = "format:prettier"
+
+# Biome Tasks
+
+[tasks."biome:format"]
+run = "biome format --no-errors-on-unmatched --colors=\"force\""
+alias = "lint:biome:format"
+
+[tasks."biome:format:write"]
+run = "biome format --no-errors-on-unmatched --write --colors=\"force\""
+alias = "format:biome"
+
+[tasks."biome:lint"]
+run = "biome lint --no-errors-on-unmatched --colors=\"force\""
+alias = "lint:biome:lint"
+
+[tasks."biome:lint:write"]
+run = "biome lint --no-errors-on-unmatched --write --unsafe --colors=\"force\""
+
+[tasks."biome:lint:write:safe"]
+run = "biome lint --no-errors-on-unmatched --write --colors=\"force\""
+alias = "fix:biome"
+
+[tasks."biome:lint:write:unsafe"]
+run = "biome lint --no-errors-on-unmatched --unsafe --colors=\"force\""
+
+# shfmt Tasks
+
+[tasks.shfmt]
+env = { FORCE_COLOR = 1 }
+run = "shfmt --list --diff \".\""
+alias = "lint:shfmt"
+
+[tasks."shfmt:write"]
+env = { FORCE_COLOR = 1 }
+run = "shfmt --list --write \".\""
+alias = "format:shfmt"
+
+# ShellCheck Tasks
+
+[tasks.shellcheck]
+run = "shfmt --find=0 \".\" | xargs -r -0 shellcheck --check-sourced --color=\"always\""
+alias = "lint:shellcheck"
+
+[tasks."shellcheck:patch"]
+run = "shfmt --find=0 \".\" | xargs -r -0 shellcheck --check-sourced --format=\"diff\" --color=\"auto\" | patch -u -p1"
+alias = "fix:shellcheck"
+
+# CSpell Tasks
+
+[tasks.cspell]
+run = """\
+    git ls-files --others --directory --no-empty-directory --exclude-standard \
+        | sed -e's/\"/\"\\\"\"/g' -e's/.*/\"&\"/' -e's/^/--exclude=/' \
+        | xargs -E '' \
+            cspell \".\" --no-must-find-files --no-progress --show-suggestions --show-context --color\
+"""
+alias = "lint:cspell:lint"
+
+[tasks."cspell:dictionaries"]
+run = """\
+    git ls-files --others --directory --no-empty-directory --exclude-standard \
+        | sed -e's/\"/\"\\\"\"/g' -e's/.*/\"&\"/' -e's/^/--exclude=/' \
+        | xargs -E '' \
+            /bin/sh -eu \".mise/scripts/tasks-cspell-dictionaries.sh\" --color\
+"""
+alias = "lint:cspell:dictionaries"

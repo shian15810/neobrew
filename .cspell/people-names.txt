@@ -2,9 +2,11 @@
 Anson
 Cheeshian
 Chuah
+dtolnay
 esbenp
 hartmann
 hverlin
 shian
+Swatinem
 tamasfe
 vadimcn

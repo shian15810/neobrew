@@ -35,10 +35,10 @@
         },
 
         "ghcr.io/devcontainers-extra/features/homebrew-package:1": {
-            "package": "mise",
+            "package": "bash",
         },
         "./features/homebrew-package": {
-            "package": "sccache,rust-analyzer,cargo-nextest,taplo,markdownlint-cli2,prettier,biome,shfmt,shellcheck,cspell",
+            "package": "mise,sccache,rust-analyzer,cargo-nextest,taplo,markdownlint-cli2,prettier,biome,shfmt,shellcheck,cspell",
         },
     },
 
@@ -48,11 +48,13 @@
     // Use 'postCreateCommand' to run commands after the container is created.
     "postCreateCommand": [
         "/bin/sh",
+        "-euvx",
         ".devcontainer/scripts/post-create-command.sh",
     ],
 
     "postStartCommand": [
         "/bin/sh",
+        "-euvx",
         ".devcontainer/scripts/post-start-command.sh",
     ],
 
@@ -71,17 +73,24 @@
                 "rust-lang.rust-analyzer",
                 "tamasfe.even-better-toml",
                 "DavidAnson.vscode-markdownlint",
-                "esbenp.prettier-vscode",
+                "GitHub.vscode-github-actions",
                 "redhat.vscode-yaml",
+                "esbenp.prettier-vscode",
                 "biomejs.biome",
-                "EditorConfig.EditorConfig",
                 "mads-hartmann.bash-ide-vscode",
                 "streetsidesoftware.code-spell-checker",
+                "EditorConfig.EditorConfig",
             ],
         },
     },
 
     "containerEnv": {
+        "HOMEBREW_BUNDLE_BREW_SKIP": "rustup",
+
+        "MISE_USE_VERSIONS_HOST_TRACK": "false",
+        "MISE_DISABLE_HINTS": "*",
+        "MISE_EXPERIMENTAL": "true",
+
         "SCCACHE_SERVER_UDS": "\\x00sccache.sock",
         "SCCACHE_IDLE_TIMEOUT": "0",
         "SCCACHE_DIR": "/var/cache/sccache",
@@ -89,7 +98,6 @@
 
     "remoteEnv": {
         "DEVCONTAINER": "true",
-        "HOMEBREW_DEVCONTAINER": "true",
     },
 
     // Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.

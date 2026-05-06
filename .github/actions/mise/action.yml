@@ -1,0 +1,49 @@
+# $schema: https://www.schemastore.org/github-action.json
+
+name: Mise Action
+
+description: Setup Mise
+
+runs:
+  using: composite
+
+  steps:
+    - shell: /bin/sh -eu -- "{0}"
+      env:
+        MISE_USE_VERSIONS_HOST_TRACK: false
+        MISE_DISABLE_HINTS: "*"
+
+        MISE_EXPERIMENTAL: true
+
+        MISE_ENV: production
+        MISE_YES: true
+      run: |
+        {
+          echo "MISE_USE_VERSIONS_HOST_TRACK=${MISE_USE_VERSIONS_HOST_TRACK}"
+          echo "MISE_DISABLE_HINTS=${MISE_DISABLE_HINTS}"
+
+          echo "MISE_EXPERIMENTAL=${MISE_EXPERIMENTAL}"
+
+          echo "MISE_ENV=${MISE_ENV}"
+          echo "MISE_YES=${MISE_YES}"
+        } >> "$GITHUB_ENV"
+
+    - id: mise-action
+      uses: jdx/mise-action@v4
+      with:
+        env: false
+        experimental: true
+        install_args: --env="production" --yes
+        cache_key_prefix: ${{ github.action }}
+        cache_save: |-
+          ${{
+            github.event_name == 'push'
+            &&
+            github.ref_name == github.event.repository.default_branch
+          }}
+
+    - uses: ./.github/actions/summary
+      with:
+        step_id: ${{ github.action }}
+        inputs: ${{ toJSON(inputs) }}
+        steps: ${{ toJSON(steps) }}
