@@ -44,7 +44,9 @@ impl Context {
             client: LazyLock::new(reqwest::Client::new),
 
             concurrency_limit: LazyLock::new(|| *CONCURRENCY_LIMIT),
-            channel_capacity: LazyLock::new(|| *CONCURRENCY_LIMIT * Self::BUFFER_MULTIPLIER),
+            channel_capacity: LazyLock::new(|| {
+                CONCURRENCY_LIMIT.saturating_mul(Self::BUFFER_MULTIPLIER)
+            }),
         };
 
         Ok(this)

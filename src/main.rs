@@ -30,7 +30,7 @@
 #![expect(rustdoc::missing_crate_level_docs)]
 
 use anyhow::Result;
-use clap::CommandFactory;
+use clap::CommandFactory as _;
 use clap_verbosity_flag::VerbosityFilter;
 use neobrew::{Cli, Context};
 use proc_exit::prelude::*;

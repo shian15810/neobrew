@@ -2,7 +2,7 @@ use std::io::{self, BufRead};
 
 use anyhow::Result;
 use bytes::Buf;
-use futures::stream::StreamExt;
+use futures::stream::StreamExt as _;
 use tokio::{
     sync::mpsc,
     task::{self, JoinHandle},

@@ -2,13 +2,13 @@ use std::sync::{Arc, OnceLock};
 
 use anyhow::{Result, anyhow};
 use enum_dispatch::enum_dispatch;
-use futures::stream::{self, StreamExt, TryStreamExt};
-use itertools::Itertools;
+use futures::stream::{self, StreamExt as _, TryStreamExt as _};
+use itertools::Itertools as _;
 
 use self::{cask::CaskRegistry, formula::FormulaRegistry};
 use crate::{
     context::Context,
-    package::{Packageable, ResolvedPackage},
+    package::{Packageable as _, ResolvedPackage},
 };
 
 mod cask;

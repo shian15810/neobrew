@@ -1,5 +1,4 @@
 use anyhow::Result;
-use cfg_if::cfg_if;
 use clap::{crate_authors, crate_name};
 use etcetera::app_strategy::{self, AppStrategyArgs};
 
@@ -36,12 +35,8 @@ impl ProjectDirs {
     }
 }
 
-cfg_if! {
-    if #[cfg(target_os = "windows")] {
-        pub(super) type ChosenAppStrategy = app_strategy::Windows;
-    } else if #[cfg(any(target_os = "macos", target_os = "ios"))] {
-        pub(super) type ChosenAppStrategy = app_strategy::Xdg;
-    } else {
-        pub(super) type ChosenAppStrategy = app_strategy::Xdg;
-    }
-}
+pub(super) type ChosenAppStrategy = cfg_select! {
+    target_os = "windows" => app_strategy::Windows,
+    any(target_os = "macos", target_os = "ios") => app_strategy::Xdg,
+    _ => app_strategy::Xdg,
+};

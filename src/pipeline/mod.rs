@@ -3,9 +3,9 @@ use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 use anyhow::{Error, Result};
 use frunk::hlist::{HCons, HNil};
 use futures::{
-    future::TryFutureExt,
-    sink::{self, SinkExt},
-    stream::{self, StreamExt, TryStreamExt},
+    future::TryFutureExt as _,
+    sink::{self, SinkExt as _},
+    stream::{self, StreamExt as _, TryStreamExt as _},
 };
 use tokio::task::{self, JoinHandle};
 use tokio_util::{sync::PollSender, task::AbortOnDropHandle};

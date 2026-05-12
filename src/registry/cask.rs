@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use etcetera::AppStrategy;
+use etcetera::AppStrategy as _;
 use foyer::{Cache, CacheBuilder};
 use tokio::fs;
 
@@ -9,7 +9,7 @@ use super::Registrable;
 use crate::{
     context::Context,
     package::{
-        Packageable,
+        Packageable as _,
         cask::{RawCask, ResolvedCask},
     },
 };

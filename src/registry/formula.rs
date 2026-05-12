@@ -2,16 +2,16 @@ use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
 use async_recursion::async_recursion;
-use etcetera::AppStrategy;
+use etcetera::AppStrategy as _;
 use foyer::{Cache, CacheBuilder};
-use futures::stream::{self, StreamExt, TryStreamExt};
+use futures::stream::{self, StreamExt as _, TryStreamExt as _};
 use tokio::fs;
 
 use super::Registrable;
 use crate::{
     context::Context,
     package::{
-        Packageable,
+        Packageable as _,
         formula::{RawFormula, ResolvedFormula},
     },
 };

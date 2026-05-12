@@ -6,7 +6,7 @@ use clap::{
     ColorChoice,
     Parser,
     Subcommand,
-    ValueEnum,
+    ValueEnum as _,
     crate_authors,
     crate_description,
     crate_name,

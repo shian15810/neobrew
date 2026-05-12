@@ -28,7 +28,7 @@
 #![doc(test(attr(warn(unused), deny(warnings))))]
 #![expect(rustdoc::missing_crate_level_docs)]
 
-use clap::{ArgMatches, FromArgMatches};
+use clap::{ArgMatches, FromArgMatches as _};
 use proc_exit::prelude::*;
 
 pub use self::{commands::Cli, context::Context};

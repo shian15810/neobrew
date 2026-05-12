@@ -24,4 +24,5 @@ rustflags
 RUSTFLAGS
 supertrait
 sysexits
+uninlined
 upcastable

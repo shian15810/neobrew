@@ -1,5 +1,4 @@
 use anyhow::{Result, anyhow};
-use cfg_if::cfg_if;
 use clap::ColorChoice;
 use clap_verbosity_flag::VerbosityFilter;
 use figment::{
@@ -43,17 +42,11 @@ impl EnvConfig for HomebrewEnvConfig {
 }
 
 impl HomebrewEnvConfig {
-    cfg_if! {
-        if #[cfg(all(target_os = "macos", target_arch = "aarch64"))] {
-            const DEFAULT_PREFIX: &str = "/opt/homebrew";
-        } else if #[cfg(all(target_os = "macos", target_arch = "x86_64"))] {
-            const DEFAULT_PREFIX: &str = "/usr/local";
-        } else if #[cfg(target_os = "linux")] {
-            const DEFAULT_PREFIX: &str = "/home/linuxbrew/.linuxbrew";
-        } else {
-            compile_error!("This crate only supports macOS (aarch64 and x86_64) and Linux.");
-        }
-    }
+    const DEFAULT_PREFIX: &str = cfg_select! {
+        all(target_os = "macos", target_arch = "aarch64") => "/opt/homebrew",
+        all(target_os = "macos", target_arch = "x86_64") => "/usr/local",
+        target_os = "linux" => "/home/linuxbrew/.linuxbrew",
+    };
 
     fn ensure_default_prefix(&self) -> Result<()> {
         if self.prefix == Self::DEFAULT_PREFIX {

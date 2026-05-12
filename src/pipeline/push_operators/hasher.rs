@@ -1,6 +1,6 @@
 use anyhow::Result;
 use bytes::Bytes;
-use sha2::{Digest, Sha256, digest};
+use sha2::{Digest as _, Sha256, digest};
 
 use super::PushOperator;
 

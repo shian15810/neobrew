@@ -8,7 +8,7 @@ use tokio::task::JoinSet;
 use super::{Resolution, Runner};
 use crate::{
     context::Context,
-    package::Packageable,
+    package::Packageable as _,
     pipeline::{
         Pipeline,
         pull_operators::Pourer,
@@ -67,14 +67,12 @@ impl Runner for Uninstall {
 
                 let stream = resp.bytes_stream();
 
-                let hlist_pat![hash, path, file] = Pipeline::new(stream, context)
+                let hlist_pat![_hash, _path, _file] = Pipeline::new(stream, context)
                     .fanout(Hasher::new())
                     .fanout(Pourer::new(id))
                     .fanout(Writer::new(format!("{id}.json"))?)
                     .run_parallel()
                     .await?;
-
-                dbg!(hash, path, file);
 
                 Ok(())
             });

@@ -32,13 +32,13 @@ impl NeobrewMetadata {
 
     fn rerun_if_changed() {
         for &path in Self::RERUN_IF_CHANGED {
-            println!("cargo::rerun-if-changed={path}");
+            build_rs::output::rerun_if_changed(path);
         }
     }
 
     fn rerun_if_env_changed() {
-        for &var in Self::RERUN_IF_ENV_CHANGED {
-            println!("cargo::rerun-if-env-changed={var}");
+        for &key in Self::RERUN_IF_ENV_CHANGED {
+            build_rs::output::rerun_if_env_changed(key);
         }
     }
 
@@ -56,9 +56,9 @@ impl NeobrewMetadata {
         let neobrew_metadata = &metadata.neobrew;
 
         for (key, value) in neobrew_metadata {
-            let var = format!("{}{}", Self::ENV_PREFIX, key.to_uppercase());
+            let key = format!("{}{}", Self::ENV_PREFIX, key.to_uppercase());
 
-            println!("cargo::rustc-env={var}={value}");
+            build_rs::output::rustc_env(&key, value);
         }
 
         Ok(())
