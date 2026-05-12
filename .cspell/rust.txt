@@ -8,7 +8,9 @@ fanout
 Fanout
 hlist
 idents
+miri
 nextest
+Nextest
 NEXTEST
 OBJC
 OBJCXX

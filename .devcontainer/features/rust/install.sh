@@ -16,6 +16,7 @@ VERSION="${VERSION:-"latest"}"
 PROFILE="${PROFILE:-"minimal"}"
 TARGETS="${TARGETS:-""}"
 COMPONENTS="${COMPONENTS:-"rust-analyzer,rust-src,rustfmt,clippy"}"
+NIGHTLY_COMPONENTS="${NIGHTLY_COMPONENTS:-""}"
 
 # The 'install.sh' entrypoint script is always executed as the root user.
 #
@@ -36,6 +37,8 @@ echo "The effective dev container remoteUser's home directory is '$_REMOTE_USER_
 echo "The effective dev container containerUser is '$_CONTAINER_USER'"
 echo "The effective dev container containerUser's home directory is '$_CONTAINER_USER_HOME'"
 
+NIGHTLY_TOOLCHAIN_INSTALLED=false
+
 if [ "$VERSION" = "none" ]; then
     set -- "$RUST_VERSION"
 else
@@ -52,10 +55,10 @@ else
     TOOLCHAINS=""
 
     for TOOLCHAIN in "$@"; do
-        if [ "$TOOLCHAIN" = "none" ]; then
-            exit 64
-        elif [ "$TOOLCHAIN" = "latest" ] || [ "$TOOLCHAIN" = "lts" ]; then
+        if [ "$TOOLCHAIN" = "latest" ] || [ "$TOOLCHAIN" = "lts" ]; then
             TOOLCHAIN="stable"
+        elif [ "$TOOLCHAIN" = "nightly" ]; then
+            NIGHTLY_TOOLCHAIN_INSTALLED=true
         elif [ "$TOOLCHAIN" = "current" ]; then
             CURRENT_VERSION="$(
                 git ls-remote --tags --refs --sort="-version:refname" \
@@ -72,6 +75,8 @@ else
             fi
 
             TOOLCHAIN="$CURRENT_VERSION"
+        elif [ "$TOOLCHAIN" = "none" ]; then
+            exit 64
         fi
 
         case " ${TOOLCHAINS} " in
@@ -105,5 +110,7 @@ sudo --user="$_REMOTE_USER" \
     CARGO_HOME="$CARGO_HOME" \
     RUST_VERSION="$RUST_VERSION" \
     RUSTUP_PERMIT_COPY_RENAME="$RUSTUP_PERMIT_COPY_RENAME" \
+    NIGHTLY_COMPONENTS="$NIGHTLY_COMPONENTS" \
+    NIGHTLY_TOOLCHAIN_INSTALLED="$NIGHTLY_TOOLCHAIN_INSTALLED" \
     --login exec \
     /bin/sh -euvx -- "${SCRIPT_DIR}/install-feature.sh" "$@"

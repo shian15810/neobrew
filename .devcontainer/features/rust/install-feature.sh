@@ -9,6 +9,10 @@ CARGO_HOME="${CARGO_HOME:?}"
 
 RUSTUP_PERMIT_COPY_RENAME="${RUSTUP_PERMIT_COPY_RENAME:?}"
 
+NIGHTLY_COMPONENTS="${NIGHTLY_COMPONENTS:?}"
+
+NIGHTLY_TOOLCHAIN_INSTALLED="${NIGHTLY_TOOLCHAIN_INSTALLED:?}"
+
 rustup self update
 
 DEFAULT_TOOLCHAIN="$(rustup default)"
@@ -21,6 +25,14 @@ rustup default "system"
 rustup update
 
 rustup toolchain install "$@"
+
+if [ -n "$NIGHTLY_COMPONENTS" ]; then
+    NIGHTLY_COMPONENTS="$(printf '%s' "$NIGHTLY_COMPONENTS" | tr ',' ' ')"
+
+    if [ "$NIGHTLY_TOOLCHAIN_INSTALLED" = true ]; then
+        rustup +nightly component add "$NIGHTLY_COMPONENTS"
+    fi
+fi
 
 rm -rf -- \
     "${RUSTUP_HOME}/downloads" \

@@ -11,19 +11,26 @@
     // Use 'mounts' to make the cargo cache persistent in a Docker Volume.
     "mounts": [
         {
-            "source": "devcontainer-cargo-cache-${devcontainerId}",
-            "target": "/usr/local/cargo",
+            "source": "devcontainer-sccache-cache-${devcontainerId}",
+            "target": "/var/cache/sccache",
             "type": "volume",
         },
         {
-            "source": "devcontainer-sccache-cache-${devcontainerId}",
-            "target": "/var/cache/sccache",
+            "source": "devcontainer-cargo-cache-${devcontainerId}",
+            "target": "/usr/local/cargo",
             "type": "volume",
         },
     ],
 
     // Features to add to the dev container. More info: https://containers.dev/features.
     "features": {
+        "ghcr.io/devcontainers-extra/features/homebrew-package:1": {
+            "package": "bash",
+        },
+        "./features/homebrew-package": {
+            "package": "mise,sccache,rust-analyzer,cargo-nextest,taplo,markdownlint-cli2,prettier,biome,shfmt,shellcheck,cspell",
+        },
+
         "ghcr.io/devcontainers/features/rust:1": {
             "version": "none",
         },
@@ -32,13 +39,7 @@
             "profile": "minimal",
             "targets": "aarch64-apple-darwin,aarch64-unknown-linux-gnu,x86_64-apple-darwin,x86_64-unknown-linux-gnu",
             "components": "rustfmt,clippy,rust-src",
-        },
-
-        "ghcr.io/devcontainers-extra/features/homebrew-package:1": {
-            "package": "bash",
-        },
-        "./features/homebrew-package": {
-            "package": "mise,sccache,rust-analyzer,cargo-nextest,taplo,markdownlint-cli2,prettier,biome,shfmt,shellcheck,cspell",
+            "nightly_components": "miri",
         },
     },
 

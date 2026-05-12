@@ -3,4 +3,5 @@ Eeuo
 euvx
 OLDIFS
 postlint
+posttest
 untap

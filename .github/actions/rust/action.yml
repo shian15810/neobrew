@@ -39,7 +39,7 @@ runs:
       with:
         toolchain: nightly
         targets: ${{ inputs.target }}
-        components: rustfmt,clippy
+        components: rustfmt,clippy,miri,rust-src
 
     - shell: /bin/sh -eu -- "{0}"
       working-directory: ${{ github.action_path }}
@@ -65,21 +65,21 @@ runs:
 
         RUSTFLAGS: --cfg=tokio_unstable --deny=warnings
         RUSTDOCFLAGS: --cfg=tokio_unstable --deny=warnings
-
-        CARGO_BUILD_TARGET: ${{ inputs.target }}
-        CARGO_CLIPPYFLAGS: >-
+        CLIPPYFLAGS: >-
           --force-warn=dead-code
           --force-warn=clippy::multiple-crate-versions
           --deny=warnings
+
+        CARGO_BUILD_TARGET: ${{ inputs.target }}
       run: |
         {
           echo "RUST_BACKTRACE=${RUST_BACKTRACE}"
 
           echo "RUSTFLAGS=${RUSTFLAGS}"
           echo "RUSTDOCFLAGS=${RUSTDOCFLAGS}"
+          echo "CLIPPYFLAGS=${CLIPPYFLAGS}"
 
           echo "CARGO_BUILD_TARGET=${CARGO_BUILD_TARGET}"
-          echo "CARGO_CLIPPYFLAGS=${CARGO_CLIPPYFLAGS}"
         } >> "$GITHUB_ENV"
 
     - uses: ./.github/actions/summary

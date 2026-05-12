@@ -14,3 +14,5 @@ DEFAULT_TOOLCHAIN="$(
 )"
 
 rustup default "$DEFAULT_TOOLCHAIN"
+
+cargo +nightly miri setup

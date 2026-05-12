@@ -24,7 +24,7 @@ jobs:
   test:
     uses: ./.github/workflows/reusable.yml
     with:
-      task: test
+      task: test --run-post
 
   build:
     uses: ./.github/workflows/reusable.yml

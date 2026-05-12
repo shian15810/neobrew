@@ -21,12 +21,14 @@ sudo chown -- "$(id -un):$(id -gn)" "$SCCACHE_DIR"
 
 brew bundle
 
+rustup self update
+rustup update
+
+cargo +nightly miri setup
+
 mise --env="development" --yes trust
 mise --env="development" --yes install
 mise --env="development" --yes upgrade
-
-rustup self update
-rustup update
 
 rustup +stable show --verbose
 rustup +stable --version --verbose

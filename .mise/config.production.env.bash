@@ -36,7 +36,7 @@ set -- "$@" --deny="warnings"
 export RUSTFLAGS="$*"
 export RUSTDOCFLAGS="$*"
 
-# CARGO_CLIPPYFLAGS
+# CLIPPYFLAGS
 
 set -- --force-warn="dead-code"
 
@@ -51,7 +51,7 @@ set -- "$@" --force-warn="clippy::multiple-crate-versions"
 
 set -- "$@" --deny="warnings"
 
-export CARGO_CLIPPYFLAGS="$*"
+export CLIPPYFLAGS="$*"
 
 # CARGO_SCCACHE_MACOSX_DEPLOYMENT_TARGET
 # MACOSX_DEPLOYMENT_TARGET

@@ -36,6 +36,10 @@
             "type": "string",
             "default": "rust-analyzer,rust-src,rustfmt,clippy",
         },
+        "nightly_components": {
+            "type": "string",
+            "default": "",
+        },
     },
 
     "containerEnv": {

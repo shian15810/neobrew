@@ -17,7 +17,7 @@ on:
         type: choice
         options:
           - lint --run-post
-          - test
+          - test --run-post
           - build
           - bench
 

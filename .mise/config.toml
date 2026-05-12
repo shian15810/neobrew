@@ -7,6 +7,7 @@ use_versions_host_track = false
 disable_hints = ["*"]
 experimental = true
 auto_install = false
+color_theme = "catppuccin"
 unix_default_file_shell_args = "/bin/sh -eu --"
 unix_default_inline_shell_args = "/bin/sh -c -eu --"
 task.show_full_cmd = true
@@ -34,12 +35,8 @@ CARGO_BUILD_TARGET = "{{ get_env(name='CARGO_BUILD_TARGET', default='host-tuple'
 # Hooks
 
 [hooks]
-preinstall = { task = "setup" }
-
-# Setup Task
-
-[tasks.setup]
-run = "brew bundle check || brew bundle install"
+preinstall = { task = "preinstall:**" }
+postinstall = { task = "postinstall:**" }
 
 # Grouped Tasks
 
@@ -61,7 +58,15 @@ depends_post = ["""
 depends = ["fix:**"]
 
 [tasks.test]
+usage = "flag \"--run-post\" default=#false"
 depends = ["test:**"]
+depends_post = ["""
+    {%- if usage.run_post -%}
+        posttest:**
+    {%- else -%}
+        noop
+    {%- endif -%}
+"""]
 
 [tasks.build]
 depends = ["build:**"]
