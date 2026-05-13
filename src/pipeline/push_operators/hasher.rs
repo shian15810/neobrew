@@ -1,6 +1,7 @@
 use anyhow::Result;
+use base16ct::HexDisplay;
 use bytes::Bytes;
-use sha2::{Digest as _, Sha256, digest};
+use sha2::{Digest as _, Sha256};
 
 use super::PushOperator;
 
@@ -18,7 +19,7 @@ impl Hasher {
 
 impl PushOperator for Hasher {
     type Item = Bytes;
-    type Output = digest::Output<Sha256>;
+    type Output = String;
 
     fn feed(&mut self, chunk: Self::Item) -> Result<()> {
         self.inner.update(chunk);
@@ -27,7 +28,7 @@ impl PushOperator for Hasher {
     }
 
     fn flush(self) -> Result<Self::Output> {
-        let output = self.inner.finalize();
+        let output = format!("{:x}", HexDisplay(&self.inner.finalize()));
 
         Ok(output)
     }

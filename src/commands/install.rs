@@ -1,14 +1,16 @@
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Context as _, Result};
 use clap::Args;
 use frunk::hlist_pat;
+use futures::prelude::stream::{StreamExt as _, TryStreamExt as _};
+use oci_client::secrets::RegistryAuth;
 use tokio::task::JoinSet;
 
 use super::{Resolution, Runner};
 use crate::{
     context::Context,
-    package::Packageable as _,
+    package::{Packageable as _, ResolvedPackage, ResolvedPackageable as _},
     pipeline::{
         Pipeline,
         pull_operators::Pourer,
@@ -58,19 +60,44 @@ impl Runner for Install {
             set.spawn(async move {
                 let id = resolved_package.id();
 
-                let resp = context
-                    .client
-                    .get("https://httpbin.org/json")
-                    .send()
-                    .await?;
-                let resp = resp.error_for_status()?;
+                let _version = resolved_package.version();
 
-                let stream = resp.bytes_stream();
+                let cache = resolved_package.cache().context("Unexpected `None`")?;
+
+                let _sha256 = resolved_package.sha256().context("Unexpected `None`")?;
+
+                let stream = match &resolved_package {
+                    ResolvedPackage::Formula(resolved_formula) => {
+                        let oci = resolved_formula.oci().context("Unexpected `None`")?;
+
+                        context
+                            .oci_client
+                            .store_auth_if_needed(oci.registry, &RegistryAuth::Anonymous)
+                            .await;
+
+                        let stream = context
+                            .oci_client
+                            .pull_blob_stream(&oci.reference, &oci.descriptor)
+                            .await?;
+
+                        stream.err_into::<anyhow::Error>().left_stream()
+                    },
+                    ResolvedPackage::Cask(resolved_cask) => {
+                        let url = resolved_cask.url();
+
+                        let resp = context.client.get(url).send().await?;
+                        let resp = resp.error_for_status()?;
+
+                        let stream = resp.bytes_stream();
+
+                        stream.err_into::<anyhow::Error>().right_stream()
+                    },
+                };
 
                 let hlist_pat![_hash, _path, _file] = Pipeline::new(stream, context)
                     .fanout(Hasher::new())
                     .fanout(Pourer::new(id))
-                    .fanout(Writer::new(format!("{id}.json"))?)
+                    .fanout(Writer::new(cache.file_name)?)
                     .run_parallel()
                     .await?;
 

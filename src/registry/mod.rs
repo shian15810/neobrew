@@ -98,7 +98,7 @@ impl Registry {
             }
         }
 
-        let err = anyhow!(r#"Formula or cask "{package}" not found."#);
+        let err = anyhow!(r#"Formula or cask "{package}" not found"#);
 
         Err(err)
     }

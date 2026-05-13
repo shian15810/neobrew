@@ -1,7 +1,7 @@
 use std::{num::NonZeroUsize, sync::LazyLock, thread};
 
-use anyhow::Result;
 use clap::ArgMatches;
+use oci_client::{Client, client::ClientConfig};
 use proc_exit::prelude::*;
 
 use self::{
@@ -18,6 +18,7 @@ pub struct Context {
     pub(crate) config: Config,
 
     pub(crate) client: LazyLock<reqwest::Client>,
+    pub(crate) oci_client: LazyLock<Client>,
 
     pub(crate) concurrency_limit: LazyLock<usize>,
     pub(crate) channel_capacity: LazyLock<usize>,
@@ -42,6 +43,7 @@ impl Context {
             config,
 
             client: LazyLock::new(reqwest::Client::new),
+            oci_client: LazyLock::new(|| Client::new(ClientConfig::default())),
 
             concurrency_limit: LazyLock::new(|| *CONCURRENCY_LIMIT),
             channel_capacity: LazyLock::new(|| {

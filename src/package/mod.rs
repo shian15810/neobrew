@@ -52,6 +52,8 @@ impl ResolvedPackage {
 #[enum_dispatch(Package, RawPackage, ResolvedPackage)]
 pub(crate) trait Packageable {
     fn id(&self) -> &str;
+
+    fn version(&self) -> &str;
 }
 
 impl<Package: Packageable> Packageable for Arc<Package> {
@@ -61,4 +63,43 @@ impl<Package: Packageable> Packageable for Arc<Package> {
 
         this.id()
     }
+
+    fn version(&self) -> &str {
+        #[expect(clippy::use_self)]
+        let this = Arc::as_ref(self);
+
+        this.version()
+    }
+}
+
+#[enum_dispatch(ResolvedPackage)]
+pub(crate) trait ResolvedPackageable {
+    fn cache(&self) -> Option<ResolvedPackageCache>;
+
+    fn sha256(&self) -> Option<&str>;
+}
+
+impl<ResolvedPackage: ResolvedPackageable> ResolvedPackageable for Arc<ResolvedPackage> {
+    fn cache(&self) -> Option<ResolvedPackageCache> {
+        #[expect(clippy::use_self)]
+        let this = Arc::as_ref(self);
+
+        let cache = this.cache()?;
+
+        Some(cache)
+    }
+
+    fn sha256(&self) -> Option<&str> {
+        #[expect(clippy::use_self)]
+        let this = Arc::as_ref(self);
+
+        let sha256 = this.sha256()?;
+
+        Some(sha256)
+    }
+}
+
+pub(crate) struct ResolvedPackageCache {
+    pub(crate) file_name: String,
+    pub(crate) symlink_name: String,
 }

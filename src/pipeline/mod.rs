@@ -1,7 +1,10 @@
 use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 
 use anyhow::{Error, Result};
-use frunk::hlist::{HCons, HNil};
+use frunk::{
+    hlist::{HCons, HNil},
+    traits::IntoReverse,
+};
 use futures::{
     future::TryFutureExt as _,
     sink::{self, SinkExt as _},
@@ -43,7 +46,7 @@ impl<
     Item: Clone + Debug + Send + Sync + 'static,
     St: stream::TryStream<Ok = Item, Error = impl Into<Error>> + Send + 'static,
     Si: sink::Sink<Item, Error = Error> + Send + 'static,
-    Handles: Collect,
+    Handles: IntoReverse<Output: Collect>,
 > Pipeline<Item, St, Si, Handles>
 {
     #[expect(clippy::type_complexity)]
@@ -72,7 +75,7 @@ impl<
         }
     }
 
-    pub(crate) async fn run_parallel(self) -> Result<Handles::Outputs> {
+    pub(crate) async fn run_parallel(self) -> Result<<Handles::Output as Collect>::Outputs> {
         let handle: JoinHandle<Result<()>> = task::spawn(async move {
             let forward = self.stream.err_into().forward(self.sink);
 
@@ -82,7 +85,8 @@ impl<
         });
         let handle = AbortOnDropHandle::new(handle);
 
-        let (result, outputs) = futures::try_join!(handle.err_into(), self.handles.collect())?;
+        let (result, outputs) =
+            futures::try_join!(handle.err_into(), self.handles.into_reverse().collect())?;
 
         result?;
 

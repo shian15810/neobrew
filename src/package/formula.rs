@@ -1,10 +1,12 @@
 use std::{cmp::Ordering, collections::HashMap, str::FromStr, sync::Arc};
 
-use oci_client::config::Architecture;
+use base16ct::HexDisplay;
+use oci_client::{Reference, config::Architecture, manifest::OciDescriptor};
 use os_info::Version;
 use serde::Deserialize;
+use sha2::{Digest as _, Sha256};
 
-use super::Packageable;
+use super::{Packageable, ResolvedPackageCache, ResolvedPackageable};
 
 #[derive(Deserialize)]
 pub(crate) struct RawFormula {
@@ -18,6 +20,10 @@ pub(crate) struct RawFormula {
 impl Packageable for RawFormula {
     fn id(&self) -> &str {
         &self.name
+    }
+
+    fn version(&self) -> &str {
+        &self.versions.stable
     }
 }
 
@@ -51,9 +57,39 @@ impl Packageable for ResolvedFormula {
     fn id(&self) -> &str {
         &self.name
     }
+
+    fn version(&self) -> &str {
+        &self.versions.stable
+    }
+}
+
+impl ResolvedPackageable for ResolvedFormula {
+    fn cache(&self) -> Option<ResolvedPackageCache> {
+        let (tag, file) = self.bottle.stable.tag_file()?;
+
+        let cache = file.cache(self.id(), self.version(), tag);
+
+        Some(cache)
+    }
+
+    fn sha256(&self) -> Option<&str> {
+        let (_, file) = self.bottle.stable.tag_file()?;
+
+        let sha256 = &file.sha256;
+
+        Some(sha256)
+    }
 }
 
 impl ResolvedFormula {
+    pub(crate) fn oci(&self) -> Option<ResolvedFormulaOci> {
+        let (_, file) = self.bottle.stable.tag_file()?;
+
+        let oci = file.oci()?;
+
+        Some(oci)
+    }
+
     pub(super) fn iter(self: &Arc<Self>) -> impl Iterator<Item = Arc<Self>> + use<> {
         let this = Arc::clone(self);
 
@@ -98,12 +134,12 @@ struct BottleStable {
 }
 
 impl BottleStable {
-    fn file(&self) -> Option<&BottleStableFile> {
+    fn tag_file(&self) -> Option<(&str, &BottleStableFile)> {
         let tag = self.tag()?;
 
-        let file = self.files.get(tag)?;
+        let (tag, file) = self.files.get_key_value(tag)?;
 
-        Some(file)
+        Some((tag, file))
     }
 
     #[cfg(target_os = "macos")]
@@ -118,17 +154,19 @@ impl BottleStable {
             .files
             .keys()
             .filter_map(|tag| {
-                tag.parse::<MacosVersion>()
-                    .ok()
-                    .map(|candidate_version| (tag.as_str(), candidate_version))
+                let candidate_version: MacosVersion = tag.parse().ok()?;
+
+                Some((tag.as_str(), candidate_version))
             })
             .filter(|(_, candidate_version)| {
-                candidate_version.arch == tag_version.arch && candidate_version <= &tag_version
+                candidate_version.architecture == tag_version.architecture
+                    && candidate_version <= &tag_version
             })
             .max_by(|(_, x), (_, y)| x.cmp(y))
-            .map(|(tag, _)| tag);
+            .map(|(tag, _)| tag)
+            .or_else(|| self.tag_or_else())?;
 
-        self.tag_or_else(tag)
+        Some(tag)
     }
 
     #[cfg(target_os = "linux")]
@@ -137,13 +175,19 @@ impl BottleStable {
             target_arch = "aarch64" => "arm64_linux",
             target_arch = "x86_64" => "x86_64_linux",
         };
-        let tag = self.files.contains_key(tag).then_some(tag);
+        let tag = self
+            .files
+            .contains_key(tag)
+            .then_some(tag)
+            .or_else(|| self.tag_or_else())?;
 
-        self.tag_or_else(tag)
+        Some(tag)
     }
 
-    fn tag_or_else<'a>(&self, tag: Option<&'a str>) -> Option<&'a str> {
-        tag.or_else(|| self.files.contains_key("all").then_some("all"))
+    fn tag_or_else(&self) -> Option<&str> {
+        let tag = self.files.contains_key("all").then_some("all")?;
+
+        Some(tag)
     }
 }
 
@@ -153,11 +197,64 @@ struct BottleStableFile {
     sha256: String,
 }
 
+impl BottleStableFile {
+    fn cache(&self, id: &str, version: &str, tag: &str) -> ResolvedPackageCache {
+        let url_hash = format!("{:x}", HexDisplay(&Sha256::digest(&self.url)));
+
+        let symlink_name = format!("{id}--{version}");
+
+        let file_name = format!("{url_hash}--{symlink_name}.{tag}.bottle.tar.gz");
+
+        ResolvedPackageCache {
+            file_name,
+            symlink_name,
+        }
+    }
+
+    fn oci(&self) -> Option<ResolvedFormulaOci> {
+        let registry = ResolvedFormulaOci::REGISTRY;
+
+        let repository = self
+            .url
+            .strip_prefix(&format!("https://{registry}/v2/"))
+            .and_then(|url| url.split("/blobs/").next())?
+            .to_owned();
+
+        let digest = format!("sha256:{}", self.sha256);
+
+        let reference = Reference::with_digest(registry.to_owned(), repository, digest.clone());
+
+        let descriptor = OciDescriptor {
+            digest,
+
+            ..OciDescriptor::default()
+        };
+
+        let oci = ResolvedFormulaOci {
+            registry,
+            reference,
+            descriptor,
+        };
+
+        Some(oci)
+    }
+}
+
+pub(crate) struct ResolvedFormulaOci {
+    pub(crate) registry: &'static str,
+    pub(crate) reference: Reference,
+    pub(crate) descriptor: OciDescriptor,
+}
+
+impl ResolvedFormulaOci {
+    const REGISTRY: &str = "ghcr.io";
+}
+
 struct MacosVersion {
     name: String,
     major: u64,
     minor: Option<u64>,
-    arch: Architecture,
+    architecture: Architecture,
 }
 
 impl Eq for MacosVersion {}
@@ -205,7 +302,7 @@ impl TryFrom<&Version> for MacosVersion {
             name: name.to_owned(),
             major,
             minor,
-            arch: Architecture::default(),
+            architecture: Architecture::default(),
         };
 
         Ok(this)
@@ -216,7 +313,11 @@ impl FromStr for MacosVersion {
     type Err = ();
 
     fn from_str(tag: &str) -> Result<Self, Self::Err> {
-        let name = tag.strip_prefix("arm64_").unwrap_or(tag);
+        let (name, architecture) = if let Some(name) = tag.strip_prefix("arm64_") {
+            (name, Architecture::ARM64)
+        } else {
+            (tag, Architecture::Amd64)
+        };
 
         let (major, minor) = match name {
             "tahoe" => (26, None),
@@ -233,7 +334,7 @@ impl FromStr for MacosVersion {
             name: name.to_owned(),
             major,
             minor,
-            arch: Architecture::default(),
+            architecture,
         };
 
         Ok(this)
