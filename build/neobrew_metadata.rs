@@ -70,12 +70,12 @@ impl<'a> IntoIterator for &'a NeobrewMetadata {
     type IntoIter = array::IntoIter<Self::Item, 2>;
 
     fn into_iter(self) -> Self::IntoIter {
-        let this = [
+        let collection = [
             ("bin_name", &self.bin_name),
             ("display_name", &self.display_name),
         ];
-        let this = this.map(|(key, val)| (key, val.as_str()));
+        let collection = collection.map(|(key, val)| (key, val.as_str()));
 
-        this.into_iter()
+        collection.into_iter()
     }
 }

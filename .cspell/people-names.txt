@@ -1,5 +1,4 @@
 # Custom Dictionary Words
-
 Anson
 Cheeshian
 Chuah

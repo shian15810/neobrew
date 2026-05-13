@@ -1,5 +1,5 @@
 # Custom Dictionary Words
-
+catalina
 catppuccin
 darwin
 devcontainers
@@ -13,8 +13,11 @@ Neobrew's
 sccache
 Sccache
 SCCACHE
+sonoma
+tahoe
 taplo
 Taplo
 tombi
 Tombi
 trixie
+ventura
