@@ -1,0 +1,11 @@
+#:schema https://www.schemastore.org/tombi.json
+#:tombi toml-version = "v1.1.0"
+
+[files]
+include = ["**/*.toml"]
+exclude = [".git/**"]
+
+[format]
+[format.rules]
+indent-width = 4
+trailing-comment-space-width = 1

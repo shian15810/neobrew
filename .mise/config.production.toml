@@ -1,4 +1,5 @@
 #:schema https://mise.jdx.dev/schema/mise.json
+#:tombi toml-version = "v1.1.0"
 
 # Dev Tools
 
@@ -63,7 +64,7 @@ alias = "lint:rustfmt"
 
 [tasks."cargo:check"]
 tools = { rust = "nightly" }
-run = "cargo +nightly check --all-targets --all-features --keep-going --locked --color=\"always\""
+run = "cargo +nightly check --all-targets --all-features --future-incompat-report --keep-going --locked --color=\"always\""
 
 [tasks."cargo:fix"]
 tools = { rust = "nightly" }
@@ -78,7 +79,7 @@ run = """\
 
 [tasks."cargo:clippy"]
 tools = { rust = "nightly" }
-run = "cargo +nightly clippy --all-targets --all-features --keep-going --locked --color=\"always\" -- {{ env.CLIPPYFLAGS }}"
+run = "cargo +nightly clippy --all-targets --all-features --future-incompat-report --keep-going --locked --color=\"always\" -- {{ env.CLIPPYFLAGS }}"
 alias = "lint:clippy"
 
 [tasks."cargo:clippy:fix"]
@@ -96,20 +97,20 @@ alias = "postlint:clippy"
 
 [tasks."cargo:test"]
 tools = { rust = "nightly" }
-run = "cargo +nightly test --all-features --no-fail-fast --locked --color=\"always\" -- --color=\"always\""
+run = "cargo +nightly test --all-features --future-incompat-report --no-fail-fast --locked --color=\"always\" -- --color=\"always\""
 
 [tasks."cargo:miri:test"]
 tools = { rust = "nightly" }
-run = "cargo +nightly miri test --all-features --no-fail-fast --locked --color=\"always\" -- --color=\"always\""
+run = "cargo +nightly miri test --all-features --future-incompat-report --no-fail-fast --locked --color=\"always\" -- --color=\"always\""
 
 [tasks."cargo:test:doc"]
 tools = { rust = "nightly" }
-run = "cargo +nightly test --doc --all-features --no-fail-fast --locked --color=\"always\" -- --color=\"always\""
+run = "cargo +nightly test --doc --all-features --future-incompat-report --no-fail-fast --locked --color=\"always\" -- --color=\"always\""
 alias = "test:doctest"
 
 [tasks."cargo:miri:test:doc"]
 tools = { rust = "nightly" }
-run = "cargo +nightly miri test --doc --all-features --no-fail-fast --locked --color=\"always\" -- --color=\"always\" || true"
+run = "cargo +nightly miri test --doc --all-features --future-incompat-report --no-fail-fast --locked --color=\"always\" -- --color=\"always\" || true"
 alias = "posttest:doctest"
 
 [tasks."cargo:doc"]
@@ -119,12 +120,12 @@ alias = "build:rustdoc"
 
 [tasks."cargo:build"]
 tools = { rust = "nightly" }
-run = "cargo +nightly build --all-targets --all-features --keep-going --locked --color=\"always\""
+run = "cargo +nightly build --all-targets --all-features --future-incompat-report --keep-going --locked --color=\"always\""
 alias = "build:rustc:debug"
 
 [tasks."cargo:build:release"]
 tools = { rust = "stable" }
-run = "cargo +stable build --release --all-targets --all-features --keep-going --locked --color=\"always\""
+run = "cargo +stable build --release --all-targets --all-features --future-incompat-report --keep-going --locked --color=\"always\""
 alias = "build:rustc:release"
 
 [tasks."cargo:bench"]
@@ -136,12 +137,12 @@ alias = "bench:test"
 
 [tasks."cargo:nextest:run"]
 tools = { rust = "nightly" }
-run = "cargo +nightly nextest run --no-pager --no-tests=\"pass\" --all-features --no-fail-fast --locked --color=\"always\""
+run = "cargo +nightly nextest run --no-pager --no-tests=\"pass\" --all-features --future-incompat-report --no-fail-fast --locked --color=\"always\""
 alias = "test:nextest"
 
 [tasks."cargo:miri:nextest:run"]
 tools = { rust = "nightly" }
-run = "cargo +nightly miri nextest run --no-pager --no-tests=\"pass\" --all-features --no-fail-fast --locked --color=\"always\" || true"
+run = "cargo +nightly miri nextest run --no-pager --no-tests=\"pass\" --all-features --future-incompat-report --no-fail-fast --locked --color=\"always\" || true"
 alias = "posttest:nextest"
 
 [tasks."cargo:nextest:bench"]
@@ -165,6 +166,20 @@ alias = "lint:taplo:fmt"
 env = { RUST_LOG = "error" }
 run = "taplo check --default-schema-catalogs --colors=\"always\" || true"
 alias = "lint:taplo:check"
+
+# Tombi Tasks
+
+[tasks."tombi:format"]
+run = "tombi format"
+alias = "format:tombi"
+
+[tasks."tombi:format:check"]
+run = "tombi format --diff --check"
+alias = "lint:tombi:format"
+
+[tasks."tombi:lint"]
+run = "tombi lint --error-on-warnings"
+alias = "lint:tombi:lint"
 
 # markdownlint Tasks
 

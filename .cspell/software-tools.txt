@@ -1,4 +1,5 @@
 # Custom Dictionary Words
+
 catppuccin
 darwin
 devcontainers
@@ -14,4 +15,6 @@ Sccache
 SCCACHE
 taplo
 Taplo
+tombi
+Tombi
 trixie

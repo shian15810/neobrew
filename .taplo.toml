@@ -1,4 +1,5 @@
 #:schema https://www.schemastore.org/taplo.json
+#:tombi toml-version = "v1.0.0"
 
 include = ["**/*.toml"]
 exclude = [".git/**", ".vscode/mise-tools/**", "target/**"]

@@ -1,3 +1,4 @@
 #:schema https://raw.githubusercontent.com/jdx/mise/HEAD/schema/miserc.json
+#:tombi toml-version = "v1.1.0"
 
 env = ["development"]

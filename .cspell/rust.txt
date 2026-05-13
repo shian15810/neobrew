@@ -1,4 +1,5 @@
 # Custom Dictionary Words
+
 ascii
 bufread
 clicolor
@@ -8,6 +9,7 @@ fanout
 Fanout
 hlist
 idents
+incompat
 miri
 nextest
 Nextest

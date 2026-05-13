@@ -37,6 +37,10 @@ dictionaryDefinitions:
     path: .cspell/people-names.txt
     addWords: true
     supportNonStrictSearches: false
+  - name: custom-miscellaneous
+    path: .cspell/miscellaneous.txt
+    addWords: true
+    supportNonStrictSearches: false
 
 dictionaries:
   - rust
@@ -48,3 +52,4 @@ dictionaries:
   - custom-rust-crates
   - custom-shellscript
   - custom-people-names
+  - custom-miscellaneous

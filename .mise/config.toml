@@ -1,4 +1,5 @@
 #:schema https://mise.jdx.dev/schema/mise.json
+#:tombi toml-version = "v1.1.0"
 
 # Settings
 
@@ -46,13 +47,7 @@ depends = ["format:**"]
 [tasks.lint]
 usage = "flag \"--run-post\" default=#false"
 depends = ["lint:**"]
-depends_post = ["""
-    {%- if usage.run_post -%}
-        postlint:**
-    {%- else -%}
-        noop
-    {%- endif -%}
-"""]
+depends_post = ["{% if usage.run_post %}postlint:**{% else %}noop{% endif %}"]
 
 [tasks.fix]
 depends = ["fix:**"]
@@ -60,13 +55,7 @@ depends = ["fix:**"]
 [tasks.test]
 usage = "flag \"--run-post\" default=#false"
 depends = ["test:**"]
-depends_post = ["""
-    {%- if usage.run_post -%}
-        posttest:**
-    {%- else -%}
-        noop
-    {%- endif -%}
-"""]
+depends_post = ["{% if usage.run_post %}posttest:**{% else %}noop{% endif %}"]
 
 [tasks.build]
 depends = ["build:**"]

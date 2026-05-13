@@ -1,7 +1,8 @@
 # To get started with Dependabot version updates, you'll need to specify which
 # package ecosystems to update and where the package manifests are located.
-# Please see the documentation for more information:
+# Please see the documentation for all configuration options:
 # https://docs.github.com/github/administering-a-repository/configuration-options-for-dependency-updates
+# Please see the documentation for more information:
 # https://containers.dev/guide/dependabot
 
 # $schema: https://www.schemastore.org/dependabot-2.0.json
@@ -12,19 +13,22 @@ updates:
   - package-ecosystem: rust-toolchain
     directory: /
     schedule:
-      interval: weekly
+      interval: daily
 
   - package-ecosystem: cargo
     directory: /
     schedule:
-      interval: weekly
+      interval: daily
+    allow:
+      # Allow both direct and indirect updates for all packages.
+      - dependency-type: all
 
-  - package-ecosystem: devcontainers
+  - package-ecosystem: devcontainers # See documentation for possible values
     directory: /
     schedule:
-      interval: weekly
+      interval: daily
 
   - package-ecosystem: github-actions
     directory: /
     schedule:
-      interval: weekly
+      interval: daily

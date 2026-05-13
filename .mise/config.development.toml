@@ -1,4 +1,5 @@
 #:schema https://mise.jdx.dev/schema/mise.json
+#:tombi toml-version = "v1.1.0"
 
 # Dev Tools
 
@@ -162,6 +163,20 @@ alias = "lint:taplo:fmt"
 env = { RUST_LOG = "error" }
 run = "taplo check --default-schema-catalogs || true"
 alias = "lint:taplo:check"
+
+# Tombi Tasks
+
+[tasks."tombi:format"]
+run = "tombi format"
+alias = "format:tombi"
+
+[tasks."tombi:format:check"]
+run = "tombi format --diff --check"
+alias = "lint:tombi:format"
+
+[tasks."tombi:lint"]
+run = "tombi lint"
+alias = "lint:tombi:lint"
 
 # markdownlint Tasks
 

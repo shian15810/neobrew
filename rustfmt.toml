@@ -1,4 +1,6 @@
 #:schema https://www.schemastore.org/rustfmt.json
+#:tombi toml-version = "v1.0.0"
+#:tombi schema.strict = false
 
 unstable_features = true
 

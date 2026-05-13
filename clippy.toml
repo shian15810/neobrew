@@ -1,3 +1,5 @@
+#:tombi toml-version = "v1.0.0"
+
 allow-comparison-to-zero = false
 allow-exact-repetitions = false
 allow-expect-in-consts = false
@@ -6,11 +8,7 @@ allow-mixed-uninlined-format-args = false
 allow-unwrap-in-consts = false
 avoid-breaking-exported-api = false
 
-absolute-paths-allowed-crates = [
-    "build_rs",
-    "proc_exit",
-    "tracing_subscriber",
-]
+absolute-paths-allowed-crates = ["build_rs", "proc_exit", "tracing_subscriber"]
 disallowed-macros = [
     "std::panic",
     "std::todo",

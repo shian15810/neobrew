@@ -28,7 +28,7 @@
             "package": "bash",
         },
         "./features/homebrew-package": {
-            "package": "mise,sccache,rust-analyzer,cargo-nextest,taplo,markdownlint-cli2,prettier,biome,shfmt,shellcheck,cspell",
+            "package": "mise,sccache,rust-analyzer,cargo-nextest,taplo,tombi,markdownlint-cli2,prettier,biome,shfmt,shellcheck,cspell",
         },
 
         "ghcr.io/devcontainers/features/rust:1": {
@@ -73,6 +73,7 @@
                 "vadimcn.vscode-lldb",
                 "rust-lang.rust-analyzer",
                 "tamasfe.even-better-toml",
+                "tombi-toml.tombi",
                 "DavidAnson.vscode-markdownlint",
                 "GitHub.vscode-github-actions",
                 "redhat.vscode-yaml",

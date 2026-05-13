@@ -6,6 +6,7 @@
         "vadimcn.vscode-lldb",
         "rust-lang.rust-analyzer",
         "tamasfe.even-better-toml",
+        "tombi-toml.tombi",
         "DavidAnson.vscode-markdownlint",
         "GitHub.vscode-github-actions",
         "redhat.vscode-yaml",
