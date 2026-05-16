@@ -1,11 +1,18 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use base16ct::HexDisplay;
 use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
 use url::Url;
 
-use super::{Packageable, ResolvedPackageCache, ResolvedPackageable};
+use super::{
+    Packageable,
+    PreparedPackageFetchCache,
+    PreparedPackageable,
+    RawPackageJsonCache,
+    RawPackageable,
+};
+use crate::Context;
 
 #[derive(Deserialize)]
 pub(crate) struct RawCask {
@@ -26,6 +33,27 @@ impl Packageable for RawCask {
     }
 }
 
+impl RawPackageable for RawCask {
+    fn json_cache(&self, context: &Context) -> RawPackageJsonCache {
+        let id = self.id();
+
+        let file_name = format!("{id}.json");
+
+        let file_location_parent = cfg_select! {
+            debug_assertions => context.neobrew_dirs.cache_dir(),
+            _ => context.homebrew_dirs.cache_dir(),
+        };
+        let file_location_parent = file_location_parent.join("api").join("cask");
+
+        let file_location = file_location_parent.join(file_name);
+
+        RawPackageJsonCache {
+            file_location_parent,
+            file_location,
+        }
+    }
+}
+
 pub(crate) struct ResolvedCask {
     token: String,
     name: Vec<String>,
@@ -35,13 +63,13 @@ pub(crate) struct ResolvedCask {
 }
 
 impl From<RawCask> for ResolvedCask {
-    fn from(raw: RawCask) -> Self {
+    fn from(raw_cask: RawCask) -> Self {
         Self {
-            token: raw.token,
-            name: raw.name,
-            url: raw.url,
-            version: raw.version,
-            sha256: raw.sha256,
+            token: raw_cask.token,
+            name: raw_cask.name,
+            url: raw_cask.url,
+            version: raw_cask.version,
+            sha256: raw_cask.sha256,
         }
     }
 }
@@ -56,41 +84,90 @@ impl Packageable for ResolvedCask {
     }
 }
 
-impl ResolvedPackageable for ResolvedCask {
-    fn cache(&self) -> Option<ResolvedPackageCache> {
+pub(crate) struct PreparedCask {
+    token: String,
+    name: Vec<String>,
+    url: String,
+    version: String,
+    sha256: String,
+}
+
+impl From<ResolvedCask> for PreparedCask {
+    fn from(resolved_cask: ResolvedCask) -> Self {
+        Self {
+            token: resolved_cask.token,
+            name: resolved_cask.name,
+            url: resolved_cask.url,
+            version: resolved_cask.version,
+            sha256: resolved_cask.sha256,
+        }
+    }
+}
+
+impl Packageable for PreparedCask {
+    fn id(&self) -> &str {
+        &self.token
+    }
+
+    fn version(&self) -> &str {
+        &self.version
+    }
+}
+
+impl PreparedPackageable for PreparedCask {
+    fn fetch_sha256(&self) -> &str {
+        &self.sha256
+    }
+
+    fn fetch_cache(&self, context: &Context) -> Option<PreparedPackageFetchCache> {
         let version = &self.version();
 
         let url = Url::parse(&self.url).ok()?;
 
-        let name = url
-            .path_segments()
-            .and_then(|mut path_segments| path_segments.next_back())?;
+        let mut fetch_name = url.path_segments()?;
+        let fetch_name = fetch_name.next_back()?;
 
-        let extension = Path::new(name).extension()?.to_str()?;
+        let extension = Path::new(fetch_name).extension()?;
+        let extension = extension.to_str()?;
 
-        let url_hash = format!("{:x}", HexDisplay(&Sha256::digest(&self.url)));
+        let url_hash = Sha256::digest(&self.url);
+        let url_hash = HexDisplay(&url_hash);
+        let url_hash = format!("{url_hash:x}");
 
-        let symlink_name = format!("{name}--{version}.{extension}");
+        let symlink_name = format!("{fetch_name}--{version}.{extension}");
 
-        let file_name = format!("{url_hash}--{name}");
+        let file_name = format!("{url_hash}--{fetch_name}");
 
-        let cache = ResolvedPackageCache {
-            file_name,
-            symlink_name,
+        let symlink_location_parent = cfg_select! {
+            debug_assertions => context.neobrew_dirs.cache_dir(),
+            _ => context.homebrew_dirs.cache_dir(),
+        };
+        let symlink_location_parent = symlink_location_parent.join("Cask");
+
+        let file_location_parent = symlink_location_parent.join("downloads");
+
+        let symlink_location = symlink_location_parent.join(symlink_name);
+
+        let file_location = file_location_parent.join(file_name);
+
+        let cache = PreparedPackageFetchCache {
+            file_location_parent,
+            file_location,
+
+            symlink_location_parent,
+            symlink_location,
         };
 
         Some(cache)
     }
 
-    fn sha256(&self) -> Option<&str> {
-        let sha256 = &self.sha256;
-
-        Some(sha256)
+    fn fetch_dest(&self, _context: &Context) -> PathBuf {
+        PathBuf::new()
     }
 }
 
-impl ResolvedCask {
-    pub(crate) fn url(&self) -> &str {
+impl PreparedCask {
+    pub(crate) fn fetch_url(&self) -> &str {
         &self.url
     }
 }

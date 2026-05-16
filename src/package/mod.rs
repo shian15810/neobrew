@@ -1,20 +1,24 @@
-use std::{iter, sync::Arc};
+use std::{fs::File, iter, path::PathBuf, sync::Arc};
 
+use anyhow::Context as _;
 use enum_dispatch::enum_dispatch;
 use itertools::Either;
 
-use self::{
+use self::{cask::PreparedCask, formula::PreparedFormula};
+pub(crate) use self::{
     cask::{RawCask, ResolvedCask},
     formula::{RawFormula, ResolvedFormula},
 };
+use crate::Context;
 
-pub(crate) mod cask;
-pub(crate) mod formula;
+mod cask;
+mod formula;
 
 #[enum_dispatch]
 enum Package {
     Raw(RawPackage),
     Resolved(ResolvedPackage),
+    Prepared(PreparedPackage),
 }
 
 #[enum_dispatch]
@@ -49,7 +53,39 @@ impl ResolvedPackage {
     }
 }
 
-#[enum_dispatch(Package, RawPackage, ResolvedPackage)]
+#[enum_dispatch]
+pub(crate) enum PreparedPackage {
+    Formula(PreparedFormula),
+    Cask(PreparedCask),
+}
+
+impl TryFrom<ResolvedPackage> for PreparedPackage {
+    type Error = anyhow::Error;
+
+    fn try_from(resolved_package: ResolvedPackage) -> Result<Self, Self::Error> {
+        let this = match resolved_package {
+            ResolvedPackage::Formula(resolved_formula) => {
+                let resolved_formula =
+                    Arc::into_inner(resolved_formula).context("Unexpected `None`")?;
+
+                let prepared_formula = PreparedFormula::try_from(resolved_formula)?;
+
+                Self::Formula(prepared_formula)
+            },
+            ResolvedPackage::Cask(resolved_cask) => {
+                let resolved_cask = Arc::into_inner(resolved_cask).context("Unexpected `None`")?;
+
+                let prepared_cask = PreparedCask::from(resolved_cask);
+
+                Self::Cask(prepared_cask)
+            },
+        };
+
+        Ok(this)
+    }
+}
+
+#[enum_dispatch(Package, RawPackage, ResolvedPackage, PreparedPackage)]
 pub(crate) trait Packageable {
     fn id(&self) -> &str;
 
@@ -72,34 +108,44 @@ impl<Package: Packageable> Packageable for Arc<Package> {
     }
 }
 
-#[enum_dispatch(ResolvedPackage)]
-pub(crate) trait ResolvedPackageable {
-    fn cache(&self) -> Option<ResolvedPackageCache>;
-
-    fn sha256(&self) -> Option<&str>;
+#[enum_dispatch(RawPackage)]
+pub(crate) trait RawPackageable {
+    fn json_cache(&self, context: &Context) -> RawPackageJsonCache;
 }
 
-impl<ResolvedPackage: ResolvedPackageable> ResolvedPackageable for Arc<ResolvedPackage> {
-    fn cache(&self) -> Option<ResolvedPackageCache> {
+impl<RawPackage: RawPackageable> RawPackageable for Arc<RawPackage> {
+    fn json_cache(&self, context: &Context) -> RawPackageJsonCache {
         #[expect(clippy::use_self)]
         let this = Arc::as_ref(self);
 
-        let cache = this.cache()?;
-
-        Some(cache)
-    }
-
-    fn sha256(&self) -> Option<&str> {
-        #[expect(clippy::use_self)]
-        let this = Arc::as_ref(self);
-
-        let sha256 = this.sha256()?;
-
-        Some(sha256)
+        this.json_cache(context)
     }
 }
 
-pub(crate) struct ResolvedPackageCache {
-    pub(crate) file_name: String,
-    pub(crate) symlink_name: String,
+pub(crate) struct RawPackageJsonCache {
+    pub(crate) file_location_parent: PathBuf,
+    pub(crate) file_location: PathBuf,
+}
+
+#[enum_dispatch(PreparedPackage)]
+pub(crate) trait PreparedPackageable {
+    fn fetch_sha256(&self) -> &str;
+
+    fn fetch_cache(&self, context: &Context) -> Option<PreparedPackageFetchCache>;
+
+    fn fetch_dest(&self, context: &Context) -> PathBuf;
+}
+
+pub(crate) struct PreparedPackageFetchCache {
+    pub(crate) file_location_parent: PathBuf,
+    pub(crate) file_location: PathBuf,
+
+    pub(crate) symlink_location_parent: PathBuf,
+    pub(crate) symlink_location: PathBuf,
+}
+
+pub(crate) struct PreparedPackageFetchCacheFiles {
+    pub(crate) file_file: File,
+
+    pub(crate) symlink_file: File,
 }

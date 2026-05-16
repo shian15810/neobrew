@@ -1,21 +1,17 @@
 use std::sync::Arc;
 
 use anyhow::Result;
-use etcetera::AppStrategy as _;
 use foyer::{Cache, CacheBuilder};
 use tokio::fs;
 
 use super::Registrable;
 use crate::{
     context::Context,
-    package::{
-        Packageable as _,
-        cask::{RawCask, ResolvedCask},
-    },
+    package::{RawCask, RawPackageable as _, ResolvedCask},
 };
 
 pub(super) struct CaskRegistry {
-    store: Cache<String, Arc<ResolvedCask>>,
+    store: Cache<Arc<str>, Arc<ResolvedCask>>,
 
     context: Arc<Context>,
 }
@@ -39,7 +35,7 @@ impl Registrable for CaskRegistry {
         }
     }
 
-    async fn resolve(self: Arc<Self>, package: String) -> Result<Arc<Self::ResolvedPackage>> {
+    async fn resolve(self: Arc<Self>, package: Arc<str>) -> Result<Arc<Self::ResolvedPackage>> {
         let resolved_cask = self.resolve_inner(package).await?;
 
         Ok(resolved_cask)
@@ -47,13 +43,15 @@ impl Registrable for CaskRegistry {
 }
 
 impl CaskRegistry {
-    async fn resolve_inner(self: Arc<Self>, package: String) -> Result<Arc<ResolvedCask>> {
+    async fn resolve_inner(self: Arc<Self>, package: Arc<str>) -> Result<Arc<ResolvedCask>> {
         let resolved_cask = self
             .store
             .get_or_fetch(&package, || {
                 let this = Arc::clone(&self);
 
-                this.fetch(package.clone())
+                let package = Arc::clone(&package);
+
+                this.fetch(package)
             })
             .await?;
         let resolved_cask = resolved_cask.value();
@@ -62,23 +60,24 @@ impl CaskRegistry {
         Ok(resolved_cask)
     }
 
-    async fn fetch(self: Arc<Self>, package: String) -> Result<Arc<ResolvedCask>> {
-        let url = Self::API_URL.replace("{}", &package);
+    async fn fetch(self: Arc<Self>, package: Arc<str>) -> Result<Arc<ResolvedCask>> {
+        let api_url = Self::API_URL;
+        let api_url = api_url.replace("{}", &package);
 
-        let resp = self.context.client.get(url).send().await?;
+        let resp = self.context.client.get(api_url).send().await?;
         let resp = resp.error_for_status()?;
 
         let bytes = resp.bytes().await?;
 
         let raw_cask: RawCask = serde_json::from_slice(&bytes)?;
 
-        let dir = self.context.proj_dirs.cache_dir().join("api").join("cask");
+        let context = Arc::as_ref(&self.context);
 
-        fs::create_dir_all(&dir).await?;
+        let json_cache = raw_cask.json_cache(context);
 
-        let file = dir.join(format!("{}.json", raw_cask.id()));
+        fs::create_dir_all(json_cache.file_location_parent).await?;
 
-        fs::write(file, bytes).await?;
+        fs::write(json_cache.file_location, bytes).await?;
 
         let resolved_cask = ResolvedCask::from(raw_cask);
         let resolved_cask = Arc::new(resolved_cask);

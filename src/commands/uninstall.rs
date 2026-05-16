@@ -2,20 +2,10 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use clap::Args;
-use frunk::hlist_pat;
 use tokio::task::JoinSet;
 
 use super::{Resolution, Runner};
-use crate::{
-    context::Context,
-    package::Packageable as _,
-    pipeline::{
-        Pipeline,
-        pull_operators::Pourer,
-        push_operators::{Hasher, Writer},
-    },
-    registry::Registry,
-};
+use crate::{context::Context, package::Packageable as _, registry::Registry};
 
 #[derive(Args)]
 pub(super) struct Uninstall {
@@ -44,35 +34,19 @@ impl Runner for Uninstall {
 
         let mut set: JoinSet<Result<()>> = JoinSet::new();
 
-        let concurrency_limit = *context.concurrency_limit;
-
         for resolved_package in resolved_packages {
-            if set.len() >= concurrency_limit
+            if set.len() >= *context.concurrency_limit
                 && let Some(res) = set.join_next().await
             {
                 res??;
             }
 
-            let context = Arc::clone(&context);
+            let _context = Arc::clone(&context);
 
             set.spawn(async move {
-                let id = resolved_package.id();
+                let _id = resolved_package.id();
 
-                let resp = context
-                    .client
-                    .get("https://httpbin.org/json")
-                    .send()
-                    .await?;
-                let resp = resp.error_for_status()?;
-
-                let stream = resp.bytes_stream();
-
-                let hlist_pat![_hash, _path, _file] = Pipeline::new(stream, context)
-                    .fanout(Hasher::new())
-                    .fanout(Pourer::new(id))
-                    .fanout(Writer::new(format!("{id}.json"))?)
-                    .run_parallel()
-                    .await?;
+                let _version = resolved_package.version();
 
                 Ok(())
             });

@@ -13,10 +13,14 @@ use futures::{
 use tokio::task::{self, JoinHandle};
 use tokio_util::{sync::PollSender, task::AbortOnDropHandle};
 
+pub(crate) use self::{
+    pull_operators::Pourer,
+    push_operators::{Hasher, Writer},
+};
 use crate::context::Context;
 
-pub(crate) mod pull_operators;
-pub(crate) mod push_operators;
+mod pull_operators;
+mod push_operators;
 
 pub(crate) struct Pipeline<Item, St, Si, Handles> {
     stream: St,
@@ -59,7 +63,9 @@ impl<
         sink::Fanout<Si, sink::SinkErrInto<PollSender<Item>, Item, Error>>,
         HCons<AbortOnDropHandle<Result<Op::Output>>, Handles>,
     > {
-        let (sink, handle) = operator.spawn_blocking(&self.context);
+        let context = Arc::as_ref(&self.context);
+
+        let (sink, handle) = operator.spawn_blocking(context);
 
         Pipeline {
             stream: self.stream,

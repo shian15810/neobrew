@@ -13,7 +13,7 @@ use super::{EnvConfig, ProviderConfig};
 
 #[serde_as]
 #[derive(Deserialize)]
-pub(super) struct HomebrewEnvConfig {
+pub(in super::super) struct HomebrewEnvConfig {
     prefix: String,
 
     #[serde_as(as = "Option<HomebrewBoolFromStr>")]
@@ -42,7 +42,7 @@ impl EnvConfig for HomebrewEnvConfig {
 }
 
 impl HomebrewEnvConfig {
-    const DEFAULT_PREFIX: &str = cfg_select! {
+    pub(in super::super) const DEFAULT_PREFIX: &str = cfg_select! {
         all(target_os = "macos", target_arch = "aarch64") => "/opt/homebrew",
         all(target_os = "macos", target_arch = "x86_64") => "/usr/local",
         target_os = "linux" => "/home/linuxbrew/.linuxbrew",
@@ -133,5 +133,7 @@ fn homebrew_bool_from_str<'de, D: Deserializer<'de>>(deserializer: D) -> Result<
         .iter()
         .any(|&falsy_value| falsy_value.eq_ignore_ascii_case(&value));
 
-    Ok(!is_falsy_value)
+    let is_truthy_value = !is_falsy_value;
+
+    Ok(is_truthy_value)
 }

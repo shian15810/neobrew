@@ -53,17 +53,23 @@ impl Registry {
         strategy: ResolutionStrategy,
     ) -> Result<Vec<ResolvedPackage>> {
         let resolved_packages = stream::iter(packages)
-            .map(|package| self.resolve_one(package, strategy))
+            .map(async |package| -> Result<_> {
+                let package = Arc::from(package);
+
+                let resolved_package = self.resolve_one(package, strategy).await?;
+
+                Ok(resolved_package)
+            })
             .buffer_unordered(*self.context.concurrency_limit)
-            .try_collect::<Vec<_>>();
-        let resolved_packages = resolved_packages.await?;
+            .try_collect::<Vec<_>>()
+            .await?;
 
         Ok(resolved_packages)
     }
 
     async fn resolve_one(
         &self,
-        package: String,
+        package: Arc<str>,
         strategy: ResolutionStrategy,
     ) -> Result<ResolvedPackage> {
         if matches!(
@@ -73,7 +79,9 @@ impl Registry {
             let formula_registry = self.formula();
             let formula_registry = Arc::clone(formula_registry);
 
-            let resolved_formula = formula_registry.resolve(package.clone()).await;
+            let package = Arc::clone(&package);
+
+            let resolved_formula = formula_registry.resolve(package).await;
 
             if let Ok(resolved_formula) = resolved_formula {
                 let resolved_package = ResolvedPackage::Formula(resolved_formula);
@@ -89,7 +97,9 @@ impl Registry {
             let cask_registry = self.cask();
             let cask_registry = Arc::clone(cask_registry);
 
-            let resolved_cask = cask_registry.resolve(package.clone()).await;
+            let package = Arc::clone(&package);
+
+            let resolved_cask = cask_registry.resolve(package).await;
 
             if let Ok(resolved_cask) = resolved_cask {
                 let resolved_package = ResolvedPackage::Cask(resolved_cask);
@@ -150,5 +160,5 @@ trait Registrable {
 
     fn new(context: Arc<Context>) -> Self;
 
-    async fn resolve(self: Arc<Self>, package: String) -> Result<Arc<Self::ResolvedPackage>>;
+    async fn resolve(self: Arc<Self>, package: Arc<str>) -> Result<Arc<Self::ResolvedPackage>>;
 }

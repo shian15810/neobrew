@@ -1,4 +1,5 @@
 use std::{
+    fs::Dir,
     io::BufRead,
     path::{Path, PathBuf},
 };
@@ -10,29 +11,29 @@ use tar::Archive;
 use super::PullOperator;
 
 pub(crate) struct Pourer {
-    path: PathBuf,
+    fetch_dest: PathBuf,
 }
 
 impl Pourer {
-    pub(crate) fn new(path: impl AsRef<Path>) -> Self {
+    pub(crate) fn new(fetch_dest: impl AsRef<Path>) -> Self {
         Self {
-            path: path.as_ref().to_path_buf(),
+            fetch_dest: fetch_dest.as_ref().to_path_buf(),
         }
     }
 }
 
 impl PullOperator for Pourer {
-    type Output = PathBuf;
+    type Output = Dir;
 
     fn from_reader(self, reader: impl BufRead) -> Result<Self::Output> {
         let gz_decoder = GzDecoder::new(reader);
 
         let mut archive = Archive::new(gz_decoder);
 
-        archive.unpack(&self.path)?;
+        archive.unpack(&self.fetch_dest)?;
 
-        let output = self.path;
+        let fetch_dest_dir = Dir::open(self.fetch_dest)?;
 
-        Ok(output)
+        Ok(fetch_dest_dir)
     }
 }

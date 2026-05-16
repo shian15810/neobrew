@@ -10,12 +10,8 @@ use tokio::task::JoinSet;
 use super::{Resolution, Runner};
 use crate::{
     context::Context,
-    package::{Packageable as _, ResolvedPackage, ResolvedPackageable as _},
-    pipeline::{
-        Pipeline,
-        pull_operators::Pourer,
-        push_operators::{Hasher, Writer},
-    },
+    package::{Packageable as _, PreparedPackage, PreparedPackageable as _},
+    pipeline::{Hasher, Pipeline, Pourer, Writer},
     registry::Registry,
 };
 
@@ -44,12 +40,22 @@ impl Runner for Install {
 
         let resolved_packages = registry.resolve(self.packages, strategy).await?;
 
+        #[cfg(debug_assertions)]
+        let prepared_packages = resolved_packages
+            .into_iter()
+            .map(PreparedPackage::try_from)
+            .try_collect::<Vec<_>>()?;
+
+        #[cfg(not(debug_assertions))]
+        let prepared_packages = resolved_packages
+            .into_iter()
+            .map(PreparedPackage::try_from)
+            .collect::<Result<Vec<_>>>()?;
+
         let mut set: JoinSet<Result<()>> = JoinSet::new();
 
-        let concurrency_limit = *context.concurrency_limit;
-
-        for resolved_package in resolved_packages {
-            if set.len() >= concurrency_limit
+        for prepared_package in prepared_packages {
+            if set.len() >= *context.concurrency_limit
                 && let Some(res) = set.join_next().await
             {
                 res??;
@@ -58,48 +64,63 @@ impl Runner for Install {
             let context = Arc::clone(&context);
 
             set.spawn(async move {
-                let id = resolved_package.id();
+                let _id = prepared_package.id();
 
-                let _version = resolved_package.version();
+                let _version = prepared_package.version();
 
-                let cache = resolved_package.cache().context("Unexpected `None`")?;
+                let _fetch_sha256 = prepared_package.fetch_sha256();
 
-                let _sha256 = resolved_package.sha256().context("Unexpected `None`")?;
+                let fetch_cache = {
+                    let context = Arc::as_ref(&context);
 
-                let stream = match &resolved_package {
-                    ResolvedPackage::Formula(resolved_formula) => {
-                        let oci = resolved_formula.oci().context("Unexpected `None`")?;
+                    prepared_package
+                        .fetch_cache(context)
+                        .context("Unexpected `None`")?
+                };
+
+                let fetch_dest = {
+                    let context = Arc::as_ref(&context);
+
+                    prepared_package.fetch_dest(context)
+                };
+
+                let fetch_stream = match &prepared_package {
+                    PreparedPackage::Formula(prepared_formula) => {
+                        let fetch_oci =
+                            prepared_formula.fetch_oci().context("Unexpected `None`")?;
 
                         context
                             .oci_client
-                            .store_auth_if_needed(oci.registry, &RegistryAuth::Anonymous)
+                            .store_auth_if_needed(fetch_oci.registry, &RegistryAuth::Anonymous)
                             .await;
 
-                        let stream = context
+                        let fetch_stream = context
                             .oci_client
-                            .pull_blob_stream(&oci.reference, &oci.descriptor)
+                            .pull_blob_stream(&fetch_oci.reference, &fetch_oci.descriptor)
                             .await?;
 
-                        stream.err_into::<anyhow::Error>().left_stream()
+                        fetch_stream.err_into::<anyhow::Error>().left_stream()
                     },
-                    ResolvedPackage::Cask(resolved_cask) => {
-                        let url = resolved_cask.url();
 
-                        let resp = context.client.get(url).send().await?;
-                        let resp = resp.error_for_status()?;
+                    PreparedPackage::Cask(prepared_cask) => {
+                        let fetch_url = prepared_cask.fetch_url();
 
-                        let stream = resp.bytes_stream();
+                        let fetch_resp = context.client.get(fetch_url).send().await?;
+                        let fetch_resp = fetch_resp.error_for_status()?;
 
-                        stream.err_into::<anyhow::Error>().right_stream()
+                        let fetch_stream = fetch_resp.bytes_stream();
+
+                        fetch_stream.err_into::<anyhow::Error>().right_stream()
                     },
                 };
 
-                let hlist_pat![_hash, _path, _file] = Pipeline::new(stream, context)
-                    .fanout(Hasher::new())
-                    .fanout(Pourer::new(id))
-                    .fanout(Writer::new(cache.file_name)?)
-                    .run_parallel()
-                    .await?;
+                let hlist_pat![_fetch_hash, _fetch_cache_files, _fetch_dest_dir] =
+                    Pipeline::new(fetch_stream, context)
+                        .fanout(Hasher::new())
+                        .fanout(Writer::new(fetch_cache)?)
+                        .fanout(Pourer::new(fetch_dest))
+                        .run_parallel()
+                        .await?;
 
                 Ok(())
             });

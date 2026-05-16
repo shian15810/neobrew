@@ -56,7 +56,10 @@ impl NeobrewMetadata {
         let neobrew_metadata = &metadata.neobrew;
 
         for (key, value) in neobrew_metadata {
-            let key = format!("{}{}", Self::ENV_PREFIX, key.to_uppercase());
+            let env_prefix = Self::ENV_PREFIX;
+
+            let key = key.to_uppercase();
+            let key = format!("{env_prefix}{key}");
 
             build_rs::output::rustc_env(&key, value);
         }

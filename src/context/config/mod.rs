@@ -12,12 +12,8 @@ use figment::{
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_with::{DisplayFromStr, serde_as};
 
-use self::{
-    cli::CliConfig,
-    global_env::GlobalEnvConfig,
-    homebrew_env::HomebrewEnvConfig,
-    neobrew_env::NeobrewEnvConfig,
-};
+pub(super) use self::homebrew_env::HomebrewEnvConfig;
+use self::{cli::CliConfig, global_env::GlobalEnvConfig, neobrew_env::NeobrewEnvConfig};
 
 mod cli;
 mod global_env;

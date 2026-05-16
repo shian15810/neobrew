@@ -28,8 +28,10 @@ impl PushOperator for Hasher {
     }
 
     fn flush(self) -> Result<Self::Output> {
-        let output = format!("{:x}", HexDisplay(&self.inner.finalize()));
+        let fetch_hash = self.inner.finalize();
+        let fetch_hash = HexDisplay(&fetch_hash);
+        let fetch_hash = format!("{fetch_hash:x}");
 
-        Ok(output)
+        Ok(fetch_hash)
     }
 }

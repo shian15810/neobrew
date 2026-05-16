@@ -69,7 +69,6 @@ serde = "1.0.228"
 [lints.cargo]
 complexity = { level = "deny", priority = -1 }
 # implicit_minimum_version_req = "deny"
-# restriction = { level = "deny", priority = -1 }
 non_kebab_case_features = "deny"
 non_kebab_case_packages = "deny"
 pedantic = { level = "deny", priority = -1 }
@@ -78,21 +77,20 @@ style = { level = "deny", priority = -1 }
 suspicious = { level = "deny", priority = -1 }
 # non_snake_case_features = "deny"
 # non_snake_case_packages = "deny"
-# nursery = { level = "deny", priority = -1 }
 
 [lints.clippy]
-# restriction = { level = "warn", priority = -1 }
 absolute_paths = "warn"
 arithmetic_side_effects = "warn"
-# nursery = { level = "warn", priority = -1 }
 branches_sharing_code = "warn"
 cargo = { level = "warn", priority = -1 }
 clone_on_ref_ptr = "warn"
 dbg_macro = "warn"
+deref_by_slicing = "warn"
 disallowed_script_idents = "warn"
 empty_enum_variants_with_brackets = "warn"
 empty_structs_with_brackets = "warn"
 expect_used = "warn"
+get_unwrap = "warn"
 if_then_some_else_none = "warn"
 indexing_slicing = "warn"
 large_stack_frames = "warn"
@@ -111,11 +109,13 @@ pub_without_shorthand = "warn"
 redundant_clone = "warn"
 redundant_test_prefix = "warn"
 redundant_type_annotations = "warn"
+ref_patterns = "warn"
 renamed_function_params = "warn"
 self_named_module_files = "warn"
 str_to_string = "warn"
 trait_duplication_in_bounds = "warn"
 type_repetition_in_bounds = "warn"
+uninhabited_references = "warn"
 unnecessary_struct_initialization = "warn"
 unused_result_ok = "warn"
 unused_trait_names = "warn"
@@ -123,12 +123,9 @@ unwrap_used = "warn"
 use_self = "warn"
 
 [lints.rust]
-# let_underscore = { level = "warn", priority = -1 }
-# _.default = { level = "allow", priority = -1 }
 absolute_paths_not_starting_with_crate = "warn"
 ambiguous_negative_literals = "warn"
 closure_returning_async_block = "warn"
-# _.default = { level = "warn", priority = -1 }
 dead_code = "allow"
 deprecated_safe = { level = "warn", priority = -1 }
 deref_into_dyn_supertrait = "warn"
@@ -138,7 +135,6 @@ ffi_unwind_calls = "warn"
 if_let_rescope = "warn"
 impl_trait_overcaptures = "warn"
 impl_trait_redundant_captures = "warn"
-# future_incompatible = { level = "warn", priority = -1 }
 keyword_idents = { level = "warn", priority = -1 }
 let_underscore_drop = "warn"
 linker_messages = "warn"
@@ -170,12 +166,8 @@ unused_macro_rules = "warn"
 unused_qualifications = "warn"
 # unused_results = "warn"
 variant_size_differences = "warn"
-# _.default = { level = "deny", priority = -1 }
 
 [lints.rustdoc]
-# _.default = { level = "allow", priority = -1 }
 missing_crate_level_docs = "warn"
 private_doc_tests = "warn"
 unescaped_backticks = "warn"
-# _.default = { level = "warn", priority = -1 }
-# _.default = { level = "deny", priority = -1 }

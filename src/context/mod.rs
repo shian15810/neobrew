@@ -6,14 +6,15 @@ use proc_exit::prelude::*;
 
 use self::{
     config::Config,
-    project_dirs::{ChosenAppStrategy, ProjectDirs},
+    dirs::{HomebrewDirs, NeobrewDirs},
 };
 
 mod config;
-mod project_dirs;
+mod dirs;
 
 pub struct Context {
-    pub(crate) proj_dirs: ChosenAppStrategy,
+    pub(crate) homebrew_dirs: HomebrewDirs,
+    pub(crate) neobrew_dirs: NeobrewDirs,
 
     pub(crate) config: Config,
 
@@ -30,15 +31,18 @@ impl Context {
 
     #[expect(clippy::missing_errors_doc)]
     pub fn new(matches: &ArgMatches) -> Result<Self, proc_exit::Exit> {
-        let proj_dirs = ProjectDirs::new();
-        let proj_dirs = proj_dirs.with_code(proc_exit::sysexits::OS_ERR)?;
-        let proj_dirs = proj_dirs.strategy();
+        let homebrew_dirs = HomebrewDirs::new();
+        let homebrew_dirs = homebrew_dirs.with_code(proc_exit::sysexits::OS_ERR)?;
+
+        let neobrew_dirs = NeobrewDirs::new();
+        let neobrew_dirs = neobrew_dirs.with_code(proc_exit::sysexits::OS_ERR)?;
 
         let config = Config::load(matches);
         let config = config.with_code(proc_exit::sysexits::CONFIG_ERR)?;
 
         let this = Self {
-            proj_dirs,
+            homebrew_dirs,
+            neobrew_dirs,
 
             config,
 

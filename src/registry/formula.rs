@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
 use async_recursion::async_recursion;
-use etcetera::AppStrategy as _;
 use foyer::{Cache, CacheBuilder};
 use futures::stream::{self, StreamExt as _, TryStreamExt as _};
 use tokio::fs;
@@ -10,14 +9,11 @@ use tokio::fs;
 use super::Registrable;
 use crate::{
     context::Context,
-    package::{
-        Packageable as _,
-        formula::{RawFormula, ResolvedFormula},
-    },
+    package::{RawFormula, RawPackageable as _, ResolvedFormula},
 };
 
 pub(super) struct FormulaRegistry {
-    store: Cache<String, Arc<ResolvedFormula>>,
+    store: Cache<Arc<str>, Arc<ResolvedFormula>>,
 
     context: Arc<Context>,
 }
@@ -41,7 +37,7 @@ impl Registrable for FormulaRegistry {
         }
     }
 
-    async fn resolve(self: Arc<Self>, package: String) -> Result<Arc<Self::ResolvedPackage>> {
+    async fn resolve(self: Arc<Self>, package: Arc<str>) -> Result<Arc<Self::ResolvedPackage>> {
         let stack = Vec::new();
 
         let resolved_formula = self.resolve_with_stack(package, stack).await?;
@@ -53,8 +49,8 @@ impl Registrable for FormulaRegistry {
 impl FormulaRegistry {
     async fn resolve_with_stack(
         self: Arc<Self>,
-        package: String,
-        mut stack: Vec<String>,
+        package: Arc<str>,
+        mut stack: Vec<Arc<str>>,
     ) -> Result<Arc<ResolvedFormula>> {
         if stack.contains(&package) {
             let formula = package;
@@ -72,14 +68,20 @@ impl FormulaRegistry {
             return Err(err);
         }
 
-        stack.push(package.clone());
+        {
+            let package = Arc::clone(&package);
+
+            stack.push(package);
+        }
 
         let resolved_formula = self
             .store
             .get_or_fetch(&package, || {
                 let this = Arc::clone(&self);
 
-                this.fetch_with_stack(package.clone(), stack)
+                let package = Arc::clone(&package);
+
+                this.fetch_with_stack(package, stack)
             })
             .await?;
         let resolved_formula = resolved_formula.value();
@@ -91,44 +93,46 @@ impl FormulaRegistry {
     #[async_recursion]
     async fn fetch_with_stack(
         self: Arc<Self>,
-        package: String,
-        stack: Vec<String>,
+        package: Arc<str>,
+        stack: Vec<Arc<str>>,
     ) -> Result<Arc<ResolvedFormula>> {
-        let url = Self::API_URL.replace("{}", &package);
+        let api_url = Self::API_URL;
+        let api_url = api_url.replace("{}", &package);
 
-        let resp = self.context.client.get(url).send().await?;
+        let resp = self.context.client.get(api_url).send().await?;
         let resp = resp.error_for_status()?;
 
         let bytes = resp.bytes().await?;
 
         let raw_formula: RawFormula = serde_json::from_slice(&bytes)?;
 
-        let dir = self
-            .context
-            .proj_dirs
-            .cache_dir()
-            .join("api")
-            .join("formula");
+        let context = Arc::as_ref(&self.context);
 
-        fs::create_dir_all(&dir).await?;
+        let json_cache = raw_formula.json_cache(context);
 
-        let file = dir.join(format!("{}.json", raw_formula.id()));
+        fs::create_dir_all(json_cache.file_location_parent).await?;
 
-        fs::write(file, bytes).await?;
+        fs::write(json_cache.file_location, bytes).await?;
 
-        let dependencies = raw_formula.dependencies().iter().cloned();
+        let raw_formula_dependencies = raw_formula.dependencies().iter().cloned();
 
-        let resolved_dependencies = stream::iter(dependencies)
-            .map(|dependency| {
+        let resolved_formula_dependencies = stream::iter(raw_formula_dependencies)
+            .map(async |raw_formula_dependency| -> Result<_> {
                 let this = Arc::clone(&self);
 
-                this.resolve_with_stack(dependency, stack.clone())
+                let raw_formula_dependency = Arc::from(raw_formula_dependency);
+
+                let resolved_formula_dependency = this
+                    .resolve_with_stack(raw_formula_dependency, stack.clone())
+                    .await?;
+
+                Ok(resolved_formula_dependency)
             })
             .buffer_unordered(*self.context.concurrency_limit)
-            .try_collect::<Vec<_>>();
-        let resolved_dependencies = resolved_dependencies.await?;
+            .try_collect::<Vec<_>>()
+            .await?;
 
-        let resolved_formula = ResolvedFormula::from((raw_formula, resolved_dependencies));
+        let resolved_formula = ResolvedFormula::from((raw_formula, resolved_formula_dependencies));
         let resolved_formula = Arc::new(resolved_formula);
 
         Ok(resolved_formula)

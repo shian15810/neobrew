@@ -1,8 +1,7 @@
-#![cfg_attr(all(debug_assertions, doc), feature(rustdoc_missing_doc_code_examples))]
+#![cfg_attr(debug_assertions, feature(doc_cfg))]
 #![cfg_attr(
     debug_assertions,
     feature(
-        doc_cfg,
         multiple_supertrait_upcastable,
         must_not_suspend,
         non_exhaustive_omitted_patterns_lint,
@@ -23,9 +22,10 @@
         resolving_to_items_shadowing_supertrait_items,
         shadowing_supertrait_items,
         unqualified_local_imports,
-        rustdoc::missing_doc_code_examples,
     )
 )]
+#![cfg_attr(all(debug_assertions, doc), feature(rustdoc_missing_doc_code_examples))]
+#![cfg_attr(debug_assertions, warn(rustdoc::missing_doc_code_examples))]
 #![doc(test(attr(warn(unused), deny(warnings))))]
 #![expect(rustdoc::missing_crate_level_docs)]
 
