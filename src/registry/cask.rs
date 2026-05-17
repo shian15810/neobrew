@@ -1,13 +1,12 @@
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use foyer::{Cache, CacheBuilder};
-use tokio::fs;
 
 use super::Registrable;
 use crate::{
     context::Context,
-    package::{RawCask, RawPackageable as _, ResolvedCask},
+    package::{RawCask, RawPackage, ResolvedCask},
 };
 
 pub(super) struct CaskRegistry {
@@ -70,13 +69,22 @@ impl CaskRegistry {
 
         let raw_cask: RawCask = serde_json::from_slice(&bytes)?;
 
-        let context = Arc::as_ref(&self.context);
+        let raw_package = RawPackage::Cask(raw_cask);
 
-        let json_cache = raw_cask.json_cache(context);
+        {
+            let this = Arc::as_ref(&self);
 
-        fs::create_dir_all(json_cache.file_location_parent).await?;
+            let context = Arc::as_ref(&self.context);
 
-        fs::write(json_cache.file_location, bytes).await?;
+            this.cache_raw_package_json(&raw_package, bytes, context)
+                .await?;
+        }
+
+        let RawPackage::Cask(raw_cask) = raw_package else {
+            let err = anyhow!("Expected `RawCask`");
+
+            return Err(err);
+        };
 
         let resolved_cask = ResolvedCask::from(raw_cask);
         let resolved_cask = Arc::new(resolved_cask);

@@ -9,7 +9,6 @@ use url::Url;
 use super::{
     Packageable,
     PreparedPackageFetchCache,
-    PreparedPackageFetchDest,
     PreparedPackageable,
     RawPackageJsonCache,
     RawPackageable,
@@ -170,29 +169,6 @@ impl PreparedPackageable for PreparedCask {
         };
 
         Some(cache)
-    }
-
-    fn fetch_dest(&self, context: &Context) -> PreparedPackageFetchDest {
-        let id = self.id();
-
-        let version = self.version();
-
-        let caskroom_dir = cfg_select! {
-            debug_assertions => context.neobrew_dirs.caskroom_dir(),
-            _ => context.homebrew_dirs.caskroom_dir(),
-        };
-
-        let dir_location_parent_parent = caskroom_dir;
-
-        let dir_location_parent = dir_location_parent_parent.join(id);
-
-        let dir_location = dir_location_parent.join(version);
-
-        PreparedPackageFetchDest {
-            dir_location_parent_parent,
-            dir_location_parent,
-            dir_location,
-        }
     }
 }
 

@@ -11,7 +11,6 @@ use sha2::{Digest as _, Sha256};
 use super::{
     Packageable,
     PreparedPackageFetchCache,
-    PreparedPackageFetchDest,
     PreparedPackageable,
     RawPackageJsonCache,
     RawPackageable,
@@ -174,29 +173,6 @@ impl PreparedPackageable for PreparedFormula {
                 .fetch_cache(self.id(), self.version(), &self.tag, context)?;
 
         Some(fetch_cache)
-    }
-
-    fn fetch_dest(&self, context: &Context) -> PreparedPackageFetchDest {
-        let id = self.id();
-
-        let version = self.version();
-
-        let cellar_dir = cfg_select! {
-            debug_assertions => context.neobrew_dirs.cellar_dir(),
-            _ => context.homebrew_dirs.cellar_dir(),
-        };
-
-        let dir_location_parent_parent = cellar_dir;
-
-        let dir_location_parent = dir_location_parent_parent.join(id);
-
-        let dir_location = dir_location_parent.join(version);
-
-        PreparedPackageFetchDest {
-            dir_location_parent_parent,
-            dir_location_parent,
-            dir_location,
-        }
     }
 }
 

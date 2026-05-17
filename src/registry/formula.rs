@@ -4,12 +4,11 @@ use anyhow::{Result, anyhow};
 use async_recursion::async_recursion;
 use foyer::{Cache, CacheBuilder};
 use futures::stream::{self, StreamExt as _, TryStreamExt as _};
-use tokio::fs;
 
 use super::Registrable;
 use crate::{
     context::Context,
-    package::{RawFormula, RawPackageable as _, ResolvedFormula},
+    package::{RawFormula, RawPackage, ResolvedFormula},
 };
 
 pub(super) struct FormulaRegistry {
@@ -105,15 +104,18 @@ impl FormulaRegistry {
 
         let raw_formula: RawFormula = serde_json::from_slice(&bytes)?;
 
-        let context = Arc::as_ref(&self.context);
+        let raw_formula_dependencies = raw_formula.dependencies().to_vec();
 
-        let json_cache = raw_formula.json_cache(context);
+        let raw_package = RawPackage::Formula(raw_formula);
 
-        fs::create_dir_all(json_cache.file_location_parent).await?;
+        {
+            let this = Arc::as_ref(&self);
 
-        fs::write(json_cache.file_location, bytes).await?;
+            let context = Arc::as_ref(&self.context);
 
-        let raw_formula_dependencies = raw_formula.dependencies().iter().cloned();
+            this.cache_raw_package_json(&raw_package, bytes, context)
+                .await?;
+        }
 
         let resolved_formula_dependencies = stream::iter(raw_formula_dependencies)
             .map(async |raw_formula_dependency| -> Result<_> {
@@ -130,6 +132,12 @@ impl FormulaRegistry {
             .buffer_unordered(*self.context.concurrency_limit)
             .try_collect::<Vec<_>>()
             .await?;
+
+        let RawPackage::Formula(raw_formula) = raw_package else {
+            let err = anyhow!("Expected `RawFormula`");
+
+            return Err(err);
+        };
 
         let resolved_formula = ResolvedFormula::from((raw_formula, resolved_formula_dependencies));
         let resolved_formula = Arc::new(resolved_formula);

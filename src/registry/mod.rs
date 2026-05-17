@@ -1,14 +1,22 @@
-use std::sync::{Arc, OnceLock};
+use std::{
+    fs,
+    io::prelude::Write as _,
+    sync::{Arc, OnceLock},
+};
 
 use anyhow::{Result, anyhow};
+use bytes::Bytes;
 use enum_dispatch::enum_dispatch;
 use futures::stream::{self, StreamExt as _, TryStreamExt as _};
 use itertools::Itertools as _;
+use tempfile::NamedTempFile;
+use tokio::task::{self, JoinHandle};
+use tokio_util::task::AbortOnDropHandle;
 
 use self::{cask::CaskRegistry, formula::FormulaRegistry};
 use crate::{
     context::Context,
-    package::{Packageable as _, ResolvedPackage},
+    package::{Packageable as _, RawPackage, RawPackageable as _, ResolvedPackage},
 };
 
 mod cask;
@@ -161,4 +169,30 @@ trait Registrable {
     fn new(context: Arc<Context>) -> Self;
 
     async fn resolve(self: Arc<Self>, package: Arc<str>) -> Result<Arc<Self::ResolvedPackage>>;
+
+    async fn cache_raw_package_json(
+        &self,
+        raw_package: &RawPackage,
+        bytes: Bytes,
+        context: &Context,
+    ) -> Result<()> {
+        let json_cache = raw_package.json_cache(context);
+
+        let handle: JoinHandle<Result<()>> = task::spawn_blocking(move || {
+            fs::create_dir_all(&json_cache.file_location_parent)?;
+
+            let mut file = NamedTempFile::new_in(json_cache.file_location_parent)?;
+
+            file.write_all(&bytes)?;
+
+            file.persist(json_cache.file_location)?;
+
+            Ok(())
+        });
+        let handle = AbortOnDropHandle::new(handle);
+
+        handle.await??;
+
+        Ok(())
+    }
 }

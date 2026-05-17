@@ -21,10 +21,43 @@ enum Package {
     Prepared(PreparedPackage),
 }
 
+#[enum_dispatch(Package, RawPackage, ResolvedPackage, PreparedPackage)]
+pub(crate) trait Packageable {
+    fn id(&self) -> &str;
+
+    fn version(&self) -> &str;
+}
+
+impl<Package: Packageable> Packageable for Arc<Package> {
+    fn id(&self) -> &str {
+        #[expect(clippy::use_self)]
+        let this = Arc::as_ref(self);
+
+        this.id()
+    }
+
+    fn version(&self) -> &str {
+        #[expect(clippy::use_self)]
+        let this = Arc::as_ref(self);
+
+        this.version()
+    }
+}
+
 #[enum_dispatch]
-enum RawPackage {
+pub(crate) enum RawPackage {
     Formula(RawFormula),
     Cask(RawCask),
+}
+
+#[enum_dispatch(RawPackage)]
+pub(crate) trait RawPackageable: Packageable {
+    fn json_cache(&self, context: &Context) -> RawPackageJsonCache;
+}
+
+pub(crate) struct RawPackageJsonCache {
+    pub(crate) file_location_parent: PathBuf,
+    pub(crate) file_location: PathBuf,
 }
 
 #[enum_dispatch]
@@ -72,6 +105,7 @@ impl TryFrom<ResolvedPackage> for PreparedPackage {
 
                 Self::Formula(prepared_formula)
             },
+
             ResolvedPackage::Cask(resolved_cask) => {
                 let resolved_cask = Arc::into_inner(resolved_cask).context("Unexpected `None`")?;
 
@@ -85,55 +119,47 @@ impl TryFrom<ResolvedPackage> for PreparedPackage {
     }
 }
 
-#[enum_dispatch(Package, RawPackage, ResolvedPackage, PreparedPackage)]
-pub(crate) trait Packageable {
-    fn id(&self) -> &str;
-
-    fn version(&self) -> &str;
-}
-
-impl<Package: Packageable> Packageable for Arc<Package> {
-    fn id(&self) -> &str {
-        #[expect(clippy::use_self)]
-        let this = Arc::as_ref(self);
-
-        this.id()
-    }
-
-    fn version(&self) -> &str {
-        #[expect(clippy::use_self)]
-        let this = Arc::as_ref(self);
-
-        this.version()
-    }
-}
-
-#[enum_dispatch(RawPackage)]
-pub(crate) trait RawPackageable {
-    fn json_cache(&self, context: &Context) -> RawPackageJsonCache;
-}
-
-impl<RawPackage: RawPackageable> RawPackageable for Arc<RawPackage> {
-    fn json_cache(&self, context: &Context) -> RawPackageJsonCache {
-        #[expect(clippy::use_self)]
-        let this = Arc::as_ref(self);
-
-        this.json_cache(context)
-    }
-}
-
-pub(crate) struct RawPackageJsonCache {
-    pub(crate) file_location_parent: PathBuf,
-    pub(crate) file_location: PathBuf,
-}
-
 #[enum_dispatch(PreparedPackage)]
-pub(crate) trait PreparedPackageable {
+pub(crate) trait PreparedPackageable: Packageable {
     fn fetch_sha256(&self) -> &str;
 
     fn fetch_cache(&self, context: &Context) -> Option<PreparedPackageFetchCache>;
+}
 
-    fn fetch_dest(&self, context: &Context) -> PreparedPackageFetchDest;
+impl PreparedPackage {
+    pub(crate) fn fetch_dest(&self, context: &Context) -> PreparedPackageFetchDest {
+        let id = self.id();
+
+        let version = self.version();
+
+        let dest_dir = match self {
+            Self::Formula(_) => {
+                cfg_select! {
+                    debug_assertions => context.neobrew_dirs.cellar_dir(),
+                    _ => context.homebrew_dirs.cellar_dir(),
+                }
+            },
+
+            Self::Cask(_) => {
+                cfg_select! {
+                    debug_assertions => context.neobrew_dirs.caskroom_dir(),
+                    _ => context.homebrew_dirs.caskroom_dir(),
+                }
+            },
+        };
+
+        let dir_location_parent_parent = dest_dir;
+
+        let dir_location_parent = dir_location_parent_parent.join(id);
+
+        let dir_location = dir_location_parent.join(version);
+
+        PreparedPackageFetchDest {
+            dir_location_parent_parent,
+            dir_location_parent,
+            dir_location,
+        }
+    }
 }
 
 pub(crate) struct PreparedPackageFetchCache {
