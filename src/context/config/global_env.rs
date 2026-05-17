@@ -36,13 +36,20 @@ impl ProviderConfig for GlobalEnvConfig {
     const METADATA_NAME: &str = "Global environment variable(s)";
 
     fn data(&self) -> figment::Result<Map<Profile, Dict>> {
-        #[rustfmt::skip]
-        let color_choice = match (
-            self.no_color.as_deref(),
-            self.force_color.as_deref().or(self.clicolor_force.as_deref()),
-            self.clicolor.as_deref(),
-        ) {
-            (Some(_), _, _) => Some(ColorChoice::Never),
+        let no_color = &self.no_color;
+        let no_color = no_color.as_deref();
+
+        let force_color = &self.force_color;
+        let force_color = force_color.as_deref();
+
+        let clicolor_force = &self.clicolor_force;
+        let clicolor_force = clicolor_force.as_deref();
+
+        let clicolor = &self.clicolor;
+        let clicolor = clicolor.as_deref();
+
+        let color_choice = match (no_color, force_color.or(clicolor_force), clicolor) {
+            (Some(_), ..) => Some(ColorChoice::Never),
             (_, Some(_), _) => Some(ColorChoice::Always),
             (_, _, Some(_)) => Some(ColorChoice::Auto),
             _ => None,

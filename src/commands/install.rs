@@ -64,9 +64,9 @@ impl Runner for Install {
             let context = Arc::clone(&context);
 
             set.spawn(async move {
-                let _id = prepared_package.id();
+                let id = prepared_package.id();
 
-                let _version = prepared_package.version();
+                let version = prepared_package.version();
 
                 let _fetch_sha256 = prepared_package.fetch_sha256();
 
@@ -98,8 +98,9 @@ impl Runner for Install {
                             .oci_client
                             .pull_blob_stream(&fetch_oci.reference, &fetch_oci.descriptor)
                             .await?;
+                        let fetch_stream = fetch_stream.err_into::<anyhow::Error>();
 
-                        fetch_stream.err_into::<anyhow::Error>().left_stream()
+                        fetch_stream.left_stream()
                     },
 
                     PreparedPackage::Cask(prepared_cask) => {
@@ -109,18 +110,18 @@ impl Runner for Install {
                         let fetch_resp = fetch_resp.error_for_status()?;
 
                         let fetch_stream = fetch_resp.bytes_stream();
+                        let fetch_stream = fetch_stream.err_into::<anyhow::Error>();
 
-                        fetch_stream.err_into::<anyhow::Error>().right_stream()
+                        fetch_stream.right_stream()
                     },
                 };
 
-                let hlist_pat![_fetch_hash, _fetch_cache_files, _fetch_dest_dir] =
-                    Pipeline::new(fetch_stream, context)
-                        .fanout(Hasher::new())
-                        .fanout(Writer::new(fetch_cache)?)
-                        .fanout(Pourer::new(fetch_dest))
-                        .run_parallel()
-                        .await?;
+                let hlist_pat![_hashed_sha256, (), ()] = Pipeline::new(fetch_stream, context)
+                    .fanout(Hasher::new())
+                    .fanout(Writer::new(fetch_cache)?)
+                    .fanout(Pourer::new(id.to_owned(), version.to_owned(), fetch_dest))
+                    .run_parallel()
+                    .await?;
 
                 Ok(())
             });

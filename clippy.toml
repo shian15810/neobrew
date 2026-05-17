@@ -8,7 +8,7 @@ allow-mixed-uninlined-format-args = false
 allow-unwrap-in-consts = false
 avoid-breaking-exported-api = false
 
-absolute-paths-allowed-crates = ["build_rs", "proc_exit", "tracing_subscriber"]
+absolute-paths-allowed-crates = ["build_rs", "proc_exit"]
 disallowed-macros = [
     "std::panic",
     "std::todo",

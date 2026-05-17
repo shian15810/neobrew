@@ -1,15 +1,17 @@
-use std::{cmp::Ordering, collections::HashMap, path::PathBuf, str::FromStr, sync::Arc};
+use std::{cmp::Ordering, collections::HashMap, str::FromStr, sync::Arc};
 
 use anyhow::{Context as _, Result, anyhow};
 use base16ct::HexDisplay;
 use oci_client::{Reference, config::Architecture, manifest::OciDescriptor};
 use os_info::Version;
+use pathdiff::diff_paths;
 use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
 
 use super::{
     Packageable,
     PreparedPackageFetchCache,
+    PreparedPackageFetchDest,
     PreparedPackageable,
     RawPackageJsonCache,
     RawPackageable,
@@ -47,11 +49,12 @@ impl RawPackageable for RawFormula {
 
         let file_name = format!("{id}.json");
 
-        let file_location_parent = cfg_select! {
+        let cache_dir = cfg_select! {
             debug_assertions => context.neobrew_dirs.cache_dir(),
             _ => context.homebrew_dirs.cache_dir(),
         };
-        let file_location_parent = file_location_parent.join("api").join("formula");
+
+        let file_location_parent = cache_dir.join("api").join("formula");
 
         let file_location = file_location_parent.join(file_name);
 
@@ -168,13 +171,32 @@ impl PreparedPackageable for PreparedFormula {
     fn fetch_cache(&self, context: &Context) -> Option<PreparedPackageFetchCache> {
         let fetch_cache =
             self.bottle_stable_file
-                .fetch_cache(self.id(), self.version(), &self.tag, context);
+                .fetch_cache(self.id(), self.version(), &self.tag, context)?;
 
         Some(fetch_cache)
     }
 
-    fn fetch_dest(&self, _context: &Context) -> PathBuf {
-        PathBuf::new()
+    fn fetch_dest(&self, context: &Context) -> PreparedPackageFetchDest {
+        let id = self.id();
+
+        let version = self.version();
+
+        let cellar_dir = cfg_select! {
+            debug_assertions => context.neobrew_dirs.cellar_dir(),
+            _ => context.homebrew_dirs.cellar_dir(),
+        };
+
+        let dir_location_parent_parent = cellar_dir;
+
+        let dir_location_parent = dir_location_parent_parent.join(id);
+
+        let dir_location = dir_location_parent.join(version);
+
+        PreparedPackageFetchDest {
+            dir_location_parent_parent,
+            dir_location_parent,
+            dir_location,
+        }
     }
 }
 
@@ -255,7 +277,7 @@ impl BottleStable {
             target_arch = "aarch64" => "arm64_linux",
             target_arch = "x86_64" => "x86_64_linux",
         };
-        let tag = self.files.contains_key(tag).then_some(tag.to_owned());
+        let tag = self.files.contains_key(tag).then(|| tag.to_owned());
         let tag = tag.or_else(|| self.tag_or_else())?;
 
         Some(tag)
@@ -282,7 +304,7 @@ impl BottleStableFile {
         version: &str,
         tag: &str,
         context: &Context,
-    ) -> PreparedPackageFetchCache {
+    ) -> Option<PreparedPackageFetchCache> {
         let url_hash = Sha256::digest(&self.url);
         let url_hash = HexDisplay(&url_hash);
         let url_hash = format!("{url_hash:x}");
@@ -291,24 +313,33 @@ impl BottleStableFile {
 
         let file_name = format!("{url_hash}--{symlink_name}.{tag}.bottle.tar.gz");
 
-        let symlink_location_parent = cfg_select! {
+        let cache_dir = cfg_select! {
             debug_assertions => context.neobrew_dirs.cache_dir(),
             _ => context.homebrew_dirs.cache_dir(),
         };
 
-        let file_location_parent = symlink_location_parent.join("downloads");
+        let symlink_location_parent = cache_dir;
 
-        let symlink_location = symlink_location_parent.join(symlink_name);
+        let file_location_parent = symlink_location_parent.join("downloads");
 
         let file_location = file_location_parent.join(file_name);
 
-        PreparedPackageFetchCache {
+        let symlink_location_diff = diff_paths(&file_location, &symlink_location_parent)?;
+
+        let symlink_location = symlink_location_parent.join(symlink_name);
+
+        let symlink_location_tmp = symlink_location.with_extension("tmp");
+
+        let cache = PreparedPackageFetchCache {
             file_location_parent,
             file_location,
 
-            symlink_location_parent,
+            symlink_location_diff,
+            symlink_location_tmp,
             symlink_location,
-        }
+        };
+
+        Some(cache)
     }
 
     fn fetch_oci(&self) -> Option<PreparedFormulaFetchOci> {

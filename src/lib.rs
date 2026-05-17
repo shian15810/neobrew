@@ -1,4 +1,4 @@
-#![cfg_attr(debug_assertions, feature(dirfd, iterator_try_collect))]
+#![cfg_attr(debug_assertions, feature(iterator_try_collect))]
 #![cfg_attr(debug_assertions, feature(doc_cfg))]
 #![cfg_attr(
     debug_assertions,

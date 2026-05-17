@@ -32,11 +32,15 @@ mod uninstall;
     about = crate_description!().split_once(" - ").map(|(head, _)| head),
     long_about = crate_description!(),
     version = crate_version!(),
-    long_version = rustc_tools_util::get_version_info!()
-        .to_string()
-        .leak()
-        .split_once(' ')
-        .map(|(_, tail)| tail),
+    long_version = {
+        let version_info = rustc_tools_util::get_version_info!();
+        let version_info = version_info.to_string();
+        let version_info = version_info.leak();
+
+        version_info
+            .split_once(' ')
+            .map(|(_, long_version)| long_version)
+    },
 )]
 pub struct Cli {
     #[command(subcommand)]
@@ -52,9 +56,17 @@ pub struct Cli {
         num_args = 0..=1,
         require_equals = true,
         default_value_t = ColorChoice::Auto,
-        default_missing_value = ColorChoice::Always
-            .to_possible_value()
-            .map(|val| -> &str { val.get_name().to_owned().leak() }),
+        default_missing_value = {
+            let color_choice = ColorChoice::Always.to_possible_value();
+
+            color_choice.map(|color| {
+                let color = color.get_name();
+                let color = color.to_owned();
+                let color: &str = color.leak();
+
+                color
+            })
+        },
     )]
     color: ColorChoice,
 }

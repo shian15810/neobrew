@@ -38,8 +38,7 @@ impl NeobrewDirs {
 
     #[cfg(debug_assertions)]
     fn prefix_dir(&self) -> PathBuf {
-        let app_name = Self::APP_NAME;
-        let app_name = app_name.to_lowercase();
+        let app_name = Self::APP_NAME.to_lowercase();
 
         let dot_app_name = format!(".{app_name}");
 

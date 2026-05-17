@@ -1,6 +1,7 @@
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use base16ct::HexDisplay;
+use pathdiff::diff_paths;
 use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
 use url::Url;
@@ -8,6 +9,7 @@ use url::Url;
 use super::{
     Packageable,
     PreparedPackageFetchCache,
+    PreparedPackageFetchDest,
     PreparedPackageable,
     RawPackageJsonCache,
     RawPackageable,
@@ -39,11 +41,12 @@ impl RawPackageable for RawCask {
 
         let file_name = format!("{id}.json");
 
-        let file_location_parent = cfg_select! {
+        let cache_dir = cfg_select! {
             debug_assertions => context.neobrew_dirs.cache_dir(),
             _ => context.homebrew_dirs.cache_dir(),
         };
-        let file_location_parent = file_location_parent.join("api").join("cask");
+
+        let file_location_parent = cache_dir.join("api").join("cask");
 
         let file_location = file_location_parent.join(file_name);
 
@@ -124,45 +127,72 @@ impl PreparedPackageable for PreparedCask {
 
         let url = Url::parse(&self.url).ok()?;
 
-        let mut fetch_name = url.path_segments()?;
-        let fetch_name = fetch_name.next_back()?;
+        let mut name = url.path_segments()?;
+        let name = name.next_back()?;
 
-        let extension = Path::new(fetch_name).extension()?;
+        let path = Path::new(name);
+
+        let extension = path.extension()?;
         let extension = extension.to_str()?;
 
         let url_hash = Sha256::digest(&self.url);
         let url_hash = HexDisplay(&url_hash);
         let url_hash = format!("{url_hash:x}");
 
-        let symlink_name = format!("{fetch_name}--{version}.{extension}");
+        let symlink_name = format!("{name}--{version}.{extension}");
 
-        let file_name = format!("{url_hash}--{fetch_name}");
+        let file_name = format!("{url_hash}--{name}");
 
-        let symlink_location_parent = cfg_select! {
+        let cache_dir = cfg_select! {
             debug_assertions => context.neobrew_dirs.cache_dir(),
             _ => context.homebrew_dirs.cache_dir(),
         };
-        let symlink_location_parent = symlink_location_parent.join("Cask");
+
+        let symlink_location_parent = cache_dir.join("Cask");
 
         let file_location_parent = symlink_location_parent.join("downloads");
 
+        let file_location = file_location_parent.join(file_name);
+
+        let symlink_location_diff = diff_paths(&file_location, &symlink_location_parent)?;
+
         let symlink_location = symlink_location_parent.join(symlink_name);
 
-        let file_location = file_location_parent.join(file_name);
+        let symlink_location_tmp = symlink_location.with_extension("tmp");
 
         let cache = PreparedPackageFetchCache {
             file_location_parent,
             file_location,
 
-            symlink_location_parent,
+            symlink_location_diff,
+            symlink_location_tmp,
             symlink_location,
         };
 
         Some(cache)
     }
 
-    fn fetch_dest(&self, _context: &Context) -> PathBuf {
-        PathBuf::new()
+    fn fetch_dest(&self, context: &Context) -> PreparedPackageFetchDest {
+        let id = self.id();
+
+        let version = self.version();
+
+        let caskroom_dir = cfg_select! {
+            debug_assertions => context.neobrew_dirs.caskroom_dir(),
+            _ => context.homebrew_dirs.caskroom_dir(),
+        };
+
+        let dir_location_parent_parent = caskroom_dir;
+
+        let dir_location_parent = dir_location_parent_parent.join(id);
+
+        let dir_location = dir_location_parent.join(version);
+
+        PreparedPackageFetchDest {
+            dir_location_parent_parent,
+            dir_location_parent,
+            dir_location,
+        }
     }
 }
 

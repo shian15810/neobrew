@@ -1,17 +1,18 @@
 use std::{
-    fs::{self, File},
+    fs,
     io::{BufWriter, Write as _},
     os::unix::fs as unix_fs,
 };
 
 use anyhow::Result;
 use bytes::Bytes;
+use tempfile::NamedTempFile;
 
 use super::PushOperator;
-use crate::package::{PreparedPackageFetchCache, PreparedPackageFetchCacheFiles};
+use crate::package::PreparedPackageFetchCache;
 
 pub(crate) struct Writer {
-    inner: BufWriter<File>,
+    buf_file: BufWriter<NamedTempFile>,
 
     fetch_cache: PreparedPackageFetchCache,
 }
@@ -20,10 +21,10 @@ impl Writer {
     pub(crate) fn new(fetch_cache: PreparedPackageFetchCache) -> Result<Self> {
         fs::create_dir_all(&fetch_cache.file_location_parent)?;
 
-        let file = File::create(&fetch_cache.file_location)?;
+        let file = NamedTempFile::new_in(&fetch_cache.file_location_parent)?;
 
         let this = Self {
-            inner: BufWriter::new(file),
+            buf_file: BufWriter::new(file),
 
             fetch_cache,
         };
@@ -34,34 +35,31 @@ impl Writer {
 
 impl PushOperator for Writer {
     type Item = Bytes;
-    type Output = PreparedPackageFetchCacheFiles;
+    type Output = ();
 
     fn feed(&mut self, chunk: Self::Item) -> Result<()> {
-        self.inner.write_all(&chunk)?;
+        self.buf_file.write_all(&chunk)?;
 
         Ok(())
     }
 
     fn flush(mut self) -> Result<Self::Output> {
-        self.inner.flush()?;
+        self.buf_file.flush()?;
 
-        fs::create_dir_all(self.fetch_cache.symlink_location_parent)?;
+        let file = self.buf_file.into_inner()?;
+
+        file.persist(self.fetch_cache.file_location)?;
 
         unix_fs::symlink(
-            self.fetch_cache.file_location,
-            &self.fetch_cache.symlink_location,
+            self.fetch_cache.symlink_location_diff,
+            &self.fetch_cache.symlink_location_tmp,
         )?;
 
-        let symlink_file = File::open(self.fetch_cache.symlink_location)?;
+        fs::rename(
+            self.fetch_cache.symlink_location_tmp,
+            self.fetch_cache.symlink_location,
+        )?;
 
-        let file_file = self.inner.into_inner()?;
-
-        let fetch_cache_files = PreparedPackageFetchCacheFiles {
-            file_file,
-
-            symlink_file,
-        };
-
-        Ok(fetch_cache_files)
+        Ok(())
     }
 }

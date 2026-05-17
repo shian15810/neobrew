@@ -61,8 +61,7 @@ impl CaskRegistry {
     }
 
     async fn fetch(self: Arc<Self>, package: Arc<str>) -> Result<Arc<ResolvedCask>> {
-        let api_url = Self::API_URL;
-        let api_url = api_url.replace("{}", &package);
+        let api_url = Self::API_URL.replace("{}", &package);
 
         let resp = self.context.client.get(api_url).send().await?;
         let resp = resp.error_for_status()?;

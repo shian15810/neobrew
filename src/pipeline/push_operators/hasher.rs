@@ -6,13 +6,13 @@ use sha2::{Digest as _, Sha256};
 use super::PushOperator;
 
 pub(crate) struct Hasher {
-    inner: Sha256,
+    sha256: Sha256,
 }
 
 impl Hasher {
     pub(crate) fn new() -> Self {
         Self {
-            inner: Sha256::new(),
+            sha256: Sha256::new(),
         }
     }
 }
@@ -22,16 +22,16 @@ impl PushOperator for Hasher {
     type Output = String;
 
     fn feed(&mut self, chunk: Self::Item) -> Result<()> {
-        self.inner.update(chunk);
+        self.sha256.update(chunk);
 
         Ok(())
     }
 
     fn flush(self) -> Result<Self::Output> {
-        let fetch_hash = self.inner.finalize();
-        let fetch_hash = HexDisplay(&fetch_hash);
-        let fetch_hash = format!("{fetch_hash:x}");
+        let hashed_sha256 = self.sha256.finalize();
+        let hashed_sha256 = HexDisplay(&hashed_sha256);
+        let hashed_sha256 = format!("{hashed_sha256:x}");
 
-        Ok(fetch_hash)
+        Ok(hashed_sha256)
     }
 }

@@ -43,7 +43,8 @@ impl<
 
         let sink = PollSender::new(tx);
 
-        let stream = ReceiverStream::new(rx).map(io::Result::Ok);
+        let stream = ReceiverStream::new(rx);
+        let stream = stream.map(io::Result::Ok);
 
         let reader = StreamReader::new(stream);
 

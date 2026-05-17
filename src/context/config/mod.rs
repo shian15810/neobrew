@@ -41,20 +41,25 @@ impl Default for Config {
 
 impl Config {
     pub(super) fn load(matches: &ArgMatches) -> Result<Self> {
-        let this: Self = Self::figment(matches)?.extract()?;
+        let this = Self::figment(matches)?;
+        let this: Self = this.extract()?;
 
         Ok(this)
     }
 
     fn figment(matches: &ArgMatches) -> Result<Figment> {
         let figment = Figment::new()
-            .merge(Serialized::defaults(Self::default()))
+            .merge(Self::default().into_provider())
             .merge(GlobalEnvConfig::from_env()?.into_provider())
             .merge(HomebrewEnvConfig::from_env()?.into_provider())
             .merge(NeobrewEnvConfig::from_env()?.into_provider())
             .merge(CliConfig::from_arg_matches(matches).into_provider());
 
         Ok(figment)
+    }
+
+    fn into_provider(self) -> Serialized<Self> {
+        Serialized::defaults(self)
     }
 
     pub fn verbosity_filter(&self) -> &VerbosityFilter {
@@ -99,7 +104,8 @@ trait EnvConfig: DeserializeOwned {
     }
 
     fn default_from_env() -> Result<Self> {
-        let this: Self = envy::prefixed(Self::ENV_PREFIX).from_env()?;
+        let this = envy::prefixed(Self::ENV_PREFIX);
+        let this: Self = this.from_env()?;
 
         Ok(this)
     }

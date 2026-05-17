@@ -34,9 +34,12 @@ pub(crate) struct Pipeline<Item, St, Si, Handles> {
 
 impl<Item, St> Pipeline<Item, St, sink::SinkErrInto<sink::Drain<Item>, Item, Error>, HNil> {
     pub(crate) fn new(stream: St, context: Arc<Context>) -> Self {
+        let sink = sink::drain();
+        let sink = sink.sink_err_into();
+
         Self {
             stream,
-            sink: sink::drain().sink_err_into(),
+            sink,
             handles: HNil,
 
             context,
@@ -67,9 +70,12 @@ impl<
 
         let (sink, handle) = operator.spawn_blocking(context);
 
+        let sink = sink.sink_err_into();
+        let sink = self.sink.fanout(sink);
+
         Pipeline {
             stream: self.stream,
-            sink: self.sink.fanout(sink.sink_err_into()),
+            sink,
             handles: HCons {
                 head: handle,
                 tail: self.handles,
@@ -83,16 +89,21 @@ impl<
 
     pub(crate) async fn run_parallel(self) -> Result<<Handles::Output as Collect>::Outputs> {
         let handle: JoinHandle<Result<()>> = task::spawn(async move {
-            let forward = self.stream.err_into().forward(self.sink);
+            let stream = self.stream.err_into();
+
+            let forward = stream.forward(self.sink);
 
             forward.await?;
 
             Ok(())
         });
         let handle = AbortOnDropHandle::new(handle);
+        let handle = handle.err_into();
 
-        let (result, outputs) =
-            futures::try_join!(handle.err_into(), self.handles.into_reverse().collect())?;
+        let handles = self.handles.into_reverse();
+        let handles = handles.collect();
+
+        let (result, outputs) = futures::try_join!(handle, handles)?;
 
         result?;
 
@@ -120,7 +131,11 @@ impl<Item, Handles: Collect> Collect for HCons<AbortOnDropHandle<Result<Item>>, 
     type Outputs = HCons<Item, Handles::Outputs>;
 
     async fn collect(self) -> Result<Self::Outputs> {
-        let (output, outputs) = futures::try_join!(self.head.err_into(), self.tail.collect())?;
+        let head = self.head.err_into();
+
+        let tail = self.tail.collect();
+
+        let (output, outputs) = futures::try_join!(head, tail)?;
 
         let outputs = HCons {
             head: output?,

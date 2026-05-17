@@ -27,4 +27,5 @@ RUSTFLAGS
 supertrait
 sysexits
 uninlined
+unseparated
 upcastable

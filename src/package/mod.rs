@@ -1,4 +1,4 @@
-use std::{fs::File, iter, path::PathBuf, sync::Arc};
+use std::{iter, path::PathBuf, sync::Arc};
 
 use anyhow::Context as _;
 use enum_dispatch::enum_dispatch;
@@ -133,19 +133,21 @@ pub(crate) trait PreparedPackageable {
 
     fn fetch_cache(&self, context: &Context) -> Option<PreparedPackageFetchCache>;
 
-    fn fetch_dest(&self, context: &Context) -> PathBuf;
+    fn fetch_dest(&self, context: &Context) -> PreparedPackageFetchDest;
 }
 
 pub(crate) struct PreparedPackageFetchCache {
     pub(crate) file_location_parent: PathBuf,
     pub(crate) file_location: PathBuf,
 
-    pub(crate) symlink_location_parent: PathBuf,
+    pub(crate) symlink_location_diff: PathBuf,
+    pub(crate) symlink_location_tmp: PathBuf,
     pub(crate) symlink_location: PathBuf,
 }
 
-pub(crate) struct PreparedPackageFetchCacheFiles {
-    pub(crate) file_file: File,
-
-    pub(crate) symlink_file: File,
+#[expect(clippy::struct_field_names)]
+pub(crate) struct PreparedPackageFetchDest {
+    pub(crate) dir_location_parent_parent: PathBuf,
+    pub(crate) dir_location_parent: PathBuf,
+    pub(crate) dir_location: PathBuf,
 }

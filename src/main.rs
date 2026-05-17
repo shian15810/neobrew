@@ -38,7 +38,12 @@ use tokio::{
     signal,
     task::{self, JoinHandle},
 };
-use tracing_subscriber::prelude::*;
+use tracing_subscriber::{
+    EnvFilter,
+    filter::{Directive, LevelFilter},
+    fmt,
+    prelude::*,
+};
 
 #[tokio::main]
 async fn main() -> proc_exit::ExitResult {
@@ -83,13 +88,15 @@ fn init_tracing(verbosity_filter: VerbosityFilter) {
         registry.with(console_layer)
     };
 
-    let level_filter = tracing_subscriber::filter::LevelFilter::from(verbosity_filter);
+    let level_filter = LevelFilter::from(verbosity_filter);
 
-    let filter = tracing_subscriber::EnvFilter::builder()
-        .with_default_directive(level_filter.into())
+    let default_directive = Directive::from(level_filter);
+
+    let filter = EnvFilter::builder()
+        .with_default_directive(default_directive)
         .from_env_lossy();
 
-    let filtered_layer = tracing_subscriber::fmt::layer().with_filter(filter);
+    let filtered_layer = fmt::layer().with_filter(filter);
 
     registry.with(filtered_layer).init();
 }
