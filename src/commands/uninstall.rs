@@ -35,10 +35,10 @@ impl Runner for Uninstall {
         let mut set: JoinSet<Result<()>> = JoinSet::new();
 
         for resolved_package in resolved_packages {
-            if set.len() >= *context.concurrency_limit
-                && let Some(res) = set.join_next().await
-            {
-                res??;
+            while set.len() >= *context.concurrency_limit {
+                if let Some(res) = set.join_next().await {
+                    res??;
+                }
             }
 
             let _context = Arc::clone(&context);

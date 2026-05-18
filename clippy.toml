@@ -7,15 +7,14 @@ allow-large-stack-frames-in-tests = false
 allow-mixed-uninlined-format-args = false
 allow-unwrap-in-consts = false
 avoid-breaking-exported-api = false
+upper-case-acronyms-aggressive = true
 
 absolute-paths-allowed-crates = ["build_rs", "proc_exit"]
-disallowed-macros = [
-    "std::panic",
-    "std::todo",
-    "std::unimplemented",
-    "std::unreachable",
-]
+allowed-idents-below-min-chars = ["e", ".."]
+disallowed-macros = ["std::panic", "std::todo"]
 disallowed-methods = [
+    "std::hint::assert_unchecked",
+    "std::hint::unreachable_unchecked",
     "std::panic::panic_any",
     "std::panic::resume_unwind",
     "std::process::abort",

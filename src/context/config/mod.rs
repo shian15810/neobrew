@@ -48,12 +48,27 @@ impl Config {
     }
 
     fn figment(matches: &ArgMatches) -> Result<Figment> {
+        let default_config_provider = Self::default();
+        let default_config_provider = default_config_provider.into_provider();
+
+        let global_env_config_provider = GlobalEnvConfig::from_env()?;
+        let global_env_config_provider = global_env_config_provider.into_provider();
+
+        let homebrew_env_config_provider = HomebrewEnvConfig::from_env()?;
+        let homebrew_env_config_provider = homebrew_env_config_provider.into_provider();
+
+        let neobrew_env_config_provider = NeobrewEnvConfig::from_env()?;
+        let neobrew_env_config_provider = neobrew_env_config_provider.into_provider();
+
+        let cli_config_provider = CliConfig::from_arg_matches(matches);
+        let cli_config_provider = cli_config_provider.into_provider();
+
         let figment = Figment::new()
-            .merge(Self::default().into_provider())
-            .merge(GlobalEnvConfig::from_env()?.into_provider())
-            .merge(HomebrewEnvConfig::from_env()?.into_provider())
-            .merge(NeobrewEnvConfig::from_env()?.into_provider())
-            .merge(CliConfig::from_arg_matches(matches).into_provider());
+            .merge(default_config_provider)
+            .merge(global_env_config_provider)
+            .merge(homebrew_env_config_provider)
+            .merge(neobrew_env_config_provider)
+            .merge(cli_config_provider);
 
         Ok(figment)
     }

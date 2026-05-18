@@ -1,9 +1,9 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
-use etcetera::{BaseStrategy as _, base_strategy};
+use etcetera::{BaseStrategy, base_strategy};
 
-use super::super::config::HomebrewEnvConfig;
+use super::{super::config::HomebrewEnvConfig, ProjectDirs, ProjectDirsInner};
 
 type HomebrewBaseStrategy = cfg_select! {
     target_os = "windows" => base_strategy::Windows,
@@ -16,8 +16,6 @@ pub(crate) struct HomebrewDirs {
 }
 
 impl HomebrewDirs {
-    const APP_NAME: &str = "Homebrew";
-
     pub(in super::super) fn new() -> Result<Self> {
         let strategy = base_strategy::choose_native_strategy()?;
 
@@ -27,26 +25,18 @@ impl HomebrewDirs {
 
         Ok(this)
     }
+}
 
-    pub(crate) fn cache_dir(&self) -> PathBuf {
-        let cache_dir = self.strategy.cache_dir();
+impl ProjectDirsInner for HomebrewDirs {
+    const APP_NAME: &str = "Homebrew";
 
-        cache_dir.join(Self::APP_NAME)
+    fn strategy(&self) -> &impl BaseStrategy {
+        &self.strategy
     }
 
-    fn prefix_dir() -> PathBuf {
+    fn prefix_dir(&self) -> PathBuf {
         PathBuf::from(HomebrewEnvConfig::DEFAULT_PREFIX)
     }
-
-    pub(crate) fn cellar_dir() -> PathBuf {
-        let prefix_dir = Self::prefix_dir();
-
-        prefix_dir.join("Cellar")
-    }
-
-    pub(crate) fn caskroom_dir() -> PathBuf {
-        let prefix_dir = Self::prefix_dir();
-
-        prefix_dir.join("Caskroom")
-    }
 }
+
+impl ProjectDirs for HomebrewDirs {}

@@ -32,7 +32,9 @@
 use anyhow::Result;
 use clap::CommandFactory as _;
 use clap_verbosity_flag::VerbosityFilter;
-use neobrew::{Cli, Context};
+#[cfg(not(all(debug_assertions, not(test))))]
+use console_subscriber as _;
+use neobrew::{commands::Cli, context::Context};
 use proc_exit::prelude::*;
 use tokio::{
     signal,
@@ -63,14 +65,15 @@ async fn main() -> proc_exit::ExitResult {
     let result = tokio::select! {
         biased;
 
-        res = handle => {
-            res.with_code(proc_exit::sysexits::SOFTWARE_ERR)?
+        result = handle => {
+            result
+                .with_code(proc_exit::sysexits::SOFTWARE_ERR)?
                 .with_code(proc_exit::sysexits::SOFTWARE_ERR)?;
 
             proc_exit::bash::SIGINT.ok()
         },
 
-        res = neobrew::run(&matches, context) => res,
+        result = neobrew::run(&matches, context) => result,
     };
 
     result?;

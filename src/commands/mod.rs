@@ -23,6 +23,7 @@ use crate::{context::Context, registry::ResolutionStrategy};
 mod install;
 mod uninstall;
 
+#[expect(rustdoc::missing_doc_code_examples)]
 #[derive(Parser)]
 #[command(
     name = crate_name!(),
@@ -59,8 +60,8 @@ pub struct Cli {
         default_missing_value = {
             let color_choice = ColorChoice::Always.to_possible_value();
 
-            color_choice.map(|color| {
-                let color = color.get_name();
+            color_choice.map(|color_choice| {
+                let color = color_choice.get_name();
                 let color = color.to_owned();
                 let color: &str = color.leak();
 
@@ -94,9 +95,11 @@ impl Commands {
             Self::Internal(internal) => {
                 let context = Arc::new(context);
 
-                let res = internal.run_concurrent(context).await;
+                let result = internal.run_concurrent(context).await;
 
-                res.with_code(proc_exit::sysexits::SOFTWARE_ERR)?;
+                result
+                    .with_code(proc_exit::sysexits::SOFTWARE_ERR)
+                    .with_code(proc_exit::sysexits::SOFTWARE_ERR)?;
 
                 proc_exit::Code::SUCCESS.ok()
             },
@@ -129,9 +132,9 @@ impl Commands {
                     _ => {},
                 }
 
-                let res = cmd.status().await;
+                let result = cmd.status().await;
 
-                let status = res.to_sysexits()?;
+                let status = result.to_sysexits()?;
 
                 proc_exit::Code::from_status(status).ok()?;
 

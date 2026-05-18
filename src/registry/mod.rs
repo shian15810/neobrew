@@ -89,9 +89,7 @@ impl Registry {
 
             let package = Arc::clone(&package);
 
-            let resolved_formula = formula_registry.resolve(package).await;
-
-            if let Ok(resolved_formula) = resolved_formula {
+            if let Ok(resolved_formula) = formula_registry.resolve(package).await {
                 let resolved_package = ResolvedPackage::Formula(resolved_formula);
 
                 return Ok(resolved_package);
@@ -107,16 +105,14 @@ impl Registry {
 
             let package = Arc::clone(&package);
 
-            let resolved_cask = cask_registry.resolve(package).await;
-
-            if let Ok(resolved_cask) = resolved_cask {
+            if let Ok(resolved_cask) = cask_registry.resolve(package).await {
                 let resolved_package = ResolvedPackage::Cask(resolved_cask);
 
                 return Ok(resolved_package);
             }
         }
 
-        let err = anyhow!(r#"Formula or cask "{package}" not found"#);
+        let err = anyhow!(r#"Package "{package}" not found"#);
 
         Err(err)
     }

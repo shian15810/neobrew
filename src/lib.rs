@@ -1,4 +1,7 @@
-#![cfg_attr(debug_assertions, feature(iterator_try_collect))]
+#![cfg_attr(
+    debug_assertions,
+    feature(const_precise_live_drops, const_trait_impl, iterator_try_collect)
+)]
 #![cfg_attr(debug_assertions, feature(doc_cfg))]
 #![cfg_attr(
     debug_assertions,
@@ -32,15 +35,17 @@
 use clap::{ArgMatches, FromArgMatches as _};
 use proc_exit::prelude::*;
 
-pub use self::{commands::Cli, context::Context};
+use self::{commands::Cli, context::Context};
 
-mod commands;
-mod context;
+pub mod commands;
+pub mod context;
+mod ext;
+mod macros;
 mod package;
 mod pipeline;
 mod registry;
 
-#[expect(rustdoc::missing_doc_code_examples, clippy::missing_errors_doc)]
+#[expect(clippy::missing_errors_doc, rustdoc::missing_doc_code_examples)]
 pub async fn run(matches: &ArgMatches, context: Context) -> proc_exit::ExitResult {
     let cli = Cli::from_arg_matches(matches);
     let cli = cli.with_code(proc_exit::sysexits::USAGE_ERR)?;

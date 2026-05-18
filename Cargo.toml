@@ -30,6 +30,7 @@ bytes = "1.11.1"
 clap = { version = "4.6.1", features = ["cargo"] }
 clap-verbosity-flag = { version = "3.0.4", features = ["serde", "tracing"] }
 console-subscriber = "0.5.0"
+either = "1.15.0"
 enum_dispatch = "0.3.13"
 envy = "0.4.2"
 etcetera = "0.11.0"
@@ -40,8 +41,7 @@ frunk = "0.4.4"
 futures = "0.3.32"
 indoc = "2.0.7"
 itertools = "0.14.0"
-oci-client = "0.16.1"
-os_info = "3.14.0"
+oci-client = "0.17.0"
 pathdiff = "0.2.3"
 proc-exit = "2.0.2"
 reqwest = "0.13.3"
@@ -50,7 +50,7 @@ serde = "1.0.228"
 serde_json = "1.0.149"
 serde_with = "3.20.0"
 sha2 = "0.11.0"
-tar = "0.4.45"
+tar = "0.4.46"
 tempfile = "3.27.0"
 tokio = {
     version = "1.52.3",
@@ -67,6 +67,9 @@ build-rs = "0.3.4"
 cargo_toml = "0.22.3"
 rustc_tools_util = "0.4.2"
 serde = "1.0.228"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+os_info = "3.14.0"
 
 [lints.cargo]
 complexity = { level = "deny", priority = -1 }

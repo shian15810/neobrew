@@ -1,10 +1,9 @@
-#[cfg(debug_assertions)]
 use std::path::PathBuf;
 
 use anyhow::Result;
-#[cfg(debug_assertions)]
-use etcetera::BaseStrategy as _;
-use etcetera::base_strategy;
+use etcetera::{BaseStrategy, base_strategy};
+
+use super::{ProjectDirs, ProjectDirsInner};
 
 type NeobrewBaseStrategy = cfg_select! {
     target_os = "windows" => base_strategy::Windows,
@@ -17,8 +16,6 @@ pub(crate) struct NeobrewDirs {
 }
 
 impl NeobrewDirs {
-    const APP_NAME: &str = "Neobrew";
-
     pub(in super::super) fn new() -> Result<Self> {
         let strategy = base_strategy::choose_base_strategy()?;
 
@@ -28,12 +25,19 @@ impl NeobrewDirs {
 
         Ok(this)
     }
+}
+
+impl ProjectDirsInner for NeobrewDirs {
+    const APP_NAME: &str = "Neobrew";
 
     #[cfg(debug_assertions)]
-    pub(crate) fn cache_dir(&self) -> PathBuf {
-        let cache_dir = self.strategy.cache_dir();
+    fn strategy(&self) -> &impl BaseStrategy {
+        &self.strategy
+    }
 
-        cache_dir.join(Self::APP_NAME)
+    #[cfg(not(debug_assertions))]
+    fn strategy(&self) -> &impl BaseStrategy {
+        unimplemented!();
     }
 
     #[cfg(debug_assertions)]
@@ -47,17 +51,26 @@ impl NeobrewDirs {
         home_dir.join(dot_app_name)
     }
 
-    #[cfg(debug_assertions)]
-    pub(crate) fn cellar_dir(&self) -> PathBuf {
-        let prefix_dir = self.prefix_dir();
+    #[cfg(not(debug_assertions))]
+    fn prefix_dir(&self) -> PathBuf {
+        unimplemented!();
+    }
+}
 
-        prefix_dir.join("Cellar")
+#[cfg(debug_assertions)]
+impl ProjectDirs for NeobrewDirs {}
+
+#[cfg(not(debug_assertions))]
+impl ProjectDirs for NeobrewDirs {
+    fn cache_dir(&self) -> PathBuf {
+        unimplemented!();
     }
 
-    #[cfg(debug_assertions)]
-    pub(crate) fn caskroom_dir(&self) -> PathBuf {
-        let prefix_dir = self.prefix_dir();
+    fn cellar_dir(&self) -> PathBuf {
+        unimplemented!();
+    }
 
-        prefix_dir.join("Caskroom")
+    fn caskroom_dir(&self) -> PathBuf {
+        unimplemented!();
     }
 }
