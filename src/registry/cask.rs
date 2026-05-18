@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use foyer::{Cache, CacheBuilder};
 
 use super::Registrable;
@@ -81,9 +81,7 @@ impl CaskRegistry {
         }
 
         let RawPackage::Cask(raw_cask) = raw_package else {
-            let err = anyhow!("Expected `RawCask`");
-
-            return Err(err);
+            unreachable!();
         };
 
         let resolved_cask = ResolvedCask::from(raw_cask);

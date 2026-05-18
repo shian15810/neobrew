@@ -15,6 +15,7 @@ sccache
 Sccache
 SCCACHE
 sonoma
+Sonoma
 tahoe
 taplo
 Taplo

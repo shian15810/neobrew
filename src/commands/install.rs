@@ -1,15 +1,16 @@
 use std::sync::Arc;
 
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use clap::Args;
 use frunk::hlist_pat;
-use futures::prelude::stream::{StreamExt as _, TryStreamExt as _};
+use futures::stream::{StreamExt as _, TryStreamExt as _};
 use oci_client::secrets::RegistryAuth;
 use tokio::task::JoinSet;
 
 use super::{Resolution, Runner};
 use crate::{
     context::Context,
+    ext::ResultExt as _,
     package::{Packageable as _, PreparedPackage, PreparedPackageable as _},
     pipeline::{Hasher, Pipeline, Pourer, Writer},
     registry::Registry,
@@ -44,21 +45,23 @@ impl Runner for Install {
         let prepared_packages = resolved_packages
             .into_iter()
             .map(PreparedPackage::try_from)
+            .filter_map(Result::transpose_err)
             .try_collect::<Vec<_>>()?;
 
         #[cfg(not(debug_assertions))]
         let prepared_packages = resolved_packages
             .into_iter()
             .map(PreparedPackage::try_from)
+            .filter_map(Result::transpose_err)
             .collect::<Result<Vec<_>>>()?;
 
         let mut set: JoinSet<Result<()>> = JoinSet::new();
 
         for prepared_package in prepared_packages {
-            if set.len() >= *context.concurrency_limit
-                && let Some(res) = set.join_next().await
-            {
-                res??;
+            while set.len() >= *context.concurrency_limit {
+                if let Some(res) = set.join_next().await {
+                    res??;
+                }
             }
 
             let context = Arc::clone(&context);
@@ -73,21 +76,20 @@ impl Runner for Install {
                 let fetch_cache = {
                     let context = Arc::as_ref(&context);
 
-                    prepared_package
-                        .fetch_cache(context)
-                        .context("Unexpected `None`")?
+                    prepared_package.fetch_cache(context).await?
                 };
 
                 let fetch_dest = {
                     let context = Arc::as_ref(&context);
 
-                    prepared_package.fetch_dest(context)
+                    prepared_package.fetch_dest(context).await?
                 };
 
                 let fetch_stream = match &prepared_package {
                     PreparedPackage::Formula(prepared_formula) => {
-                        let fetch_oci =
-                            prepared_formula.fetch_oci().context("Unexpected `None`")?;
+                        let Some(fetch_oci) = prepared_formula.fetch_oci() else {
+                            return Ok(());
+                        };
 
                         context
                             .oci_client
@@ -116,10 +118,16 @@ impl Runner for Install {
                     },
                 };
 
+                let hasher = Hasher::new();
+
+                let writer = Writer::new(fetch_cache)?;
+
+                let pourer = Pourer::new(id.to_owned(), version.to_owned(), fetch_dest);
+
                 let hlist_pat![_hashed_sha256, (), ()] = Pipeline::new(fetch_stream, context)
-                    .fanout(Hasher::new())
-                    .fanout(Writer::new(fetch_cache)?)
-                    .fanout(Pourer::new(id.to_owned(), version.to_owned(), fetch_dest))
+                    .fanout(hasher)
+                    .fanout(writer)
+                    .fanout(pourer)
                     .run_parallel()
                     .await?;
 

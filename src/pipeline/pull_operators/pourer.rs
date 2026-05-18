@@ -36,9 +36,9 @@ impl PullOperator for Pourer {
     type Output = ();
 
     fn from_reader(self, reader: impl BufRead) -> Result<Self::Output> {
-        fs::create_dir_all(&self.fetch_dest.dir_location_parent_parent)?;
+        fs::create_dir_all(&self.fetch_dest.dir_location_grandparent)?;
 
-        let tmp_dir = TempDir::new_in(self.fetch_dest.dir_location_parent_parent)?;
+        let tmp_dir = TempDir::new_in(self.fetch_dest.dir_location_grandparent)?;
 
         let gz_decoder = GzDecoder::new(reader);
 
@@ -63,25 +63,25 @@ impl PullOperator for Pourer {
 impl Pourer {
     fn fs_read_exactly_one_dir_entry(
         path: impl AsRef<Path>,
-        expected_file_name: impl AsRef<OsStr>,
+        expected_name: impl AsRef<OsStr>,
     ) -> Result<DirEntry> {
-        let expected_file_name = expected_file_name.as_ref();
+        let expected_name = expected_name.as_ref();
 
         let entry = fs::read_dir(path)?.exactly_one()??;
 
-        if entry.path().is_dir() && entry.file_name() == expected_file_name {
-            Ok(entry)
-        } else {
-            let actual_file_name = entry.file_name();
-            let actual_file_name = actual_file_name.display();
+        let actual_name = entry.file_name();
 
-            let expected_file_name = expected_file_name.display();
-
-            let err = anyhow!(
-                "Expected a directory named {expected_file_name} but found {actual_file_name}",
-            );
-
-            Err(err)
+        if entry.path().is_dir() && actual_name == expected_name {
+            return Ok(entry);
         }
+
+        let actual_name = actual_name.display();
+
+        let expected_name = expected_name.display();
+
+        let err =
+            anyhow!(r#"Expected a directory named "{expected_name}" but found "{actual_name}""#);
+
+        Err(err)
     }
 }

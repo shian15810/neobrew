@@ -1926,6 +1926,7 @@ dependencies = [
  "clap",
  "clap-verbosity-flag",
  "console-subscriber",
+ "either",
  "enum_dispatch",
  "envy",
  "etcetera",

@@ -1,7 +1,7 @@
 use std::path::Path;
 
+use anyhow::{Context as _, Result};
 use base16ct::HexDisplay;
-use pathdiff::diff_paths;
 use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
 use url::Url;
@@ -10,10 +10,11 @@ use super::{
     Packageable,
     PreparedPackageFetchCache,
     PreparedPackageable,
+    PreparedPackageableInner,
     RawPackageJsonCache,
     RawPackageable,
 };
-use crate::Context;
+use crate::context::{Context, ProjectDirs as _};
 
 #[derive(Deserialize)]
 pub(crate) struct RawCask {
@@ -121,26 +122,26 @@ impl PreparedPackageable for PreparedCask {
         &self.sha256
     }
 
-    fn fetch_cache(&self, context: &Context) -> Option<PreparedPackageFetchCache> {
-        let version = &self.version();
+    async fn fetch_cache(&self, context: &Context) -> Result<PreparedPackageFetchCache> {
+        let version = self.version();
 
-        let url = Url::parse(&self.url).ok()?;
+        let url = Url::parse(&self.url)?;
 
-        let mut name = url.path_segments()?;
-        let name = name.next_back()?;
+        let mut segment = url.path_segments().context("Invalid URL")?;
+        let segment = segment.next_back().context("Empty URL path segments")?;
 
-        let path = Path::new(name);
+        let path = Path::new(segment);
 
-        let extension = path.extension()?;
-        let extension = extension.to_str()?;
+        let extension = path.extension().context("Invalid file name")?;
+        let extension = extension.to_str().context("Invalid file extension")?;
 
         let url_hash = Sha256::digest(&self.url);
         let url_hash = HexDisplay(&url_hash);
         let url_hash = format!("{url_hash:x}");
 
-        let symlink_name = format!("{name}--{version}.{extension}");
+        let symlink_name = format!("{segment}--{version}.{extension}");
 
-        let file_name = format!("{url_hash}--{name}");
+        let file_name = format!("{url_hash}--{segment}");
 
         let cache_dir = cfg_select! {
             debug_assertions => context.neobrew_dirs.cache_dir(),
@@ -149,28 +150,15 @@ impl PreparedPackageable for PreparedCask {
 
         let symlink_location_parent = cache_dir.join("Cask");
 
-        let file_location_parent = symlink_location_parent.join("downloads");
+        let fetch_cache = self
+            .fetch_cache_inner(&file_name, &symlink_name, symlink_location_parent)
+            .await?;
 
-        let file_location = file_location_parent.join(file_name);
-
-        let symlink_location_diff = diff_paths(&file_location, &symlink_location_parent)?;
-
-        let symlink_location = symlink_location_parent.join(symlink_name);
-
-        let symlink_location_tmp = symlink_location.with_extension("tmp");
-
-        let cache = PreparedPackageFetchCache {
-            file_location_parent,
-            file_location,
-
-            symlink_location_diff,
-            symlink_location_tmp,
-            symlink_location,
-        };
-
-        Some(cache)
+        Ok(fetch_cache)
     }
 }
+
+impl PreparedPackageableInner for PreparedCask {}
 
 impl PreparedCask {
     pub(crate) fn fetch_url(&self) -> &str {

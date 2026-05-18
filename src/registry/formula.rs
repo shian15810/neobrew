@@ -62,7 +62,7 @@ impl FormulaRegistry {
                 .collect::<Vec<_>>();
             let stack = stack.join(" -> ");
 
-            let err = anyhow!("Circular formula dependency detected: {stack}");
+            let err = anyhow!("Circular package dependency detected: {stack}");
 
             return Err(err);
         }
@@ -97,10 +97,14 @@ impl FormulaRegistry {
     ) -> Result<Arc<ResolvedFormula>> {
         let api_url = Self::API_URL.replace("{}", &package);
 
-        let resp = self.context.client.get(api_url).send().await?;
-        let resp = resp.error_for_status()?;
+        let bytes = {
+            let _permit = self.context.semaphore.acquire().await?;
 
-        let bytes = resp.bytes().await?;
+            let resp = self.context.client.get(api_url).send().await?;
+            let resp = resp.error_for_status()?;
+
+            resp.bytes().await?
+        };
 
         let raw_formula: RawFormula = serde_json::from_slice(&bytes)?;
 
@@ -134,9 +138,7 @@ impl FormulaRegistry {
             .await?;
 
         let RawPackage::Formula(raw_formula) = raw_package else {
-            let err = anyhow!("Expected `RawFormula`");
-
-            return Err(err);
+            unreachable!();
         };
 
         let resolved_formula = ResolvedFormula::from((raw_formula, resolved_formula_dependencies));

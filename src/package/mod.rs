@@ -1,15 +1,17 @@
 use std::{iter, path::PathBuf, sync::Arc};
 
-use anyhow::Context as _;
+use anyhow::{Context as _, Result, anyhow};
+use either::Either::{Left, Right};
 use enum_dispatch::enum_dispatch;
-use itertools::Either;
+use pathdiff::diff_paths;
+use tokio::fs;
 
 use self::{cask::PreparedCask, formula::PreparedFormula};
 pub(crate) use self::{
     cask::{RawCask, ResolvedCask},
     formula::{RawFormula, ResolvedFormula},
 };
-use crate::Context;
+use crate::context::{Context, ProjectDirs as _};
 
 mod cask;
 mod formula;
@@ -72,7 +74,7 @@ impl ResolvedPackage {
             Self::Formula(formula) => {
                 let formulae = formula.iter().map(Self::Formula);
 
-                Either::Left(formulae)
+                Left(formulae)
             },
 
             Self::Cask(cask) => {
@@ -80,7 +82,7 @@ impl ResolvedPackage {
 
                 let casks = iter::once(cask).map(Self::Cask);
 
-                Either::Right(casks)
+                Right(casks)
             },
         }
     }
@@ -93,13 +95,17 @@ pub(crate) enum PreparedPackage {
 }
 
 impl TryFrom<ResolvedPackage> for PreparedPackage {
-    type Error = anyhow::Error;
+    type Error = Option<anyhow::Error>;
 
     fn try_from(resolved_package: ResolvedPackage) -> Result<Self, Self::Error> {
         let this = match resolved_package {
             ResolvedPackage::Formula(resolved_formula) => {
-                let resolved_formula =
-                    Arc::into_inner(resolved_formula).context("Unexpected `None`")?;
+                let Some(resolved_formula) = Arc::into_inner(resolved_formula) else {
+                    let err =
+                        anyhow!("`Arc<ResolvedFormula>` still has multiple strong references");
+
+                    return Err(Some(err));
+                };
 
                 let prepared_formula = PreparedFormula::try_from(resolved_formula)?;
 
@@ -107,7 +113,11 @@ impl TryFrom<ResolvedPackage> for PreparedPackage {
             },
 
             ResolvedPackage::Cask(resolved_cask) => {
-                let resolved_cask = Arc::into_inner(resolved_cask).context("Unexpected `None`")?;
+                let Some(resolved_cask) = Arc::into_inner(resolved_cask) else {
+                    let err = anyhow!("`Arc<ResolvedCask>` still has multiple strong references");
+
+                    return Err(Some(err));
+                };
 
                 let prepared_cask = PreparedCask::from(resolved_cask);
 
@@ -119,15 +129,55 @@ impl TryFrom<ResolvedPackage> for PreparedPackage {
     }
 }
 
+#[expect(private_bounds)]
 #[enum_dispatch(PreparedPackage)]
-pub(crate) trait PreparedPackageable: Packageable {
+pub(crate) trait PreparedPackageable: PreparedPackageableInner {
     fn fetch_sha256(&self) -> &str;
 
-    fn fetch_cache(&self, context: &Context) -> Option<PreparedPackageFetchCache>;
+    async fn fetch_cache(&self, context: &Context) -> Result<PreparedPackageFetchCache>;
+}
+
+#[enum_dispatch(PreparedPackage)]
+trait PreparedPackageableInner: Packageable {
+    async fn fetch_cache_inner(
+        &self,
+        file_name: &str,
+        symlink_name: &str,
+        symlink_location_parent: PathBuf,
+    ) -> Result<PreparedPackageFetchCache> {
+        let file_location_parent = symlink_location_parent.join("downloads");
+
+        let file_location = file_location_parent.join(file_name);
+
+        let file_location_exists = fs::try_exists(&file_location).await?;
+
+        let symlink_location_diff =
+            diff_paths(&file_location, &symlink_location_parent).context("Failed to diff paths")?;
+
+        let symlink_location = symlink_location_parent.join(symlink_name);
+
+        let symlink_location_tmp = symlink_location.with_extension("tmp");
+
+        let symlink_location_exists = fs::try_exists(&symlink_location).await?;
+
+        let fetch_cache = PreparedPackageFetchCache {
+            file_location_parent,
+            file_location,
+            file_location_exists,
+
+            symlink_location_parent,
+            symlink_location_diff,
+            symlink_location_tmp,
+            symlink_location,
+            symlink_location_exists,
+        };
+
+        Ok(fetch_cache)
+    }
 }
 
 impl PreparedPackage {
-    pub(crate) fn fetch_dest(&self, context: &Context) -> PreparedPackageFetchDest {
+    pub(crate) async fn fetch_dest(&self, context: &Context) -> Result<PreparedPackageFetchDest> {
         let id = self.id();
 
         let version = self.version();
@@ -148,32 +198,41 @@ impl PreparedPackage {
             },
         };
 
-        let dir_location_parent_parent = dest_dir;
+        let dir_location_grandparent = dest_dir;
 
-        let dir_location_parent = dir_location_parent_parent.join(id);
+        let dir_location_parent = dir_location_grandparent.join(id);
 
         let dir_location = dir_location_parent.join(version);
 
-        PreparedPackageFetchDest {
-            dir_location_parent_parent,
+        let dir_location_exists = fs::try_exists(&dir_location).await?;
+
+        let fetch_dest = PreparedPackageFetchDest {
+            dir_location_grandparent,
             dir_location_parent,
             dir_location,
-        }
+            dir_location_exists,
+        };
+
+        Ok(fetch_dest)
     }
 }
 
 pub(crate) struct PreparedPackageFetchCache {
     pub(crate) file_location_parent: PathBuf,
     pub(crate) file_location: PathBuf,
+    pub(crate) file_location_exists: bool,
 
+    pub(crate) symlink_location_parent: PathBuf,
     pub(crate) symlink_location_diff: PathBuf,
     pub(crate) symlink_location_tmp: PathBuf,
     pub(crate) symlink_location: PathBuf,
+    pub(crate) symlink_location_exists: bool,
 }
 
 #[expect(clippy::struct_field_names)]
 pub(crate) struct PreparedPackageFetchDest {
-    pub(crate) dir_location_parent_parent: PathBuf,
+    pub(crate) dir_location_grandparent: PathBuf,
     pub(crate) dir_location_parent: PathBuf,
     pub(crate) dir_location: PathBuf,
+    pub(crate) dir_location_exists: bool,
 }

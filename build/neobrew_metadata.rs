@@ -45,17 +45,13 @@ impl NeobrewMetadata {
     fn set_rustc_env() -> Result<()> {
         let cargo_toml_path = env!("CARGO_MANIFEST_PATH");
 
-        let manifest = Manifest::<Metadata>::from_path_with_metadata(cargo_toml_path)?;
+        let manifest: Manifest<Metadata> = Manifest::from_path_with_metadata(cargo_toml_path)?;
 
-        let metadata = &manifest.package().metadata;
-
-        let Some(metadata) = metadata else {
+        let Some(metadata) = &manifest.package().metadata else {
             return Ok(());
         };
 
-        let neobrew_metadata = &metadata.neobrew;
-
-        for (key, value) in neobrew_metadata {
+        for (key, value) in &metadata.neobrew {
             let env_prefix = Self::ENV_PREFIX;
 
             let key = key.to_uppercase();

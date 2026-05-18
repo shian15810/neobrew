@@ -5,7 +5,7 @@ use figment::{
     Profile,
     value::{Dict, Map, Value},
 };
-use indoc::indoc;
+use indoc::formatdoc;
 use serde::{Deserialize, Deserializer};
 use serde_with::{DeserializeAs, serde_as};
 
@@ -49,28 +49,27 @@ impl HomebrewEnvConfig {
     };
 
     fn ensure_default_prefix(&self) -> Result<()> {
-        if self.prefix == Self::DEFAULT_PREFIX {
+        let prefix = &self.prefix;
+
+        if prefix == Self::DEFAULT_PREFIX {
             return Ok(());
         }
 
-        let err = anyhow!(
-            indoc! {r#"
-                Unsupported `HOMEBREW_PREFIX` detected: "{}"
+        let err = anyhow!(formatdoc! {r#"
+            Unsupported `HOMEBREW_PREFIX` value detected: "{prefix}"
 
-                Neobrew requires the default prefix to use pre-compiled bottles and casks:
+            Neobrew requires the default prefix to use pre-compiled bottles and casks:
 
-                    - macOS (Apple Silicon)     -->     "/opt/homebrew"
-                    - macOS (Intel x86_64)      -->     "/usr/local"
-                    - Linux                     -->     "/home/linuxbrew/.linuxbrew"
+                - macOS (Apple Silicon)     -->     "/opt/homebrew"
+                - macOS (Intel x86_64)      -->     "/usr/local"
+                - Linux                     -->     "/home/linuxbrew/.linuxbrew"
 
-                The default prefix is essential for Neobrew's high-performance guarantees,
-                seamless developer experience, and smooth interoperability with your local
-                Homebrew installation - so you can use `nbrew` and `brew` interchangeably.
+            The default prefix is essential for Neobrew's high-performance guarantees,
+            seamless developer experience, and smooth interoperability with your local
+            Homebrew installation - so you can use `nbrew` and `brew` interchangeably.
 
-                See https://docs.brew.sh/Installation"#
-            },
-            self.prefix,
-        );
+            See https://docs.brew.sh/Installation"#,
+        });
 
         Err(err)
     }
