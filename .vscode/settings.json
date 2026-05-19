@@ -80,6 +80,10 @@
     "rust-analyzer.check.command": "clippy",
     "rust-analyzer.cargo.features": "all",
     "rust-analyzer.cargo.targetDir": true,
+    "rust-analyzer.cargo.cfgs": [
+        "debug_assertions",
+        "miri",
+    ],
     "rust-analyzer.cargo.extraEnv": {
         "RUSTUP_TOOLCHAIN": "nightly",
     },

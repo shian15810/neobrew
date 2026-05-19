@@ -23,7 +23,6 @@ use crate::{context::Context, registry::ResolutionStrategy};
 mod install;
 mod uninstall;
 
-#[expect(rustdoc::missing_doc_code_examples)]
 #[derive(Parser)]
 #[command(
     name = crate_name!(),

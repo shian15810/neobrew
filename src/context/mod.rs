@@ -14,7 +14,7 @@ use self::{
 mod config;
 mod dirs;
 
-#[expect(clippy::module_name_repetitions, rustdoc::missing_doc_code_examples)]
+#[expect(clippy::module_name_repetitions)]
 pub struct Context {
     pub(crate) config: Config,
 
@@ -34,7 +34,7 @@ impl Context {
     const MAX_CONCURRENCY: usize = 1 << 4;
     const BUFFER_MULTIPLIER: usize = 1 << 4;
 
-    #[expect(clippy::missing_errors_doc, rustdoc::missing_doc_code_examples)]
+    #[expect(clippy::missing_errors_doc)]
     pub fn new(matches: &ArgMatches) -> Result<Self, proc_exit::Exit> {
         let config = Config::load(matches);
         let config = config.with_code(proc_exit::sysexits::CONFIG_ERR)?;
@@ -65,7 +65,6 @@ impl Context {
         Ok(this)
     }
 
-    #[expect(rustdoc::missing_doc_code_examples)]
     pub fn config(&self) -> &Config {
         &self.config
     }

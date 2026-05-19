@@ -19,10 +19,12 @@ set -- --cfg="tokio_unstable"
 
 case "$RUSTUP_TOOLCHAIN" in
     "stable") set -- "$@" --allow="unused-crate-dependencies" ;;
-    "beta") set -- "$@" --allow="unused-crate-dependencies" ;;
+    "beta") ;;
     "nightly") ;;
     *) ;;
 esac
+
+set -- "$@" --force-warn="rustdoc::missing-doc-code-examples"
 
 case "$RUSTUP_TOOLCHAIN" in
     "stable") set -- "$@" --force-warn="linker-messages" ;;
@@ -40,14 +42,14 @@ export RUSTDOCFLAGS="$*"
 
 set -- --force-warn="dead-code"
 
+set -- "$@" --force-warn="clippy::multiple-crate-versions"
+
 case "$RUSTUP_TOOLCHAIN" in
     "stable") set -- "$@" --force-warn="linker-messages" ;;
     "beta") set -- "$@" --force-warn="linker-info" ;;
     "nightly") set -- "$@" --force-warn="linker-info" ;;
     *) ;;
 esac
-
-set -- "$@" --force-warn="clippy::multiple-crate-versions"
 
 set -- "$@" --deny="warnings"
 

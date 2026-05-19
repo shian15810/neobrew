@@ -11,7 +11,7 @@ pub(crate) use self::{
     cask::{RawCask, ResolvedCask},
     formula::{RawFormula, ResolvedFormula},
 };
-use crate::context::{Context, ProjectDirs as _};
+use crate::context::Context;
 
 mod cask;
 mod formula;
@@ -183,19 +183,8 @@ impl PreparedPackage {
         let version = self.version();
 
         let dest_dir = match self {
-            Self::Formula(_) => {
-                cfg_select! {
-                    debug_assertions => context.neobrew_dirs.cellar_dir(),
-                    _ => context.homebrew_dirs.cellar_dir(),
-                }
-            },
-
-            Self::Cask(_) => {
-                cfg_select! {
-                    debug_assertions => context.neobrew_dirs.caskroom_dir(),
-                    _ => context.homebrew_dirs.caskroom_dir(),
-                }
-            },
+            Self::Formula(_) => context.homebrew_dirs.cellar_dir(),
+            Self::Cask(_) => context.homebrew_dirs.caskroom_dir(),
         };
 
         let dir_location_grandparent = dest_dir;

@@ -1,6 +1,7 @@
 # Custom Dictionary Words
 ascii
 bufread
+cfgs
 clicolor
 CLIPPYFLAGS
 doctest

@@ -28,12 +28,14 @@
     )
 )]
 #![cfg_attr(all(debug_assertions, doc), feature(rustdoc_missing_doc_code_examples))]
-#![cfg_attr(debug_assertions, warn(rustdoc::missing_doc_code_examples))]
+#![cfg_attr(debug_assertions, allow(rustdoc::missing_doc_code_examples))]
 #![doc(test(attr(warn(unused), deny(warnings))))]
 #![expect(rustdoc::missing_crate_level_docs)]
 
 use clap::{ArgMatches, FromArgMatches as _};
 use proc_exit::prelude::*;
+#[cfg(debug_assertions)]
+use visibility as _;
 
 use self::{commands::Cli, context::Context};
 
@@ -45,7 +47,7 @@ mod package;
 mod pipeline;
 mod registry;
 
-#[expect(clippy::missing_errors_doc, rustdoc::missing_doc_code_examples)]
+#[expect(clippy::missing_errors_doc)]
 pub async fn run(matches: &ArgMatches, context: Context) -> proc_exit::ExitResult {
     let cli = Cli::from_arg_matches(matches);
     let cli = cli.with_code(proc_exit::sysexits::USAGE_ERR)?;

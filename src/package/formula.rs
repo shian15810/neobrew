@@ -51,10 +51,7 @@ impl RawPackageable for RawFormula {
 
         let file_name = format!("{id}.json");
 
-        let cache_dir = cfg_select! {
-            debug_assertions => context.neobrew_dirs.cache_dir(),
-            _ => context.homebrew_dirs.cache_dir(),
-        };
+        let cache_dir = context.homebrew_dirs.cache_dir();
 
         let file_location_parent = cache_dir.join("api").join("formula");
 
@@ -316,10 +313,7 @@ impl BottleStableFile {
 
         let file_name = format!("{url_hash}--{symlink_name}.{tag}.bottle.tar.gz");
 
-        let cache_dir = cfg_select! {
-            debug_assertions => context.neobrew_dirs.cache_dir(),
-            _ => context.homebrew_dirs.cache_dir(),
-        };
+        let cache_dir = context.homebrew_dirs.cache_dir();
 
         let symlink_location_parent = cache_dir;
 

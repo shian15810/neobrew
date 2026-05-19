@@ -137,6 +137,7 @@ impl FormulaRegistry {
             .try_collect::<Vec<_>>()
             .await?;
 
+        #[expect(clippy::disallowed_macros)]
         let RawPackage::Formula(raw_formula) = raw_package else {
             unreachable!();
         };

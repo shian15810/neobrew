@@ -11,9 +11,10 @@ use serde_with::{DeserializeAs, serde_as};
 
 use super::{EnvConfig, ProviderConfig};
 
+#[cfg_attr(not(debug_assertions), visibility::make(pub(in super::super)))]
 #[serde_as]
 #[derive(Deserialize)]
-pub(in super::super) struct HomebrewEnvConfig {
+pub(super) struct HomebrewEnvConfig {
     prefix: String,
 
     #[serde_as(as = "Option<HomebrewBoolFromStr>")]
@@ -42,7 +43,8 @@ impl EnvConfig for HomebrewEnvConfig {
 }
 
 impl HomebrewEnvConfig {
-    pub(in super::super) const DEFAULT_PREFIX: &str = cfg_select! {
+    #[cfg_attr(not(debug_assertions), visibility::make(pub(in super::super)))]
+    const DEFAULT_PREFIX: &str = cfg_select! {
         all(target_os = "macos", target_arch = "aarch64") => "/opt/homebrew",
         all(target_os = "macos", target_arch = "x86_64") => "/usr/local",
         target_os = "linux" => "/home/linuxbrew/.linuxbrew",

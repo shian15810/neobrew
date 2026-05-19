@@ -80,6 +80,7 @@ impl CaskRegistry {
                 .await?;
         }
 
+        #[expect(clippy::disallowed_macros)]
         let RawPackage::Cask(raw_cask) = raw_package else {
             unreachable!();
         };

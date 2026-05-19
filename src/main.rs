@@ -25,7 +25,7 @@
     )
 )]
 #![cfg_attr(all(debug_assertions, doc), feature(rustdoc_missing_doc_code_examples))]
-#![cfg_attr(debug_assertions, warn(rustdoc::missing_doc_code_examples))]
+#![cfg_attr(debug_assertions, allow(rustdoc::missing_doc_code_examples))]
 #![doc(test(attr(warn(unused), deny(warnings))))]
 #![expect(rustdoc::missing_crate_level_docs)]
 

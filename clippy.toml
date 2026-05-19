@@ -11,7 +11,12 @@ upper-case-acronyms-aggressive = true
 
 absolute-paths-allowed-crates = ["build_rs", "proc_exit"]
 allowed-idents-below-min-chars = ["e", ".."]
-disallowed-macros = ["std::panic", "std::todo"]
+disallowed-macros = [
+    "std::panic",
+    "std::todo",
+    "std::unimplemented",
+    "std::unreachable"
+]
 disallowed-methods = [
     "std::hint::assert_unchecked",
     "std::hint::unreachable_unchecked",

@@ -41,10 +41,7 @@ impl RawPackageable for RawCask {
 
         let file_name = format!("{id}.json");
 
-        let cache_dir = cfg_select! {
-            debug_assertions => context.neobrew_dirs.cache_dir(),
-            _ => context.homebrew_dirs.cache_dir(),
-        };
+        let cache_dir = context.homebrew_dirs.cache_dir();
 
         let file_location_parent = cache_dir.join("api").join("cask");
 
@@ -143,10 +140,7 @@ impl PreparedPackageable for PreparedCask {
 
         let file_name = format!("{url_hash}--{segment}");
 
-        let cache_dir = cfg_select! {
-            debug_assertions => context.neobrew_dirs.cache_dir(),
-            _ => context.homebrew_dirs.cache_dir(),
-        };
+        let cache_dir = context.homebrew_dirs.cache_dir();
 
         let symlink_location_parent = cache_dir.join("Cask");
 

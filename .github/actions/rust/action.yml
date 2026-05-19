@@ -63,8 +63,14 @@ runs:
       env:
         RUST_BACKTRACE: 1
 
-        RUSTFLAGS: --cfg=tokio_unstable --deny=warnings
-        RUSTDOCFLAGS: --cfg=tokio_unstable --deny=warnings
+        RUSTFLAGS: >-
+          --cfg=tokio_unstable
+          --force-warn=rustdoc::missing-doc-code-examples
+          --deny=warnings
+        RUSTDOCFLAGS: >-
+          --cfg=tokio_unstable
+          --force-warn=rustdoc::missing-doc-code-examples
+          --deny=warnings
         CLIPPYFLAGS: >-
           --force-warn=dead-code
           --force-warn=clippy::multiple-crate-versions
