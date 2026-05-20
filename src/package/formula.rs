@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, path::PathBuf, sync::Arc};
 
 use anyhow::{Result, anyhow};
 use base16ct::HexDisplay;
@@ -11,10 +11,12 @@ use self::macos::MacosTag;
 use super::{
     Packageable,
     PreparedPackageCache,
+    PreparedPackageDest,
     PreparedPackageable,
     PreparedPackageableInner,
     RawPackageCache,
     RawPackageable,
+    ResolvedPackageable,
 };
 use crate::context::{Context, ProjectDirs as _};
 #[cfg(target_os = "macos")]
@@ -46,6 +48,19 @@ impl Packageable for RawFormula {
 }
 
 impl RawPackageable for RawFormula {
+    fn version(&self) -> Cow<'_, str> {
+        let version = &self.versions.stable;
+
+        match self.revision {
+            0 => Cow::Borrowed(version),
+            revision => {
+                let version_revision = format!("{version}_{revision}");
+
+                Cow::Owned(version_revision)
+            },
+        }
+    }
+
     fn cache(&self, context: &Context) -> RawPackageCache {
         let id = self.id();
 
@@ -94,6 +109,21 @@ impl Packageable for ResolvedFormula {
     }
 }
 
+impl ResolvedPackageable for ResolvedFormula {
+    fn version(&self) -> Cow<'_, str> {
+        let version = &self.versions.stable;
+
+        match self.revision {
+            0 => Cow::Borrowed(version),
+            revision => {
+                let version_revision = format!("{version}_{revision}");
+
+                Cow::Owned(version_revision)
+            },
+        }
+    }
+}
+
 impl ResolvedFormula {
     pub(super) fn iter(self: &Arc<Self>) -> impl Iterator<Item = Arc<Self>> + use<> {
         let this = Arc::clone(self);
@@ -124,26 +154,31 @@ impl Iterator for ResolvedFormulaIter {
 
 pub(crate) struct PreparedFormula {
     name: String,
-    versions: Versions,
-    revision: u64,
-    tag: String,
-    bottle_stable_file: BottleStableFile,
+    version: String,
+    bottle_rebuild: u64,
+    bottle_tag: String,
+    bottle_file: BottleStableFile,
 }
 
 impl TryFrom<ResolvedFormula> for PreparedFormula {
     type Error = Option<anyhow::Error>;
 
     fn try_from(resolved_formula: ResolvedFormula) -> Result<Self, Self::Error> {
-        let Some((tag, bottle_stable_file)) = resolved_formula.bottle.stable.entry()? else {
+        #[expect(resolving_to_items_shadowing_supertrait_items)]
+        let version = resolved_formula.version().into_owned();
+
+        let bottle_rebuild = resolved_formula.bottle.stable.rebuild;
+
+        let Some((bottle_tag, bottle_file)) = resolved_formula.bottle.stable.entry()? else {
             return Err(None);
         };
 
         let this = Self {
             name: resolved_formula.name,
-            versions: resolved_formula.versions,
-            revision: resolved_formula.revision,
-            tag,
-            bottle_stable_file,
+            version,
+            bottle_rebuild,
+            bottle_tag,
+            bottle_file,
         };
 
         Ok(this)
@@ -156,19 +191,19 @@ impl Packageable for PreparedFormula {
     }
 
     fn version(&self) -> &str {
-        &self.versions.stable
+        &self.version
     }
 }
 
 impl PreparedPackageable for PreparedFormula {
     async fn cache(&self, context: &Context) -> Result<PreparedPackageCache> {
-        let cache = self.bottle_stable_file.cache(self, context);
+        let cache = self.bottle_file.cache(self, context);
 
         Ok(cache)
     }
 
     fn sha256(&self) -> &str {
-        &self.bottle_stable_file.sha256
+        &self.bottle_file.sha256
     }
 }
 
@@ -176,7 +211,7 @@ impl PreparedPackageableInner for PreparedFormula {}
 
 impl PreparedFormula {
     pub(crate) fn oci(&self) -> Option<PreparedFormulaOci> {
-        let oci = self.bottle_stable_file.oci()?;
+        let oci = self.bottle_file.oci()?;
 
         Some(oci)
     }
@@ -194,20 +229,20 @@ impl PreparedFormulaOci {
 
 pub(crate) struct FetchedFormula {
     name: String,
-    versions: Versions,
-    revision: u64,
-    tag: String,
-    bottle_stable_file: BottleStableFile,
+    version: String,
+    cellar_dir: PathBuf,
+    rack_dir: PathBuf,
+    keg_dir: PathBuf,
 }
 
-impl From<PreparedFormula> for FetchedFormula {
-    fn from(prepared_formula: PreparedFormula) -> Self {
+impl From<(PreparedFormula, PreparedPackageDest)> for FetchedFormula {
+    fn from((prepared_formula, dest): (PreparedFormula, PreparedPackageDest)) -> Self {
         Self {
             name: prepared_formula.name,
-            versions: prepared_formula.versions,
-            revision: prepared_formula.revision,
-            tag: prepared_formula.tag,
-            bottle_stable_file: prepared_formula.bottle_stable_file,
+            version: prepared_formula.version,
+            cellar_dir: dest.dir_location_grandparent,
+            rack_dir: dest.dir_location_parent,
+            keg_dir: dest.dir_location,
         }
     }
 }
@@ -218,7 +253,7 @@ impl Packageable for FetchedFormula {
     }
 
     fn version(&self) -> &str {
-        &self.versions.stable
+        &self.version
     }
 }
 
@@ -329,7 +364,7 @@ impl BottleStableFile {
 
         let version = prepared_formula.version();
 
-        let tag = &prepared_formula.tag;
+        let bottle_tag = &prepared_formula.bottle_tag;
 
         let url_hash = Sha256::digest(&self.url);
         let url_hash = HexDisplay(&url_hash);
@@ -337,7 +372,12 @@ impl BottleStableFile {
 
         let symlink_name = format!("{id}--{version}");
 
-        let file_name = format!("{url_hash}--{symlink_name}.{tag}.bottle.tar.gz");
+        let file_name = match prepared_formula.bottle_rebuild {
+            0 => format!("{url_hash}--{symlink_name}.{bottle_tag}.bottle.tar.gz"),
+            bottle_rebuild => {
+                format!("{url_hash}--{symlink_name}.{bottle_tag}.bottle.{bottle_rebuild}.tar.gz")
+            },
+        };
 
         let cache_dir = context.homebrew_dirs.cache_dir();
 

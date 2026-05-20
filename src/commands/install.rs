@@ -20,6 +20,7 @@ use crate::{
         PreparedPackageCache,
         PreparedPackageDest,
         PreparedPackageable as _,
+        ResolvedPackage,
     },
     pipeline::{AtomicFsHandler as _, Hasher, Pipeline, Pourer, Writer},
     registry::Registry,
@@ -40,16 +41,57 @@ impl Runner for Install {
             return Ok(());
         }
 
-        let registry = {
+        let resolved_packages = {
             let context = Arc::clone(&context);
 
-            Registry::new(context)
+            self.resolve_packages(context).await?
         };
+
+        let prepared_packages = Self::prepare_packages(resolved_packages)?;
+
+        let mut set = JoinSet::new();
+
+        for prepared_package in prepared_packages {
+            while set.len() >= *context.concurrency_limit {
+                if let Some(res) = set.join_next().await {
+                    res??;
+                }
+            }
+
+            let context = Arc::clone(&context);
+
+            set.spawn(async move {
+                let Some(fetched_package) = Self::fetch_package(prepared_package, context).await?
+                else {
+                    return Ok(());
+                };
+
+                Self::link_package(fetched_package);
+
+                anyhow::Ok(())
+            });
+        }
+
+        while let Some(res) = set.join_next().await {
+            res??;
+        }
+
+        Ok(())
+    }
+}
+
+impl Install {
+    async fn resolve_packages(self, context: Arc<Context>) -> Result<Vec<ResolvedPackage>> {
+        let registry = Registry::new(context);
 
         let strategy = self.resolution.strategy();
 
         let resolved_packages = registry.resolve(self.packages, strategy).await?;
 
+        Ok(resolved_packages)
+    }
+
+    fn prepare_packages(resolved_packages: Vec<ResolvedPackage>) -> Result<Vec<PreparedPackage>> {
         #[cfg(debug_assertions)]
         let prepared_packages = resolved_packages
             .into_iter()
@@ -64,85 +106,69 @@ impl Runner for Install {
             .filter_map(Result::transpose_err)
             .collect::<Result<Vec<_>>>()?;
 
-        let mut set = JoinSet::new();
-
-        for prepared_package in prepared_packages {
-            while set.len() >= *context.concurrency_limit {
-                if let Some(res) = set.join_next().await {
-                    res??;
-                }
-            }
-
-            let context = Arc::clone(&context);
-
-            set.spawn(async move {
-                let id = prepared_package.id();
-
-                let version = prepared_package.version();
-
-                let dest = {
-                    let context = Arc::as_ref(&context);
-
-                    prepared_package.dest(context)
-                };
-
-                if dest.dir_location.is_dir() {
-                    let fetched_package = FetchedPackage::from(prepared_package);
-
-                    return Ok(Some(fetched_package));
-                }
-
-                let cache = {
-                    let context = Arc::as_ref(&context);
-
-                    prepared_package.cache(context).await?
-                };
-
-                let sha256 = prepared_package.sha256();
-
-                if cache.symlink_location.is_symlink()
-                    && cache.file_location.is_file()
-                    && cache.symlink_location.canonicalize()?
-                        == cache.file_location.canonicalize()?
-                {
-                    let cache_file_sha256 = cache.file_sha256().await?;
-
-                    if cache_file_sha256 == sha256 {
-                        Self::fetch_from_cache(id, version, dest, cache, sha256, context).await?;
-
-                        let fetched_package = FetchedPackage::from(prepared_package);
-
-                        return Ok(Some(fetched_package));
-                    }
-                }
-
-                let stream = {
-                    let context = Arc::as_ref(&context);
-
-                    prepared_package.stream(context).await?
-                };
-
-                let Some(stream) = stream else {
-                    return Ok(None);
-                };
-
-                Self::fetch_from_url(id, version, dest, cache, sha256, stream, context).await?;
-
-                let fetched_package = FetchedPackage::from(prepared_package);
-
-                anyhow::Ok(Some(fetched_package))
-            });
-        }
-
-        while let Some(res) = set.join_next().await {
-            res??;
-        }
-
-        Ok(())
+        Ok(prepared_packages)
     }
-}
 
-impl Install {
+    async fn fetch_package(
+        prepared_package: PreparedPackage,
+        context: Arc<Context>,
+    ) -> Result<Option<FetchedPackage>> {
+        let id = prepared_package.id();
+
+        let version = prepared_package.version();
+
+        let dest = {
+            let context = Arc::as_ref(&context);
+
+            prepared_package.dest(context)
+        };
+
+        if dest.dir_location.is_dir() {
+            let fetched_package = FetchedPackage::from((prepared_package, dest));
+
+            return Ok(Some(fetched_package));
+        }
+
+        let cache = {
+            let context = Arc::as_ref(&context);
+
+            prepared_package.cache(context).await?
+        };
+
+        let sha256 = prepared_package.sha256();
+
+        if cache.symlink_location.is_symlink()
+            && cache.file_location.is_file()
+            && cache.symlink_location.canonicalize()? == cache.file_location.canonicalize()?
+        {
+            let cache_file_sha256 = cache.file_sha256().await?;
+
+            if cache_file_sha256 == sha256 {
+                Self::fetch_from_cache(id, version, dest.clone(), cache, sha256, context).await?;
+
+                let fetched_package = FetchedPackage::from((prepared_package, dest));
+
+                return Ok(Some(fetched_package));
+            }
+        }
+
+        let stream = {
+            let context = Arc::as_ref(&context);
+
+            prepared_package.stream(context).await?
+        };
+
+        let Some(stream) = stream else {
+            return Ok(None);
+        };
+
+        Self::fetch_from_url(id, version, dest.clone(), cache, sha256, stream, context).await?;
+
+        let fetched_package = FetchedPackage::from((prepared_package, dest));
+
+        Ok(Some(fetched_package))
+    }
+
     async fn fetch_from_cache(
         id: &str,
         version: &str,
@@ -155,20 +181,20 @@ impl Install {
 
         let stream = ReaderStream::new(cache_file);
 
-        let pourer = Pourer::from(dest.clone());
+        let pourer = Pourer::from(dest);
 
         let hasher = Hasher::new();
 
-        let hlist_pat![poured_temp_dest, hashed_temp_sha256] = Pipeline::new(stream, context)
+        let hlist_pat![poured_temp_dest, hashed_sha256] = Pipeline::new(stream, context)
             .fanout(pourer)
             .fanout(hasher)
             .run_parallel()
             .await?;
 
-        if hashed_temp_sha256 != sha256 {
+        if hashed_sha256 != sha256 {
             poured_temp_dest.cleanup().await?;
 
-            let err = Self::sha256_mismatch_err(id, version, &hashed_temp_sha256, sha256);
+            let err = Self::fetch_hashed_sha256_mismatch_err(id, version, &hashed_sha256, sha256);
 
             return Err(err);
         }
@@ -193,7 +219,7 @@ impl Install {
 
         let hasher = Hasher::new();
 
-        let hlist_pat![poured_temp_dest, written_temp_cache, hashed_temp_sha256] =
+        let hlist_pat![poured_temp_dest, written_temp_cache, hashed_sha256] =
             Pipeline::new(stream, context)
                 .fanout(pourer)
                 .fanout(writer)
@@ -201,12 +227,12 @@ impl Install {
                 .run_parallel()
                 .await?;
 
-        if hashed_temp_sha256 != sha256 {
+        if hashed_sha256 != sha256 {
             poured_temp_dest.cleanup().await?;
 
             written_temp_cache.cleanup().await?;
 
-            let err = Self::sha256_mismatch_err(id, version, &hashed_temp_sha256, sha256);
+            let err = Self::fetch_hashed_sha256_mismatch_err(id, version, &hashed_sha256, sha256);
 
             return Err(err);
         }
@@ -218,7 +244,12 @@ impl Install {
         Ok(())
     }
 
-    fn sha256_mismatch_err(id: &str, version: &str, actual: &str, expected: &str) -> anyhow::Error {
+    fn fetch_hashed_sha256_mismatch_err(
+        id: &str,
+        version: &str,
+        actual: &str,
+        expected: &str,
+    ) -> anyhow::Error {
         anyhow!(formatdoc! {r#"
             SHA-256 mismatch detected for package "{id}" of version "{version}":
 
@@ -226,4 +257,6 @@ impl Install {
             Expected: "{expected}""#,
         })
     }
+
+    fn link_package(_fetched_package: FetchedPackage) {}
 }

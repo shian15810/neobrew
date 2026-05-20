@@ -13,6 +13,7 @@
 #![cfg_attr(
     debug_assertions,
     warn(
+        dead_code_pub_in_binary,
         fuzzy_provenance_casts,
         linker_info,
         lossy_provenance_casts,

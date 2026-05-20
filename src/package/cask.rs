@@ -1,4 +1,7 @@
-use std::path::Path;
+use std::{
+    borrow::Cow,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Context as _, Result};
 use base16ct::HexDisplay;
@@ -9,19 +12,20 @@ use url::Url;
 use super::{
     Packageable,
     PreparedPackageCache,
+    PreparedPackageDest,
     PreparedPackageable,
     PreparedPackageableInner,
     RawPackageCache,
     RawPackageable,
+    ResolvedPackageable,
 };
 use crate::context::{Context, ProjectDirs as _};
 
 #[derive(Deserialize)]
 pub(crate) struct RawCask {
     token: String,
-    name: Vec<String>,
-    url: String,
     version: String,
+    url: String,
     sha256: String,
 }
 
@@ -36,6 +40,12 @@ impl Packageable for RawCask {
 }
 
 impl RawPackageable for RawCask {
+    fn version(&self) -> Cow<'_, str> {
+        let version = &self.version;
+
+        Cow::Borrowed(version)
+    }
+
     fn cache(&self, context: &Context) -> RawPackageCache {
         let id = self.id();
 
@@ -56,9 +66,8 @@ impl RawPackageable for RawCask {
 
 pub(crate) struct ResolvedCask {
     token: String,
-    name: Vec<String>,
-    url: String,
     version: String,
+    url: String,
     sha256: String,
 }
 
@@ -66,9 +75,8 @@ impl From<RawCask> for ResolvedCask {
     fn from(raw_cask: RawCask) -> Self {
         Self {
             token: raw_cask.token,
-            name: raw_cask.name,
-            url: raw_cask.url,
             version: raw_cask.version,
+            url: raw_cask.url,
             sha256: raw_cask.sha256,
         }
     }
@@ -84,21 +92,30 @@ impl Packageable for ResolvedCask {
     }
 }
 
+impl ResolvedPackageable for ResolvedCask {
+    fn version(&self) -> Cow<'_, str> {
+        let version = &self.version;
+
+        Cow::Borrowed(version)
+    }
+}
+
 pub(crate) struct PreparedCask {
     token: String,
-    name: Vec<String>,
-    url: String,
     version: String,
+    url: String,
     sha256: String,
 }
 
 impl From<ResolvedCask> for PreparedCask {
     fn from(resolved_cask: ResolvedCask) -> Self {
+        #[expect(resolving_to_items_shadowing_supertrait_items)]
+        let version = resolved_cask.version().into_owned();
+
         Self {
             token: resolved_cask.token,
-            name: resolved_cask.name,
+            version,
             url: resolved_cask.url,
-            version: resolved_cask.version,
             sha256: resolved_cask.sha256,
         }
     }
@@ -160,20 +177,16 @@ impl PreparedCask {
 
 pub(crate) struct FetchedCask {
     token: String,
-    name: Vec<String>,
-    url: String,
     version: String,
-    sha256: String,
+    caskroom_dir: PathBuf,
 }
 
-impl From<PreparedCask> for FetchedCask {
-    fn from(prepared_cask: PreparedCask) -> Self {
+impl From<(PreparedCask, PreparedPackageDest)> for FetchedCask {
+    fn from((prepared_cask, dest): (PreparedCask, PreparedPackageDest)) -> Self {
         Self {
             token: prepared_cask.token,
-            name: prepared_cask.name,
-            url: prepared_cask.url,
             version: prepared_cask.version,
-            sha256: prepared_cask.sha256,
+            caskroom_dir: dest.dir_location_grandparent,
         }
     }
 }

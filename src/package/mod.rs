@@ -1,4 +1,4 @@
-use std::{fs::File, io, iter, path::PathBuf, sync::Arc};
+use std::{borrow::Cow, fs::File, io, iter, path::PathBuf, sync::Arc};
 
 use anyhow::{Context as _, Result, anyhow};
 use base16ct::HexDisplay;
@@ -63,8 +63,11 @@ pub(crate) enum RawPackage {
     Cask(RawCask),
 }
 
+#[expect(shadowing_supertrait_items)]
 #[enum_dispatch(RawPackage)]
 pub(crate) trait RawPackageable: Packageable {
+    fn version(&self) -> Cow<'_, str>;
+
     fn cache(&self, context: &Context) -> RawPackageCache;
 }
 
@@ -96,6 +99,22 @@ impl ResolvedPackage {
                 Right(casks)
             },
         }
+    }
+}
+
+#[expect(shadowing_supertrait_items)]
+#[enum_dispatch(ResolvedPackage)]
+trait ResolvedPackageable: Packageable {
+    fn version(&self) -> Cow<'_, str>;
+}
+
+impl<ResolvedPackage: ResolvedPackageable> ResolvedPackageable for Arc<ResolvedPackage> {
+    fn version(&self) -> Cow<'_, str> {
+        #[expect(clippy::use_self)]
+        let this = Arc::as_ref(self);
+
+        #[expect(resolving_to_items_shadowing_supertrait_items)]
+        this.version()
     }
 }
 
@@ -300,16 +319,17 @@ pub(crate) enum FetchedPackage {
     Cask(FetchedCask),
 }
 
-impl From<PreparedPackage> for FetchedPackage {
-    fn from(prepared_package: PreparedPackage) -> Self {
+impl From<(PreparedPackage, PreparedPackageDest)> for FetchedPackage {
+    fn from((prepared_package, dest): (PreparedPackage, PreparedPackageDest)) -> Self {
         match prepared_package {
             PreparedPackage::Formula(prepared_formula) => {
-                let fetched_formula = FetchedFormula::from(prepared_formula);
+                let fetched_formula = FetchedFormula::from((prepared_formula, dest));
 
                 Self::Formula(fetched_formula)
             },
+
             PreparedPackage::Cask(prepared_cask) => {
-                let fetched_cask = FetchedCask::from(prepared_cask);
+                let fetched_cask = FetchedCask::from((prepared_cask, dest));
 
                 Self::Cask(fetched_cask)
             },

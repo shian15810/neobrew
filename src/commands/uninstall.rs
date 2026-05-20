@@ -5,7 +5,7 @@ use clap::Args;
 use tokio::task::JoinSet;
 
 use super::{Resolution, Runner};
-use crate::{context::Context, package::Packageable as _, registry::Registry};
+use crate::{context::Context, package::ResolvedPackage, registry::Registry};
 
 #[derive(Args)]
 pub(super) struct Uninstall {
@@ -22,19 +22,15 @@ impl Runner for Uninstall {
             return Ok(());
         }
 
-        let registry = {
+        let resolved_packages = {
             let context = Arc::clone(&context);
 
-            Registry::new(context)
+            self.resolve_packages(context).await?
         };
-
-        let strategy = self.resolution.strategy();
-
-        let resolved_packages = registry.resolve(self.packages, strategy).await?;
 
         let mut set = JoinSet::new();
 
-        for resolved_package in resolved_packages {
+        for _resolved_package in resolved_packages {
             while set.len() >= *context.concurrency_limit {
                 if let Some(res) = set.join_next().await {
                     res??;
@@ -43,13 +39,7 @@ impl Runner for Uninstall {
 
             let _context = Arc::clone(&context);
 
-            set.spawn(async move {
-                let _id = resolved_package.id();
-
-                let _version = resolved_package.version();
-
-                anyhow::Ok(())
-            });
+            set.spawn(async move { anyhow::Ok(()) });
         }
 
         while let Some(res) = set.join_next().await {
@@ -57,5 +47,17 @@ impl Runner for Uninstall {
         }
 
         Ok(())
+    }
+}
+
+impl Uninstall {
+    async fn resolve_packages(self, context: Arc<Context>) -> Result<Vec<ResolvedPackage>> {
+        let registry = Registry::new(context);
+
+        let strategy = self.resolution.strategy();
+
+        let resolved_packages = registry.resolve(self.packages, strategy).await?;
+
+        Ok(resolved_packages)
     }
 }
