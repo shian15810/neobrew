@@ -80,7 +80,7 @@ impl FormulaRegistry {
 
                 let package = Arc::clone(&package);
 
-                this.fetch_with_stack(package, stack)
+                this.with_stack(package, stack)
             })
             .await?;
         let resolved_formula = resolved_formula.value();
@@ -90,7 +90,7 @@ impl FormulaRegistry {
     }
 
     #[async_recursion]
-    async fn fetch_with_stack(
+    async fn with_stack(
         self: Arc<Self>,
         package: Arc<str>,
         stack: Vec<Arc<str>>,

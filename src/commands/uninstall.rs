@@ -32,7 +32,7 @@ impl Runner for Uninstall {
 
         let resolved_packages = registry.resolve(self.packages, strategy).await?;
 
-        let mut set: JoinSet<Result<()>> = JoinSet::new();
+        let mut set = JoinSet::new();
 
         for resolved_package in resolved_packages {
             while set.len() >= *context.concurrency_limit {
@@ -48,7 +48,7 @@ impl Runner for Uninstall {
 
                 let _version = resolved_package.version();
 
-                Ok(())
+                anyhow::Ok(())
             });
         }
 

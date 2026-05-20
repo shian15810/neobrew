@@ -8,10 +8,10 @@ use url::Url;
 
 use super::{
     Packageable,
-    PreparedPackageFetchCache,
+    PreparedPackageCache,
     PreparedPackageable,
     PreparedPackageableInner,
-    RawPackageJsonCache,
+    RawPackageCache,
     RawPackageable,
 };
 use crate::context::{Context, ProjectDirs as _};
@@ -36,7 +36,7 @@ impl Packageable for RawCask {
 }
 
 impl RawPackageable for RawCask {
-    fn json_cache(&self, context: &Context) -> RawPackageJsonCache {
+    fn cache(&self, context: &Context) -> RawPackageCache {
         let id = self.id();
 
         let file_name = format!("{id}.json");
@@ -47,7 +47,7 @@ impl RawPackageable for RawCask {
 
         let file_location = file_location_parent.join(file_name);
 
-        RawPackageJsonCache {
+        RawPackageCache {
             file_location_parent,
             file_location,
         }
@@ -115,7 +115,7 @@ impl Packageable for PreparedCask {
 }
 
 impl PreparedPackageable for PreparedCask {
-    async fn fetch_cache(&self, context: &Context) -> Result<PreparedPackageFetchCache> {
+    async fn cache(&self, context: &Context) -> Result<PreparedPackageCache> {
         let version = self.version();
 
         let url = Url::parse(&self.url)?;
@@ -140,13 +140,12 @@ impl PreparedPackageable for PreparedCask {
 
         let symlink_location_parent = cache_dir.join("Cask");
 
-        let fetch_cache =
-            self.fetch_cache_inner(&file_name, &symlink_name, symlink_location_parent);
+        let cache = self.cache_inner(&file_name, &symlink_name, symlink_location_parent);
 
-        Ok(fetch_cache)
+        Ok(cache)
     }
 
-    fn fetch_sha256(&self) -> &str {
+    fn sha256(&self) -> &str {
         &self.sha256
     }
 }
@@ -154,7 +153,37 @@ impl PreparedPackageable for PreparedCask {
 impl PreparedPackageableInner for PreparedCask {}
 
 impl PreparedCask {
-    pub(crate) fn fetch_url(&self) -> &str {
+    pub(crate) fn url(&self) -> &str {
         &self.url
+    }
+}
+
+pub(crate) struct FetchedCask {
+    token: String,
+    name: Vec<String>,
+    url: String,
+    version: String,
+    sha256: String,
+}
+
+impl From<PreparedCask> for FetchedCask {
+    fn from(prepared_cask: PreparedCask) -> Self {
+        Self {
+            token: prepared_cask.token,
+            name: prepared_cask.name,
+            url: prepared_cask.url,
+            version: prepared_cask.version,
+            sha256: prepared_cask.sha256,
+        }
+    }
+}
+
+impl Packageable for FetchedCask {
+    fn id(&self) -> &str {
+        &self.token
+    }
+
+    fn version(&self) -> &str {
+        &self.version
     }
 }

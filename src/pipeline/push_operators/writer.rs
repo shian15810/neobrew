@@ -11,25 +11,25 @@ use tokio::task;
 use tokio_util::task::AbortOnDropHandle;
 
 use super::{super::AtomicFsHandler, PushOperator};
-use crate::package::PreparedPackageFetchCache;
+use crate::package::PreparedPackageCache;
 
 pub(crate) struct Writer {
     buf_tmp_file: BufWriter<NamedTempFile>,
 
-    fetch_cache: PreparedPackageFetchCache,
+    cache: PreparedPackageCache,
 }
 
 impl Writer {
-    pub(crate) async fn create(fetch_cache: PreparedPackageFetchCache) -> Result<Self> {
+    pub(crate) async fn create(cache: PreparedPackageCache) -> Result<Self> {
         let handle = task::spawn_blocking(move || {
-            fs::create_dir_all(&fetch_cache.file_location_parent)?;
+            fs::create_dir_all(&cache.file_location_parent)?;
 
-            let tmp_file = NamedTempFile::new_in(&fetch_cache.file_location_parent)?;
+            let tmp_file = NamedTempFile::new_in(&cache.file_location_parent)?;
 
             let this = Self {
                 buf_tmp_file: BufWriter::new(tmp_file),
 
-                fetch_cache,
+                cache,
             };
 
             anyhow::Ok(this)
@@ -64,7 +64,7 @@ impl PushOperator for Writer {
 pub(crate) struct WrittenTempFile {
     tmp_file: NamedTempFile,
 
-    fetch_cache: PreparedPackageFetchCache,
+    cache: PreparedPackageCache,
 }
 
 impl TryFrom<Writer> for WrittenTempFile {
@@ -76,7 +76,7 @@ impl TryFrom<Writer> for WrittenTempFile {
         let this = Self {
             tmp_file,
 
-            fetch_cache: writer.fetch_cache,
+            cache: writer.cache,
         };
 
         Ok(this)
@@ -99,16 +99,16 @@ impl AtomicFsHandler for WrittenTempFile {
 
     async fn persist(self) -> Result<()> {
         let handle = task::spawn_blocking(move || {
-            self.tmp_file.persist(&self.fetch_cache.file_location)?;
+            self.tmp_file.persist(&self.cache.file_location)?;
 
             unix_fs::symlink(
-                self.fetch_cache.symlink_location_diff()?,
-                self.fetch_cache.symlink_location_tmp(),
+                self.cache.symlink_location_diff()?,
+                self.cache.symlink_location_tmp(),
             )?;
 
             fs::rename(
-                self.fetch_cache.symlink_location_tmp(),
-                self.fetch_cache.symlink_location,
+                self.cache.symlink_location_tmp(),
+                self.cache.symlink_location,
             )?;
 
             anyhow::Ok(())

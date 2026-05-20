@@ -10,10 +10,10 @@ use sha2::{Digest as _, Sha256};
 use self::macos::MacosTag;
 use super::{
     Packageable,
-    PreparedPackageFetchCache,
+    PreparedPackageCache,
     PreparedPackageable,
     PreparedPackageableInner,
-    RawPackageJsonCache,
+    RawPackageCache,
     RawPackageable,
 };
 use crate::context::{Context, ProjectDirs as _};
@@ -46,7 +46,7 @@ impl Packageable for RawFormula {
 }
 
 impl RawPackageable for RawFormula {
-    fn json_cache(&self, context: &Context) -> RawPackageJsonCache {
+    fn cache(&self, context: &Context) -> RawPackageCache {
         let id = self.id();
 
         let file_name = format!("{id}.json");
@@ -57,7 +57,7 @@ impl RawPackageable for RawFormula {
 
         let file_location = file_location_parent.join(file_name);
 
-        RawPackageJsonCache {
+        RawPackageCache {
             file_location_parent,
             file_location,
         }
@@ -161,13 +161,13 @@ impl Packageable for PreparedFormula {
 }
 
 impl PreparedPackageable for PreparedFormula {
-    async fn fetch_cache(&self, context: &Context) -> Result<PreparedPackageFetchCache> {
-        let fetch_cache = self.bottle_stable_file.fetch_cache(self, context);
+    async fn cache(&self, context: &Context) -> Result<PreparedPackageCache> {
+        let cache = self.bottle_stable_file.cache(self, context);
 
-        Ok(fetch_cache)
+        Ok(cache)
     }
 
-    fn fetch_sha256(&self) -> &str {
+    fn sha256(&self) -> &str {
         &self.bottle_stable_file.sha256
     }
 }
@@ -175,21 +175,51 @@ impl PreparedPackageable for PreparedFormula {
 impl PreparedPackageableInner for PreparedFormula {}
 
 impl PreparedFormula {
-    pub(crate) fn fetch_oci(&self) -> Option<PreparedFormulaFetchOci> {
-        let fetch_oci = self.bottle_stable_file.fetch_oci()?;
+    pub(crate) fn oci(&self) -> Option<PreparedFormulaOci> {
+        let oci = self.bottle_stable_file.oci()?;
 
-        Some(fetch_oci)
+        Some(oci)
     }
 }
 
-pub(crate) struct PreparedFormulaFetchOci {
+pub(crate) struct PreparedFormulaOci {
     pub(crate) registry: &'static str,
     pub(crate) reference: Reference,
     pub(crate) descriptor: OciDescriptor,
 }
 
-impl PreparedFormulaFetchOci {
+impl PreparedFormulaOci {
     const REGISTRY: &str = "ghcr.io";
+}
+
+pub(crate) struct FetchedFormula {
+    name: String,
+    versions: Versions,
+    revision: u64,
+    tag: String,
+    bottle_stable_file: BottleStableFile,
+}
+
+impl From<PreparedFormula> for FetchedFormula {
+    fn from(prepared_formula: PreparedFormula) -> Self {
+        Self {
+            name: prepared_formula.name,
+            versions: prepared_formula.versions,
+            revision: prepared_formula.revision,
+            tag: prepared_formula.tag,
+            bottle_stable_file: prepared_formula.bottle_stable_file,
+        }
+    }
+}
+
+impl Packageable for FetchedFormula {
+    fn id(&self) -> &str {
+        &self.name
+    }
+
+    fn version(&self) -> &str {
+        &self.versions.stable
+    }
 }
 
 #[derive(Deserialize)]
@@ -294,11 +324,7 @@ struct BottleStableFile {
 }
 
 impl BottleStableFile {
-    fn fetch_cache(
-        &self,
-        prepared_formula: &PreparedFormula,
-        context: &Context,
-    ) -> PreparedPackageFetchCache {
+    fn cache(&self, prepared_formula: &PreparedFormula, context: &Context) -> PreparedPackageCache {
         let id = prepared_formula.id();
 
         let version = prepared_formula.version();
@@ -317,11 +343,11 @@ impl BottleStableFile {
 
         let symlink_location_parent = cache_dir;
 
-        prepared_formula.fetch_cache_inner(&file_name, &symlink_name, symlink_location_parent)
+        prepared_formula.cache_inner(&file_name, &symlink_name, symlink_location_parent)
     }
 
-    fn fetch_oci(&self) -> Option<PreparedFormulaFetchOci> {
-        let registry = PreparedFormulaFetchOci::REGISTRY;
+    fn oci(&self) -> Option<PreparedFormulaOci> {
+        let registry = PreparedFormulaOci::REGISTRY;
 
         let repository = format!("https://{registry}/v2/");
         let repository = self.url.strip_prefix(&repository)?;
@@ -340,13 +366,13 @@ impl BottleStableFile {
             ..OciDescriptor::default()
         };
 
-        let fetch_oci = PreparedFormulaFetchOci {
+        let oci = PreparedFormulaOci {
             registry,
             reference,
             descriptor,
         };
 
-        Some(fetch_oci)
+        Some(oci)
     }
 }
 

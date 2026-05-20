@@ -1,18 +1,26 @@
 use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
+use bytes::Bytes;
 use clap::Args;
 use frunk::hlist_pat;
-use futures::stream::{StreamExt as _, TryStreamExt as _};
+use futures::stream::Stream;
 use indoc::formatdoc;
-use oci_client::secrets::RegistryAuth;
-use tokio::task::JoinSet;
+use tokio::{fs::File as AsyncFile, task::JoinSet};
+use tokio_util::io::ReaderStream;
 
 use super::{Resolution, Runner};
 use crate::{
     context::Context,
     ext::ResultExt as _,
-    package::{Packageable as _, PreparedPackage, PreparedPackageable as _},
+    package::{
+        FetchedPackage,
+        Packageable as _,
+        PreparedPackage,
+        PreparedPackageCache,
+        PreparedPackageDest,
+        PreparedPackageable as _,
+    },
     pipeline::{AtomicFsHandler as _, Hasher, Pipeline, Pourer, Writer},
     registry::Registry,
 };
@@ -56,7 +64,7 @@ impl Runner for Install {
             .filter_map(Result::transpose_err)
             .collect::<Result<Vec<_>>>()?;
 
-        let mut set: JoinSet<Result<()>> = JoinSet::new();
+        let mut set = JoinSet::new();
 
         for prepared_package in prepared_packages {
             while set.len() >= *context.concurrency_limit {
@@ -72,87 +80,57 @@ impl Runner for Install {
 
                 let version = prepared_package.version();
 
-                let fetch_dest = {
+                let dest = {
                     let context = Arc::as_ref(&context);
 
-                    prepared_package.fetch_dest(context)
+                    prepared_package.dest(context)
                 };
 
-                let fetch_cache = {
-                    let context = Arc::as_ref(&context);
+                if dest.dir_location.is_dir() {
+                    let fetched_package = FetchedPackage::from(prepared_package);
 
-                    prepared_package.fetch_cache(context).await?
-                };
-
-                let fetch_sha256 = prepared_package.fetch_sha256();
-
-                let fetch_stream = match &prepared_package {
-                    PreparedPackage::Formula(prepared_formula) => {
-                        let Some(fetch_oci) = prepared_formula.fetch_oci() else {
-                            return Ok(());
-                        };
-
-                        context
-                            .oci_client
-                            .store_auth_if_needed(fetch_oci.registry, &RegistryAuth::Anonymous)
-                            .await;
-
-                        let fetch_stream = context
-                            .oci_client
-                            .pull_blob_stream(&fetch_oci.reference, &fetch_oci.descriptor)
-                            .await?;
-                        let fetch_stream = fetch_stream.err_into::<anyhow::Error>();
-
-                        fetch_stream.left_stream()
-                    },
-
-                    PreparedPackage::Cask(prepared_cask) => {
-                        let fetch_url = prepared_cask.fetch_url();
-
-                        let fetch_resp = context.client.get(fetch_url).send().await?;
-                        let fetch_resp = fetch_resp.error_for_status()?;
-
-                        let fetch_stream = fetch_resp.bytes_stream();
-                        let fetch_stream = fetch_stream.err_into::<anyhow::Error>();
-
-                        fetch_stream.right_stream()
-                    },
-                };
-
-                let pourer = Pourer::from(fetch_dest);
-
-                let writer = Writer::create(fetch_cache).await?;
-
-                let hasher = Hasher::new();
-
-                let hlist_pat![poured_temp_dest, written_temp_cache, hashed_sha256] =
-                    Pipeline::new(fetch_stream, context)
-                        .fanout(pourer)
-                        .fanout(writer)
-                        .fanout(hasher)
-                        .run_parallel()
-                        .await?;
-
-                if hashed_sha256 != fetch_sha256 {
-                    poured_temp_dest.cleanup().await?;
-
-                    written_temp_cache.cleanup().await?;
-
-                    let err = anyhow!(formatdoc! {r#"
-                        SHA-256 mismatch detected for package "{id}" of version "{version}":
-
-                        Actual  : "{hashed_sha256}"
-                        Expected: "{fetch_sha256}""#,
-                    });
-
-                    return Err(err);
+                    return Ok(Some(fetched_package));
                 }
 
-                poured_temp_dest.persist().await?;
+                let cache = {
+                    let context = Arc::as_ref(&context);
 
-                written_temp_cache.persist().await?;
+                    prepared_package.cache(context).await?
+                };
 
-                Ok(())
+                let sha256 = prepared_package.sha256();
+
+                if cache.symlink_location.is_symlink()
+                    && cache.file_location.is_file()
+                    && cache.symlink_location.canonicalize()?
+                        == cache.file_location.canonicalize()?
+                {
+                    let cache_file_sha256 = cache.file_sha256().await?;
+
+                    if cache_file_sha256 == sha256 {
+                        Self::fetch_from_cache(id, version, dest, cache, sha256, context).await?;
+
+                        let fetched_package = FetchedPackage::from(prepared_package);
+
+                        return Ok(Some(fetched_package));
+                    }
+                }
+
+                let stream = {
+                    let context = Arc::as_ref(&context);
+
+                    prepared_package.stream(context).await?
+                };
+
+                let Some(stream) = stream else {
+                    return Ok(None);
+                };
+
+                Self::fetch_from_url(id, version, dest, cache, sha256, stream, context).await?;
+
+                let fetched_package = FetchedPackage::from(prepared_package);
+
+                anyhow::Ok(Some(fetched_package))
             });
         }
 
@@ -161,5 +139,91 @@ impl Runner for Install {
         }
 
         Ok(())
+    }
+}
+
+impl Install {
+    async fn fetch_from_cache(
+        id: &str,
+        version: &str,
+        dest: PreparedPackageDest,
+        cache: PreparedPackageCache,
+        sha256: &str,
+        context: Arc<Context>,
+    ) -> Result<()> {
+        let cache_file = AsyncFile::open(cache.file_location).await?;
+
+        let stream = ReaderStream::new(cache_file);
+
+        let pourer = Pourer::from(dest.clone());
+
+        let hasher = Hasher::new();
+
+        let hlist_pat![poured_temp_dest, hashed_temp_sha256] = Pipeline::new(stream, context)
+            .fanout(pourer)
+            .fanout(hasher)
+            .run_parallel()
+            .await?;
+
+        if hashed_temp_sha256 != sha256 {
+            poured_temp_dest.cleanup().await?;
+
+            let err = Self::sha256_mismatch_err(id, version, &hashed_temp_sha256, sha256);
+
+            return Err(err);
+        }
+
+        poured_temp_dest.persist().await?;
+
+        Ok(())
+    }
+
+    async fn fetch_from_url(
+        id: &str,
+        version: &str,
+        dest: PreparedPackageDest,
+        cache: PreparedPackageCache,
+        sha256: &str,
+        stream: impl Stream<Item = Result<Bytes>> + Send + 'static,
+        context: Arc<Context>,
+    ) -> Result<()> {
+        let pourer = Pourer::from(dest);
+
+        let writer = Writer::create(cache).await?;
+
+        let hasher = Hasher::new();
+
+        let hlist_pat![poured_temp_dest, written_temp_cache, hashed_temp_sha256] =
+            Pipeline::new(stream, context)
+                .fanout(pourer)
+                .fanout(writer)
+                .fanout(hasher)
+                .run_parallel()
+                .await?;
+
+        if hashed_temp_sha256 != sha256 {
+            poured_temp_dest.cleanup().await?;
+
+            written_temp_cache.cleanup().await?;
+
+            let err = Self::sha256_mismatch_err(id, version, &hashed_temp_sha256, sha256);
+
+            return Err(err);
+        }
+
+        poured_temp_dest.persist().await?;
+
+        written_temp_cache.persist().await?;
+
+        Ok(())
+    }
+
+    fn sha256_mismatch_err(id: &str, version: &str, actual: &str, expected: &str) -> anyhow::Error {
+        anyhow!(formatdoc! {r#"
+            SHA-256 mismatch detected for package "{id}" of version "{version}":
+
+            Actual  : "{actual}"
+            Expected: "{expected}""#,
+        })
     }
 }

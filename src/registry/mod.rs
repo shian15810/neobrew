@@ -1,6 +1,6 @@
 use std::{
     fs,
-    io::prelude::Write as _,
+    io::Write as _,
     sync::{Arc, OnceLock},
 };
 
@@ -172,16 +172,16 @@ trait Registrable {
         bytes: Bytes,
         context: &Context,
     ) -> Result<()> {
-        let json_cache = raw_package.json_cache(context);
+        let cache = raw_package.cache(context);
 
         let handle = task::spawn_blocking(move || {
-            fs::create_dir_all(&json_cache.file_location_parent)?;
+            fs::create_dir_all(&cache.file_location_parent)?;
 
-            let mut file = NamedTempFile::new_in(json_cache.file_location_parent)?;
+            let mut file = NamedTempFile::new_in(cache.file_location_parent)?;
 
             file.write_all(&bytes)?;
 
-            file.persist(json_cache.file_location)?;
+            file.persist(cache.file_location)?;
 
             anyhow::Ok(())
         });

@@ -1,11 +1,22 @@
-use std::{iter, path::PathBuf, sync::Arc};
+use std::{fs::File, io, iter, path::PathBuf, sync::Arc};
 
 use anyhow::{Context as _, Result, anyhow};
+use base16ct::HexDisplay;
+use bytes::Bytes;
+use digest_io::IoWrapper;
 use either::Either::{Left, Right};
 use enum_dispatch::enum_dispatch;
+use futures::stream::{Stream, StreamExt as _, TryStreamExt as _};
+use oci_client::secrets::RegistryAuth;
 use pathdiff::diff_paths;
+use sha2::{Digest as _, Sha256};
+use tokio::task;
+use tokio_util::task::AbortOnDropHandle;
 
-use self::{cask::PreparedCask, formula::PreparedFormula};
+use self::{
+    cask::{FetchedCask, PreparedCask},
+    formula::{FetchedFormula, PreparedFormula},
+};
 pub(crate) use self::{
     cask::{RawCask, ResolvedCask},
     formula::{RawFormula, ResolvedFormula},
@@ -20,9 +31,10 @@ enum Package {
     Raw(RawPackage),
     Resolved(ResolvedPackage),
     Prepared(PreparedPackage),
+    Fetched(FetchedPackage),
 }
 
-#[enum_dispatch(Package, RawPackage, ResolvedPackage, PreparedPackage)]
+#[enum_dispatch(Package, RawPackage, ResolvedPackage, PreparedPackage, FetchedPackage)]
 pub(crate) trait Packageable {
     fn id(&self) -> &str;
 
@@ -53,10 +65,10 @@ pub(crate) enum RawPackage {
 
 #[enum_dispatch(RawPackage)]
 pub(crate) trait RawPackageable: Packageable {
-    fn json_cache(&self, context: &Context) -> RawPackageJsonCache;
+    fn cache(&self, context: &Context) -> RawPackageCache;
 }
 
-pub(crate) struct RawPackageJsonCache {
+pub(crate) struct RawPackageCache {
     pub(crate) file_location_parent: PathBuf,
     pub(crate) file_location: PathBuf,
 }
@@ -129,7 +141,7 @@ impl TryFrom<ResolvedPackage> for PreparedPackage {
 }
 
 impl PreparedPackage {
-    pub(crate) fn fetch_dest(&self, context: &Context) -> PreparedPackageFetchDest {
+    pub(crate) fn dest(&self, context: &Context) -> PreparedPackageDest {
         let id = self.id();
 
         let version = self.version();
@@ -145,7 +157,7 @@ impl PreparedPackage {
 
         let dir_location = dir_location_parent.join(version);
 
-        PreparedPackageFetchDest {
+        PreparedPackageDest {
             id: id.to_owned(),
             version: version.to_owned(),
 
@@ -154,31 +166,71 @@ impl PreparedPackage {
             dir_location,
         }
     }
+
+    pub(crate) async fn stream(
+        &self,
+        context: &Context,
+    ) -> Result<Option<impl Stream<Item = Result<Bytes>> + Send + 'static>> {
+        let stream = match self {
+            Self::Formula(prepared_formula) => {
+                let Some(oci) = prepared_formula.oci() else {
+                    return Ok(None);
+                };
+
+                context
+                    .oci_client
+                    .store_auth_if_needed(oci.registry, &RegistryAuth::Anonymous)
+                    .await;
+
+                let stream = context
+                    .oci_client
+                    .pull_blob_stream(&oci.reference, &oci.descriptor)
+                    .await?;
+                let stream = stream.err_into::<anyhow::Error>();
+
+                stream.left_stream()
+            },
+
+            Self::Cask(prepared_cask) => {
+                let url = prepared_cask.url();
+
+                let resp = context.client.get(url).send().await?;
+                let resp = resp.error_for_status()?;
+
+                let stream = resp.bytes_stream();
+                let stream = stream.err_into::<anyhow::Error>();
+
+                stream.right_stream()
+            },
+        };
+
+        Ok(Some(stream))
+    }
 }
 
 #[expect(private_bounds)]
 #[enum_dispatch(PreparedPackage)]
 pub(crate) trait PreparedPackageable: PreparedPackageableInner {
-    async fn fetch_cache(&self, context: &Context) -> Result<PreparedPackageFetchCache>;
+    async fn cache(&self, context: &Context) -> Result<PreparedPackageCache>;
 
-    fn fetch_sha256(&self) -> &str;
+    fn sha256(&self) -> &str;
 }
 
 #[enum_dispatch(PreparedPackage)]
 trait PreparedPackageableInner: Packageable {
-    fn fetch_cache_inner(
+    fn cache_inner(
         &self,
         file_name: &str,
         symlink_name: &str,
         symlink_location_parent: PathBuf,
-    ) -> PreparedPackageFetchCache {
+    ) -> PreparedPackageCache {
         let file_location_parent = symlink_location_parent.join("downloads");
 
         let file_location = file_location_parent.join(file_name);
 
         let symlink_location = symlink_location_parent.join(symlink_name);
 
-        PreparedPackageFetchCache {
+        PreparedPackageCache {
             file_location_parent,
             file_location,
 
@@ -188,7 +240,8 @@ trait PreparedPackageableInner: Packageable {
     }
 }
 
-pub(crate) struct PreparedPackageFetchDest {
+#[derive(Clone)]
+pub(crate) struct PreparedPackageDest {
     pub(crate) id: String,
     pub(crate) version: String,
 
@@ -197,7 +250,7 @@ pub(crate) struct PreparedPackageFetchDest {
     pub(crate) dir_location: PathBuf,
 }
 
-pub(crate) struct PreparedPackageFetchCache {
+pub(crate) struct PreparedPackageCache {
     pub(crate) file_location_parent: PathBuf,
     pub(crate) file_location: PathBuf,
 
@@ -205,7 +258,30 @@ pub(crate) struct PreparedPackageFetchCache {
     pub(crate) symlink_location: PathBuf,
 }
 
-impl PreparedPackageFetchCache {
+impl PreparedPackageCache {
+    pub(crate) async fn file_sha256(&self) -> Result<String> {
+        let file_location = self.file_location.clone();
+
+        let handle = task::spawn_blocking(move || {
+            let mut file = File::open(file_location)?;
+
+            let mut hasher = IoWrapper(Sha256::new());
+
+            io::copy(&mut file, &mut hasher)?;
+
+            let file_sha256 = hasher.0.finalize();
+            let file_sha256 = HexDisplay(&file_sha256);
+            let file_sha256 = format!("{file_sha256:x}");
+
+            anyhow::Ok(file_sha256)
+        });
+        let handle = AbortOnDropHandle::new(handle);
+
+        let file_sha256 = handle.await??;
+
+        Ok(file_sha256)
+    }
+
     pub(crate) fn symlink_location_diff(&self) -> Result<PathBuf> {
         let symlink_location_diff = diff_paths(&self.file_location, &self.symlink_location_parent)
             .context("Failed to diff paths")?;
@@ -215,5 +291,28 @@ impl PreparedPackageFetchCache {
 
     pub(crate) fn symlink_location_tmp(&self) -> PathBuf {
         self.symlink_location.with_extension("tmp")
+    }
+}
+
+#[enum_dispatch]
+pub(crate) enum FetchedPackage {
+    Formula(FetchedFormula),
+    Cask(FetchedCask),
+}
+
+impl From<PreparedPackage> for FetchedPackage {
+    fn from(prepared_package: PreparedPackage) -> Self {
+        match prepared_package {
+            PreparedPackage::Formula(prepared_formula) => {
+                let fetched_formula = FetchedFormula::from(prepared_formula);
+
+                Self::Formula(fetched_formula)
+            },
+            PreparedPackage::Cask(prepared_cask) => {
+                let fetched_cask = FetchedCask::from(prepared_cask);
+
+                Self::Cask(fetched_cask)
+            },
+        }
     }
 }
