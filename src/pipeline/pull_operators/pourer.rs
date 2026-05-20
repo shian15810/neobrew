@@ -10,35 +10,31 @@ use flate2::bufread::GzDecoder;
 use itertools::Itertools as _;
 use tar::Archive;
 use tempfile::TempDir;
+use tokio::task;
+use tokio_util::task::AbortOnDropHandle;
 
-use super::PullOperator;
+use super::{super::AtomicFsHandler, PullOperator};
 use crate::package::PreparedPackageFetchDest;
 
 pub(crate) struct Pourer {
-    id: String,
-    version: String,
-
     fetch_dest: PreparedPackageFetchDest,
 }
 
-impl Pourer {
-    pub(crate) fn new(id: String, version: String, fetch_dest: PreparedPackageFetchDest) -> Self {
+impl From<PreparedPackageFetchDest> for Pourer {
+    fn from(fetch_dest: PreparedPackageFetchDest) -> Self {
         Self {
-            id,
-            version,
-
             fetch_dest,
         }
     }
 }
 
 impl PullOperator for Pourer {
-    type Output = ();
+    type Output = PouredTempDest;
 
     fn from_reader(self, reader: impl BufRead) -> Result<Self::Output> {
         fs::create_dir_all(&self.fetch_dest.dir_location_grandparent)?;
 
-        let tmp_dir = TempDir::new_in(self.fetch_dest.dir_location_grandparent)?;
+        let tmp_dir = TempDir::new_in(&self.fetch_dest.dir_location_grandparent)?;
 
         let gz_decoder = GzDecoder::new(reader);
 
@@ -46,22 +42,73 @@ impl PullOperator for Pourer {
 
         archive.unpack(tmp_dir.path())?;
 
-        let tmp_dir_entry = Self::fs_read_exactly_one_dir_entry(tmp_dir.path(), self.id)?;
+        let poured_temp_dest = PouredTempDest::from((tmp_dir, self));
 
-        Self::fs_read_exactly_one_dir_entry(tmp_dir_entry.path(), self.version)?;
+        Ok(poured_temp_dest)
+    }
+}
 
-        if self.fetch_dest.dir_location_parent.exists() {
-            fs::remove_dir_all(&self.fetch_dest.dir_location_parent)?;
+pub(crate) struct PouredTempDest {
+    tmp_dir: TempDir,
+
+    fetch_dest: PreparedPackageFetchDest,
+}
+
+impl From<(TempDir, Pourer)> for PouredTempDest {
+    fn from((tmp_dir, pourer): (TempDir, Pourer)) -> Self {
+        Self {
+            tmp_dir,
+
+            fetch_dest: pourer.fetch_dest,
         }
+    }
+}
 
-        fs::rename(tmp_dir_entry.path(), self.fetch_dest.dir_location_parent)?;
+impl AtomicFsHandler for PouredTempDest {
+    async fn cleanup(self) -> Result<()> {
+        let handle = task::spawn_blocking(move || {
+            self.tmp_dir.close()?;
+
+            anyhow::Ok(())
+        });
+        let handle = AbortOnDropHandle::new(handle);
+
+        handle.await??;
+
+        Ok(())
+    }
+
+    async fn persist(self) -> Result<()> {
+        let handle = task::spawn_blocking(move || {
+            if self.fetch_dest.dir_location_parent.exists() {
+                fs::remove_dir_all(&self.fetch_dest.dir_location_parent)?;
+            }
+
+            fs::rename(
+                self.tmp_dir_entry()?.path(),
+                self.fetch_dest.dir_location_parent,
+            )?;
+
+            anyhow::Ok(())
+        });
+        let handle = AbortOnDropHandle::new(handle);
+
+        handle.await??;
 
         Ok(())
     }
 }
 
-impl Pourer {
-    fn fs_read_exactly_one_dir_entry(
+impl PouredTempDest {
+    fn tmp_dir_entry(&self) -> Result<DirEntry> {
+        let entry = Self::exactly_one_tmp_dir_entry(self.tmp_dir.path(), &self.fetch_dest.id)?;
+
+        Self::exactly_one_tmp_dir_entry(entry.path(), &self.fetch_dest.version)?;
+
+        Ok(entry)
+    }
+
+    fn exactly_one_tmp_dir_entry(
         path: impl AsRef<Path>,
         expected_name: impl AsRef<OsStr>,
     ) -> Result<DirEntry> {

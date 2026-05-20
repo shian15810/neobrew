@@ -4,7 +4,6 @@ use anyhow::{Context as _, Result, anyhow};
 use either::Either::{Left, Right};
 use enum_dispatch::enum_dispatch;
 use pathdiff::diff_paths;
-use tokio::fs;
 
 use self::{cask::PreparedCask, formula::PreparedFormula};
 pub(crate) use self::{
@@ -129,55 +128,8 @@ impl TryFrom<ResolvedPackage> for PreparedPackage {
     }
 }
 
-#[expect(private_bounds)]
-#[enum_dispatch(PreparedPackage)]
-pub(crate) trait PreparedPackageable: PreparedPackageableInner {
-    fn fetch_sha256(&self) -> &str;
-
-    async fn fetch_cache(&self, context: &Context) -> Result<PreparedPackageFetchCache>;
-}
-
-#[enum_dispatch(PreparedPackage)]
-trait PreparedPackageableInner: Packageable {
-    async fn fetch_cache_inner(
-        &self,
-        file_name: &str,
-        symlink_name: &str,
-        symlink_location_parent: PathBuf,
-    ) -> Result<PreparedPackageFetchCache> {
-        let file_location_parent = symlink_location_parent.join("downloads");
-
-        let file_location = file_location_parent.join(file_name);
-
-        let file_location_exists = fs::try_exists(&file_location).await?;
-
-        let symlink_location_diff =
-            diff_paths(&file_location, &symlink_location_parent).context("Failed to diff paths")?;
-
-        let symlink_location = symlink_location_parent.join(symlink_name);
-
-        let symlink_location_tmp = symlink_location.with_extension("tmp");
-
-        let symlink_location_exists = fs::try_exists(&symlink_location).await?;
-
-        let fetch_cache = PreparedPackageFetchCache {
-            file_location_parent,
-            file_location,
-            file_location_exists,
-
-            symlink_location_parent,
-            symlink_location_diff,
-            symlink_location_tmp,
-            symlink_location,
-            symlink_location_exists,
-        };
-
-        Ok(fetch_cache)
-    }
-}
-
 impl PreparedPackage {
-    pub(crate) async fn fetch_dest(&self, context: &Context) -> Result<PreparedPackageFetchDest> {
+    pub(crate) fn fetch_dest(&self, context: &Context) -> PreparedPackageFetchDest {
         let id = self.id();
 
         let version = self.version();
@@ -193,35 +145,75 @@ impl PreparedPackage {
 
         let dir_location = dir_location_parent.join(version);
 
-        let dir_location_exists = fs::try_exists(&dir_location).await?;
+        PreparedPackageFetchDest {
+            id: id.to_owned(),
+            version: version.to_owned(),
 
-        let fetch_dest = PreparedPackageFetchDest {
             dir_location_grandparent,
             dir_location_parent,
             dir_location,
-            dir_location_exists,
-        };
-
-        Ok(fetch_dest)
+        }
     }
+}
+
+#[expect(private_bounds)]
+#[enum_dispatch(PreparedPackage)]
+pub(crate) trait PreparedPackageable: PreparedPackageableInner {
+    async fn fetch_cache(&self, context: &Context) -> Result<PreparedPackageFetchCache>;
+
+    fn fetch_sha256(&self) -> &str;
+}
+
+#[enum_dispatch(PreparedPackage)]
+trait PreparedPackageableInner: Packageable {
+    fn fetch_cache_inner(
+        &self,
+        file_name: &str,
+        symlink_name: &str,
+        symlink_location_parent: PathBuf,
+    ) -> PreparedPackageFetchCache {
+        let file_location_parent = symlink_location_parent.join("downloads");
+
+        let file_location = file_location_parent.join(file_name);
+
+        let symlink_location = symlink_location_parent.join(symlink_name);
+
+        PreparedPackageFetchCache {
+            file_location_parent,
+            file_location,
+
+            symlink_location_parent,
+            symlink_location,
+        }
+    }
+}
+
+pub(crate) struct PreparedPackageFetchDest {
+    pub(crate) id: String,
+    pub(crate) version: String,
+
+    pub(crate) dir_location_grandparent: PathBuf,
+    pub(crate) dir_location_parent: PathBuf,
+    pub(crate) dir_location: PathBuf,
 }
 
 pub(crate) struct PreparedPackageFetchCache {
     pub(crate) file_location_parent: PathBuf,
     pub(crate) file_location: PathBuf,
-    pub(crate) file_location_exists: bool,
 
     pub(crate) symlink_location_parent: PathBuf,
-    pub(crate) symlink_location_diff: PathBuf,
-    pub(crate) symlink_location_tmp: PathBuf,
     pub(crate) symlink_location: PathBuf,
-    pub(crate) symlink_location_exists: bool,
 }
 
-#[expect(clippy::struct_field_names)]
-pub(crate) struct PreparedPackageFetchDest {
-    pub(crate) dir_location_grandparent: PathBuf,
-    pub(crate) dir_location_parent: PathBuf,
-    pub(crate) dir_location: PathBuf,
-    pub(crate) dir_location_exists: bool,
+impl PreparedPackageFetchCache {
+    pub(crate) fn symlink_location_diff(&self) -> Result<PathBuf> {
+        let symlink_location_diff = diff_paths(&self.file_location, &self.symlink_location_parent)
+            .context("Failed to diff paths")?;
+
+        Ok(symlink_location_diff)
+    }
+
+    pub(crate) fn symlink_location_tmp(&self) -> PathBuf {
+        self.symlink_location.with_extension("tmp")
+    }
 }

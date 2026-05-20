@@ -1,9 +1,10 @@
 use std::sync::Arc;
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use clap::Args;
 use frunk::hlist_pat;
 use futures::stream::{StreamExt as _, TryStreamExt as _};
+use indoc::formatdoc;
 use oci_client::secrets::RegistryAuth;
 use tokio::task::JoinSet;
 
@@ -12,7 +13,7 @@ use crate::{
     context::Context,
     ext::ResultExt as _,
     package::{Packageable as _, PreparedPackage, PreparedPackageable as _},
-    pipeline::{Hasher, Pipeline, Pourer, Writer},
+    pipeline::{AtomicFsHandler as _, Hasher, Pipeline, Pourer, Writer},
     registry::Registry,
 };
 
@@ -71,7 +72,11 @@ impl Runner for Install {
 
                 let version = prepared_package.version();
 
-                let _fetch_sha256 = prepared_package.fetch_sha256();
+                let fetch_dest = {
+                    let context = Arc::as_ref(&context);
+
+                    prepared_package.fetch_dest(context)
+                };
 
                 let fetch_cache = {
                     let context = Arc::as_ref(&context);
@@ -79,11 +84,7 @@ impl Runner for Install {
                     prepared_package.fetch_cache(context).await?
                 };
 
-                let fetch_dest = {
-                    let context = Arc::as_ref(&context);
-
-                    prepared_package.fetch_dest(context).await?
-                };
+                let fetch_sha256 = prepared_package.fetch_sha256();
 
                 let fetch_stream = match &prepared_package {
                     PreparedPackage::Formula(prepared_formula) => {
@@ -118,18 +119,38 @@ impl Runner for Install {
                     },
                 };
 
+                let pourer = Pourer::from(fetch_dest);
+
+                let writer = Writer::create(fetch_cache).await?;
+
                 let hasher = Hasher::new();
 
-                let writer = Writer::new(fetch_cache)?;
+                let hlist_pat![poured_temp_dest, written_temp_cache, hashed_sha256] =
+                    Pipeline::new(fetch_stream, context)
+                        .fanout(pourer)
+                        .fanout(writer)
+                        .fanout(hasher)
+                        .run_parallel()
+                        .await?;
 
-                let pourer = Pourer::new(id.to_owned(), version.to_owned(), fetch_dest);
+                if hashed_sha256 != fetch_sha256 {
+                    poured_temp_dest.cleanup().await?;
 
-                let hlist_pat![_hashed_sha256, (), ()] = Pipeline::new(fetch_stream, context)
-                    .fanout(hasher)
-                    .fanout(writer)
-                    .fanout(pourer)
-                    .run_parallel()
-                    .await?;
+                    written_temp_cache.cleanup().await?;
+
+                    let err = anyhow!(formatdoc! {r#"
+                        SHA-256 mismatch detected for package "{id}" of version "{version}":
+
+                        Actual  : "{hashed_sha256}"
+                        Expected: "{fetch_sha256}""#,
+                    });
+
+                    return Err(err);
+                }
+
+                poured_temp_dest.persist().await?;
+
+                written_temp_cache.persist().await?;
 
                 Ok(())
             });

@@ -115,10 +115,6 @@ impl Packageable for PreparedCask {
 }
 
 impl PreparedPackageable for PreparedCask {
-    fn fetch_sha256(&self) -> &str {
-        &self.sha256
-    }
-
     async fn fetch_cache(&self, context: &Context) -> Result<PreparedPackageFetchCache> {
         let version = self.version();
 
@@ -144,11 +140,14 @@ impl PreparedPackageable for PreparedCask {
 
         let symlink_location_parent = cache_dir.join("Cask");
 
-        let fetch_cache = self
-            .fetch_cache_inner(&file_name, &symlink_name, symlink_location_parent)
-            .await?;
+        let fetch_cache =
+            self.fetch_cache_inner(&file_name, &symlink_name, symlink_location_parent);
 
         Ok(fetch_cache)
+    }
+
+    fn fetch_sha256(&self) -> &str {
+        &self.sha256
     }
 }
 

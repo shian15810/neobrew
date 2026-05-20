@@ -10,7 +10,7 @@ use enum_dispatch::enum_dispatch;
 use futures::stream::{self, StreamExt as _, TryStreamExt as _};
 use itertools::Itertools as _;
 use tempfile::NamedTempFile;
-use tokio::task::{self, JoinHandle};
+use tokio::task;
 use tokio_util::task::AbortOnDropHandle;
 
 use self::{cask::CaskRegistry, formula::FormulaRegistry};
@@ -174,7 +174,7 @@ trait Registrable {
     ) -> Result<()> {
         let json_cache = raw_package.json_cache(context);
 
-        let handle: JoinHandle<Result<()>> = task::spawn_blocking(move || {
+        let handle = task::spawn_blocking(move || {
             fs::create_dir_all(&json_cache.file_location_parent)?;
 
             let mut file = NamedTempFile::new_in(json_cache.file_location_parent)?;
@@ -183,7 +183,7 @@ trait Registrable {
 
             file.persist(json_cache.file_location)?;
 
-            Ok(())
+            anyhow::Ok(())
         });
         let handle = AbortOnDropHandle::new(handle);
 

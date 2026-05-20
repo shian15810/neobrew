@@ -161,14 +161,14 @@ impl Packageable for PreparedFormula {
 }
 
 impl PreparedPackageable for PreparedFormula {
-    fn fetch_sha256(&self) -> &str {
-        &self.bottle_stable_file.sha256
-    }
-
     async fn fetch_cache(&self, context: &Context) -> Result<PreparedPackageFetchCache> {
-        let fetch_cache = self.bottle_stable_file.fetch_cache(self, context).await?;
+        let fetch_cache = self.bottle_stable_file.fetch_cache(self, context);
 
         Ok(fetch_cache)
+    }
+
+    fn fetch_sha256(&self) -> &str {
+        &self.bottle_stable_file.sha256
     }
 }
 
@@ -294,11 +294,11 @@ struct BottleStableFile {
 }
 
 impl BottleStableFile {
-    async fn fetch_cache(
+    fn fetch_cache(
         &self,
         prepared_formula: &PreparedFormula,
         context: &Context,
-    ) -> Result<PreparedPackageFetchCache> {
+    ) -> PreparedPackageFetchCache {
         let id = prepared_formula.id();
 
         let version = prepared_formula.version();
@@ -317,11 +317,7 @@ impl BottleStableFile {
 
         let symlink_location_parent = cache_dir;
 
-        let fetch_cache = prepared_formula
-            .fetch_cache_inner(&file_name, &symlink_name, symlink_location_parent)
-            .await?;
-
-        Ok(fetch_cache)
+        prepared_formula.fetch_cache_inner(&file_name, &symlink_name, symlink_location_parent)
     }
 
     fn fetch_oci(&self) -> Option<PreparedFormulaFetchOci> {

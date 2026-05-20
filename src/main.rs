@@ -29,17 +29,13 @@
 #![doc(test(attr(warn(unused), deny(warnings))))]
 #![expect(rustdoc::missing_crate_level_docs)]
 
-use anyhow::Result;
 use clap::CommandFactory as _;
 use clap_verbosity_flag::VerbosityFilter;
 #[cfg(not(all(debug_assertions, not(test))))]
 use console_subscriber as _;
 use neobrew::{commands::Cli, context::Context};
 use proc_exit::prelude::*;
-use tokio::{
-    signal,
-    task::{self, JoinHandle},
-};
+use tokio::{signal, task};
 use tracing_subscriber::{
     EnvFilter,
     filter::{Directive, LevelFilter},
@@ -55,10 +51,10 @@ async fn main() -> proc_exit::ExitResult {
 
     init_tracing(*context.config().verbosity_filter());
 
-    let handle: JoinHandle<Result<()>> = task::spawn(async move {
+    let handle = task::spawn(async move {
         signal::ctrl_c().await?;
 
-        Ok(())
+        anyhow::Ok(())
     });
 
     #[expect(clippy::disallowed_macros)]

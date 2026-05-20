@@ -1,6 +1,6 @@
 use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 
-use anyhow::{Error, Result};
+use anyhow::Result;
 use frunk::{
     hlist::{HCons, HNil},
     traits::IntoReverse,
@@ -10,7 +10,7 @@ use futures::{
     sink::{self, SinkExt as _},
     stream::{self, StreamExt as _, TryStreamExt as _},
 };
-use tokio::task::{self, JoinHandle};
+use tokio::task;
 use tokio_util::{sync::PollSender, task::AbortOnDropHandle};
 
 pub(crate) use self::{
@@ -32,7 +32,7 @@ pub(crate) struct Pipeline<Item, St, Si, Handles> {
     _marker: PhantomData<Item>,
 }
 
-impl<Item, St> Pipeline<Item, St, sink::SinkErrInto<sink::Drain<Item>, Item, Error>, HNil> {
+impl<Item, St> Pipeline<Item, St, sink::SinkErrInto<sink::Drain<Item>, Item, anyhow::Error>, HNil> {
     pub(crate) fn new(stream: St, context: Arc<Context>) -> Self {
         let sink = sink::drain();
         let sink = sink.sink_err_into();
@@ -51,8 +51,8 @@ impl<Item, St> Pipeline<Item, St, sink::SinkErrInto<sink::Drain<Item>, Item, Err
 
 impl<
     Item: Clone + Debug + Send + Sync + 'static,
-    St: stream::TryStream<Ok = Item, Error = impl Into<Error>> + Send + 'static,
-    Si: sink::Sink<Item, Error = Error> + Send + 'static,
+    St: stream::TryStream<Ok = Item, Error = impl Into<anyhow::Error>> + Send + 'static,
+    Si: sink::Sink<Item, Error = anyhow::Error> + Send + 'static,
     Handles: IntoReverse<Output: Collect>,
 > Pipeline<Item, St, Si, Handles>
 {
@@ -63,7 +63,7 @@ impl<
     ) -> Pipeline<
         Item,
         St,
-        sink::Fanout<Si, sink::SinkErrInto<PollSender<Item>, Item, Error>>,
+        sink::Fanout<Si, sink::SinkErrInto<PollSender<Item>, Item, anyhow::Error>>,
         HCons<AbortOnDropHandle<Result<Op::Output>>, Handles>,
     > {
         let context = Arc::as_ref(&self.context);
@@ -88,14 +88,14 @@ impl<
     }
 
     pub(crate) async fn run_parallel(self) -> Result<<Handles::Output as Collect>::Outputs> {
-        let handle: JoinHandle<Result<()>> = task::spawn(async move {
+        let handle = task::spawn(async move {
             let stream = self.stream.err_into();
 
             let forward = stream.forward(self.sink);
 
             forward.await?;
 
-            Ok(())
+            anyhow::Ok(())
         });
         let handle = AbortOnDropHandle::new(handle);
         let handle = handle.err_into();
@@ -153,4 +153,10 @@ pub(crate) trait Operator<Item, _Marker> {
         self,
         context: &Context,
     ) -> (PollSender<Item>, AbortOnDropHandle<Result<Self::Output>>);
+}
+
+pub(crate) trait AtomicFsHandler {
+    async fn cleanup(self) -> Result<()>;
+
+    async fn persist(self) -> Result<()>;
 }

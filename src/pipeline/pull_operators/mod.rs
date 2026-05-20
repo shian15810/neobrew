@@ -3,10 +3,7 @@ use std::io::{self, BufRead};
 use anyhow::Result;
 use bytes::Buf;
 use futures::stream::StreamExt as _;
-use tokio::{
-    sync::mpsc,
-    task::{self, JoinHandle},
-};
+use tokio::{sync::mpsc, task};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::{
     io::{StreamReader, SyncIoBridge},
@@ -50,10 +47,10 @@ impl<
 
         let sync_reader = SyncIoBridge::new(reader);
 
-        let handle: JoinHandle<Result<Output>> = task::spawn_blocking(move || {
+        let handle = task::spawn_blocking(move || {
             let output = self.from_reader(sync_reader)?;
 
-            Ok(output)
+            anyhow::Ok(output)
         });
         let handle = AbortOnDropHandle::new(handle);
 
