@@ -43,6 +43,7 @@ pub mod commands;
 pub mod context;
 mod ext;
 mod macros;
+mod os;
 mod package;
 mod pipeline;
 mod registry;
