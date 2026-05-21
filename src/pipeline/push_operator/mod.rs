@@ -1,13 +1,13 @@
+mod hasher;
+mod temp_writer;
+
 use anyhow::Result;
 use tokio::{sync::mpsc, task};
 use tokio_util::{sync::PollSender, task::AbortOnDropHandle};
 
-pub(crate) use self::{hasher::Hasher, writer::Writer};
+pub(crate) use self::{hasher::Hasher, temp_writer::TempWriter};
 use super::Operator;
 use crate::context::Context;
-
-mod hasher;
-mod writer;
 
 pub(crate) trait PushOperator {
     type Item;

@@ -29,11 +29,11 @@
 #![cfg_attr(debug_assertions, allow(rustdoc::missing_doc_code_examples))]
 #![doc(test(attr(warn(unused), deny(warnings))))]
 
+mod neobrew_metadata;
+
 use anyhow::Result;
 
 use self::neobrew_metadata::NeobrewMetadata;
-
-mod neobrew_metadata;
 
 fn main() -> Result<()> {
     rustc_tools_util::setup_version_info!();

@@ -1,3 +1,5 @@
+mod temp_pourer;
+
 use std::io::{self, BufRead};
 
 use anyhow::Result;
@@ -11,11 +13,9 @@ use tokio_util::{
     task::AbortOnDropHandle,
 };
 
-pub(crate) use self::pourer::Pourer;
+pub(crate) use self::temp_pourer::TempPourer;
 use super::Operator;
 use crate::context::Context;
-
-mod pourer;
 
 pub(crate) trait PullOperator {
     type Output;

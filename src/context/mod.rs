@@ -1,3 +1,6 @@
+mod config;
+pub(crate) mod dirs;
+
 use std::{num::NonZeroUsize, sync::LazyLock, thread};
 
 use clap::ArgMatches;
@@ -5,14 +8,10 @@ use oci_client::{Client, client::ClientConfig};
 use proc_exit::prelude::*;
 use tokio::sync::Semaphore;
 
-pub(crate) use self::dirs::ProjectDirs;
 use self::{
     config::Config,
     dirs::{HomebrewDirs, NeobrewDirs},
 };
-
-mod config;
-mod dirs;
 
 #[expect(clippy::module_name_repetitions)]
 pub struct Context {

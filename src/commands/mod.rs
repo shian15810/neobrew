@@ -1,3 +1,6 @@
+mod install;
+mod uninstall;
+
 use std::{ffi::OsString, sync::Arc};
 
 use anyhow::Result;
@@ -19,9 +22,6 @@ use tokio::process::Command;
 
 use self::{install::Install, uninstall::Uninstall};
 use crate::{context::Context, registry::ResolutionStrategy};
-
-mod install;
-mod uninstall;
 
 #[derive(Parser)]
 #[command(

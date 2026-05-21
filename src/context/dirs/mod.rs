@@ -5,7 +5,8 @@ use std::path::PathBuf;
 
 use etcetera::BaseStrategy;
 
-pub(super) use self::{homebrew::HomebrewDirs, neobrew::NeobrewDirs};
+pub(crate) use self::homebrew::HomebrewDirs;
+pub(super) use self::neobrew::NeobrewDirs;
 
 trait ProjectDirsInner {
     const APP_NAME: &str;

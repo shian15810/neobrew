@@ -6,7 +6,10 @@ use foyer::{Cache, CacheBuilder};
 use super::Registrable;
 use crate::{
     context::Context,
-    package::{RawCask, RawPackage, ResolvedCask},
+    package::{
+        RawPackage,
+        cask::{RawCask, ResolvedCask},
+    },
 };
 
 pub(super) struct CaskRegistry {

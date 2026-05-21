@@ -1,3 +1,6 @@
+pub(crate) mod cask;
+pub(crate) mod formula;
+
 use std::{borrow::Cow, fs::File, io, iter, path::PathBuf, sync::Arc};
 
 use anyhow::{Context as _, Result, anyhow};
@@ -14,17 +17,10 @@ use tokio::task;
 use tokio_util::task::AbortOnDropHandle;
 
 use self::{
-    cask::{FetchedCask, PreparedCask},
-    formula::{FetchedFormula, PreparedFormula},
-};
-pub(crate) use self::{
-    cask::{RawCask, ResolvedCask},
-    formula::{RawFormula, ResolvedFormula},
+    cask::{FetchedCask, PreparedCask, RawCask, ResolvedCask},
+    formula::{FetchedFormula, PreparedFormula, RawFormula, ResolvedFormula},
 };
 use crate::context::Context;
-
-mod cask;
-mod formula;
 
 #[enum_dispatch]
 enum Package {
@@ -63,7 +59,7 @@ pub(crate) enum RawPackage {
     Cask(RawCask),
 }
 
-#[expect(shadowing_supertrait_items)]
+#[cfg_attr(debug_assertions, expect(shadowing_supertrait_items))]
 #[enum_dispatch(RawPackage)]
 pub(crate) trait RawPackageable: Packageable {
     fn version(&self) -> Cow<'_, str>;
@@ -102,19 +98,30 @@ impl ResolvedPackage {
     }
 }
 
-#[expect(shadowing_supertrait_items)]
+#[cfg_attr(debug_assertions, expect(shadowing_supertrait_items))]
 #[enum_dispatch(ResolvedPackage)]
 trait ResolvedPackageable: Packageable {
     fn version(&self) -> Cow<'_, str>;
 }
 
 impl<ResolvedPackage: ResolvedPackageable> ResolvedPackageable for Arc<ResolvedPackage> {
+    #[cfg_attr(not(debug_assertions), expect(unconditional_recursion))]
     fn version(&self) -> Cow<'_, str> {
+        #[cfg_attr(not(debug_assertions), expect(unused_variables))]
         #[expect(clippy::use_self)]
         let this = Arc::as_ref(self);
 
-        #[expect(resolving_to_items_shadowing_supertrait_items)]
-        this.version()
+        #[cfg(debug_assertions)]
+        #[cfg_attr(
+            debug_assertions,
+            expect(resolving_to_items_shadowing_supertrait_items)
+        )]
+        let version = this.version();
+
+        #[cfg(not(debug_assertions))]
+        let version = ResolvedPackageable::version(self);
+
+        version
     }
 }
 
@@ -165,10 +172,14 @@ impl PreparedPackage {
 
         let version = self.version();
 
+        let prefix_dir = context.homebrew_dirs.prefix_dir();
+
         let dest_dir = match self {
             Self::Formula(_) => context.homebrew_dirs.cellar_dir(),
             Self::Cask(_) => context.homebrew_dirs.caskroom_dir(),
         };
+
+        let dir_location_greatgrandparent = prefix_dir;
 
         let dir_location_grandparent = dest_dir;
 
@@ -180,6 +191,7 @@ impl PreparedPackage {
             id: id.to_owned(),
             version: version.to_owned(),
 
+            dir_location_greatgrandparent,
             dir_location_grandparent,
             dir_location_parent,
             dir_location,
@@ -264,6 +276,7 @@ pub(crate) struct PreparedPackageDest {
     pub(crate) id: String,
     pub(crate) version: String,
 
+    pub(crate) dir_location_greatgrandparent: PathBuf,
     pub(crate) dir_location_grandparent: PathBuf,
     pub(crate) dir_location_parent: PathBuf,
     pub(crate) dir_location: PathBuf,

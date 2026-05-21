@@ -13,14 +13,14 @@ use tempfile::TempDir;
 use tokio::task;
 use tokio_util::task::AbortOnDropHandle;
 
-use super::{super::AtomicFsHandler, PullOperator};
+use super::{super::handler, PullOperator};
 use crate::package::PreparedPackageDest;
 
-pub(crate) struct Pourer {
+pub(crate) struct TempPourer {
     dest: PreparedPackageDest,
 }
 
-impl From<PreparedPackageDest> for Pourer {
+impl From<PreparedPackageDest> for TempPourer {
     fn from(dest: PreparedPackageDest) -> Self {
         Self {
             dest,
@@ -28,46 +28,46 @@ impl From<PreparedPackageDest> for Pourer {
     }
 }
 
-impl PullOperator for Pourer {
+impl PullOperator for TempPourer {
     type Output = PouredTempDest;
 
     fn from_reader(self, reader: impl BufRead) -> Result<Self::Output> {
         fs::create_dir_all(&self.dest.dir_location_grandparent)?;
 
-        let tmp_dir = TempDir::new_in(&self.dest.dir_location_grandparent)?;
+        let dir = TempDir::new_in(&self.dest.dir_location_grandparent)?;
 
         let gz_decoder = GzDecoder::new(reader);
 
         let mut archive = Archive::new(gz_decoder);
 
-        archive.unpack(tmp_dir.path())?;
+        archive.unpack(dir.path())?;
 
-        let poured_temp_dest = PouredTempDest::from((tmp_dir, self));
+        let poured_temp_dest = PouredTempDest::from((dir, self));
 
         Ok(poured_temp_dest)
     }
 }
 
 pub(crate) struct PouredTempDest {
-    tmp_dir: TempDir,
+    dir: TempDir,
 
     dest: PreparedPackageDest,
 }
 
-impl From<(TempDir, Pourer)> for PouredTempDest {
-    fn from((tmp_dir, pourer): (TempDir, Pourer)) -> Self {
+impl From<(TempDir, TempPourer)> for PouredTempDest {
+    fn from((dir, temp_pourer): (TempDir, TempPourer)) -> Self {
         Self {
-            tmp_dir,
+            dir,
 
-            dest: pourer.dest,
+            dest: temp_pourer.dest,
         }
     }
 }
 
-impl AtomicFsHandler for PouredTempDest {
+impl handler::AtomicWriter for PouredTempDest {
     async fn cleanup(self) -> Result<()> {
         let handle = task::spawn_blocking(move || {
-            self.tmp_dir.close()?;
+            self.dir.close()?;
 
             anyhow::Ok(())
         });
@@ -84,7 +84,7 @@ impl AtomicFsHandler for PouredTempDest {
                 fs::remove_dir_all(&self.dest.dir_location_parent)?;
             }
 
-            fs::rename(self.tmp_dir_entry()?.path(), self.dest.dir_location_parent)?;
+            fs::rename(self.dir_entry()?.path(), self.dest.dir_location_parent)?;
 
             anyhow::Ok(())
         });
@@ -97,15 +97,15 @@ impl AtomicFsHandler for PouredTempDest {
 }
 
 impl PouredTempDest {
-    fn tmp_dir_entry(&self) -> Result<DirEntry> {
-        let entry = Self::exactly_one_tmp_dir_entry(self.tmp_dir.path(), &self.dest.id)?;
+    fn dir_entry(&self) -> Result<DirEntry> {
+        let entry = Self::exactly_one_dir_entry(self.dir.path(), &self.dest.id)?;
 
-        Self::exactly_one_tmp_dir_entry(entry.path(), &self.dest.version)?;
+        Self::exactly_one_dir_entry(entry.path(), &self.dest.version)?;
 
         Ok(entry)
     }
 
-    fn exactly_one_tmp_dir_entry(
+    fn exactly_one_dir_entry(
         path: impl AsRef<Path>,
         expected_name: impl AsRef<OsStr>,
     ) -> Result<DirEntry> {

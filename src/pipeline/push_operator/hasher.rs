@@ -28,10 +28,10 @@ impl PushOperator for Hasher {
     }
 
     fn flush(self) -> Result<Self::Output> {
-        let hashed_temp_sha256 = self.sha256.finalize();
-        let hashed_temp_sha256 = HexDisplay(&hashed_temp_sha256);
-        let hashed_temp_sha256 = format!("{hashed_temp_sha256:x}");
+        let hashed_sha256 = self.sha256.finalize();
+        let hashed_sha256 = HexDisplay(&hashed_sha256);
+        let hashed_sha256 = format!("{hashed_sha256:x}");
 
-        Ok(hashed_temp_sha256)
+        Ok(hashed_sha256)
     }
 }

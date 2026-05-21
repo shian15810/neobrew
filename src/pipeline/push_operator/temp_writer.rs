@@ -10,24 +10,24 @@ use tempfile::NamedTempFile;
 use tokio::task;
 use tokio_util::task::AbortOnDropHandle;
 
-use super::{super::AtomicFsHandler, PushOperator};
+use super::{super::handler, PushOperator};
 use crate::package::PreparedPackageCache;
 
-pub(crate) struct Writer {
-    buf_tmp_file: BufWriter<NamedTempFile>,
+pub(crate) struct TempWriter {
+    buf_file: BufWriter<NamedTempFile>,
 
     cache: PreparedPackageCache,
 }
 
-impl Writer {
+impl TempWriter {
     pub(crate) async fn create(cache: PreparedPackageCache) -> Result<Self> {
         let handle = task::spawn_blocking(move || {
             fs::create_dir_all(&cache.file_location_parent)?;
 
-            let tmp_file = NamedTempFile::new_in(&cache.file_location_parent)?;
+            let file = NamedTempFile::new_in(&cache.file_location_parent)?;
 
             let this = Self {
-                buf_tmp_file: BufWriter::new(tmp_file),
+                buf_file: BufWriter::new(file),
 
                 cache,
             };
@@ -42,18 +42,18 @@ impl Writer {
     }
 }
 
-impl PushOperator for Writer {
+impl PushOperator for TempWriter {
     type Item = Bytes;
     type Output = WrittenTempFile;
 
     fn feed(&mut self, chunk: Self::Item) -> Result<()> {
-        self.buf_tmp_file.write_all(&chunk)?;
+        self.buf_file.write_all(&chunk)?;
 
         Ok(())
     }
 
     fn flush(mut self) -> Result<Self::Output> {
-        self.buf_tmp_file.flush()?;
+        self.buf_file.flush()?;
 
         let written_temp_file = WrittenTempFile::try_from(self)?;
 
@@ -62,31 +62,31 @@ impl PushOperator for Writer {
 }
 
 pub(crate) struct WrittenTempFile {
-    tmp_file: NamedTempFile,
+    file: NamedTempFile,
 
     cache: PreparedPackageCache,
 }
 
-impl TryFrom<Writer> for WrittenTempFile {
+impl TryFrom<TempWriter> for WrittenTempFile {
     type Error = anyhow::Error;
 
-    fn try_from(writer: Writer) -> Result<Self, Self::Error> {
-        let tmp_file = writer.buf_tmp_file.into_inner()?;
+    fn try_from(temp_writer: TempWriter) -> Result<Self, Self::Error> {
+        let file = temp_writer.buf_file.into_inner()?;
 
         let this = Self {
-            tmp_file,
+            file,
 
-            cache: writer.cache,
+            cache: temp_writer.cache,
         };
 
         Ok(this)
     }
 }
 
-impl AtomicFsHandler for WrittenTempFile {
+impl handler::AtomicWriter for WrittenTempFile {
     async fn cleanup(self) -> Result<()> {
         let handle = task::spawn_blocking(move || {
-            self.tmp_file.close()?;
+            self.file.close()?;
 
             anyhow::Ok(())
         });
@@ -99,7 +99,7 @@ impl AtomicFsHandler for WrittenTempFile {
 
     async fn persist(self) -> Result<()> {
         let handle = task::spawn_blocking(move || {
-            self.tmp_file.persist(&self.cache.file_location)?;
+            self.file.persist(&self.cache.file_location)?;
 
             unix_fs::symlink(
                 self.cache.symlink_location_diff()?,

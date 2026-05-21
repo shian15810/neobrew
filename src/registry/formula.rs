@@ -8,7 +8,10 @@ use futures::stream::{self, StreamExt as _, TryStreamExt as _};
 use super::Registrable;
 use crate::{
     context::Context,
-    package::{RawFormula, RawPackage, ResolvedFormula},
+    package::{
+        RawPackage,
+        formula::{RawFormula, ResolvedFormula},
+    },
 };
 
 pub(super) struct FormulaRegistry {

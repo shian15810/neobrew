@@ -22,7 +22,7 @@ use crate::{
         PreparedPackageable as _,
         ResolvedPackage,
     },
-    pipeline::{AtomicFsHandler as _, Hasher, Pipeline, Pourer, Writer},
+    pipeline::{Pipeline, handler::AtomicWriter as _, pull_operator, push_operator},
     registry::Registry,
 };
 
@@ -61,12 +61,21 @@ impl Runner for Install {
             let context = Arc::clone(&context);
 
             set.spawn(async move {
-                let Some(fetched_package) = Self::fetch_package(prepared_package, context).await?
-                else {
+                let fetched_package = {
+                    let context = Arc::clone(&context);
+
+                    Self::fetch_package(prepared_package, context).await?
+                };
+
+                let Some(fetched_package) = fetched_package else {
                     return Ok(());
                 };
 
-                Self::link_package(fetched_package);
+                let () = {
+                    let context = Arc::as_ref(&context);
+
+                    Self::install_package(fetched_package, context)?;
+                };
 
                 anyhow::Ok(())
             });
@@ -181,12 +190,12 @@ impl Install {
 
         let stream = ReaderStream::new(cache_file);
 
-        let pourer = Pourer::from(dest);
+        let temp_pourer = pull_operator::TempPourer::from(dest);
 
-        let hasher = Hasher::new();
+        let hasher = push_operator::Hasher::new();
 
         let hlist_pat![poured_temp_dest, hashed_sha256] = Pipeline::new(stream, context)
-            .fanout(pourer)
+            .fanout(temp_pourer)
             .fanout(hasher)
             .run_parallel()
             .await?;
@@ -213,16 +222,16 @@ impl Install {
         stream: impl Stream<Item = Result<Bytes>> + Send + 'static,
         context: Arc<Context>,
     ) -> Result<()> {
-        let pourer = Pourer::from(dest);
+        let temp_pourer = pull_operator::TempPourer::from(dest);
 
-        let writer = Writer::create(cache).await?;
+        let temp_writer = push_operator::TempWriter::create(cache).await?;
 
-        let hasher = Hasher::new();
+        let hasher = push_operator::Hasher::new();
 
         let hlist_pat![poured_temp_dest, written_temp_cache, hashed_sha256] =
             Pipeline::new(stream, context)
-                .fanout(pourer)
-                .fanout(writer)
+                .fanout(temp_pourer)
+                .fanout(temp_writer)
                 .fanout(hasher)
                 .run_parallel()
                 .await?;
@@ -258,5 +267,15 @@ impl Install {
         })
     }
 
-    fn link_package(_fetched_package: FetchedPackage) {}
+    fn install_package(fetched_package: FetchedPackage, context: &Context) -> Result<()> {
+        match fetched_package {
+            FetchedPackage::Formula(fetched_formula) => {
+                fetched_formula.relocate_keg(context)?;
+
+                Ok(())
+            },
+
+            FetchedPackage::Cask(_fetched_cask) => Ok(()),
+        }
+    }
 }

@@ -1,3 +1,6 @@
+mod cask;
+mod formula;
+
 use std::{
     fs,
     io::Write as _,
@@ -18,9 +21,6 @@ use crate::{
     context::Context,
     package::{Packageable as _, RawPackage, RawPackageable as _, ResolvedPackage},
 };
-
-mod cask;
-mod formula;
 
 pub(crate) struct Registry {
     formula: OnceLock<Arc<FormulaRegistry>>,

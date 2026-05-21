@@ -1,3 +1,8 @@
+mod cli;
+mod global_env;
+mod homebrew_env;
+mod neobrew_env;
+
 use anyhow::Result;
 use clap::{ArgMatches, ColorChoice};
 use clap_verbosity_flag::{Verbosity, VerbosityFilter};
@@ -15,11 +20,6 @@ use serde_with::{DisplayFromStr, serde_as};
 #[cfg_attr(not(debug_assertions), visibility::make(pub(super)))]
 use self::homebrew_env::HomebrewEnvConfig;
 use self::{cli::CliConfig, global_env::GlobalEnvConfig, neobrew_env::NeobrewEnvConfig};
-
-mod cli;
-mod global_env;
-mod homebrew_env;
-mod neobrew_env;
 
 #[serde_as]
 #[derive(Serialize, Deserialize)]

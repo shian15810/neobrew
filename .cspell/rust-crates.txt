@@ -1,3 +1,9 @@
 # Custom Dictionary Words
+archs
+arwen
+codesign
+Codesign
 formatdoc
 frunk
+rpath
+rpaths

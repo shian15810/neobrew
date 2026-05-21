@@ -5,9 +5,8 @@ use base16ct::HexDisplay;
 use oci_client::{Reference, manifest::OciDescriptor};
 use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
+use walkdir::WalkDir;
 
-#[cfg(target_os = "macos")]
-use self::macos::MacosTag;
 use super::{
     Packageable,
     PreparedPackageCache,
@@ -18,9 +17,7 @@ use super::{
     RawPackageable,
     ResolvedPackageable,
 };
-use crate::context::{Context, ProjectDirs as _};
-#[cfg(target_os = "macos")]
-use crate::ext::ResultExt as _;
+use crate::context::{Context, dirs::ProjectDirs as _};
 
 #[derive(Deserialize)]
 pub(crate) struct RawFormula {
@@ -164,8 +161,15 @@ impl TryFrom<ResolvedFormula> for PreparedFormula {
     type Error = Option<anyhow::Error>;
 
     fn try_from(resolved_formula: ResolvedFormula) -> Result<Self, Self::Error> {
-        #[expect(resolving_to_items_shadowing_supertrait_items)]
+        #[cfg(debug_assertions)]
+        #[cfg_attr(
+            debug_assertions,
+            expect(resolving_to_items_shadowing_supertrait_items)
+        )]
         let version = resolved_formula.version().into_owned();
+
+        #[cfg(not(debug_assertions))]
+        let version = ResolvedPackageable::version(&resolved_formula).into_owned();
 
         let bottle_rebuild = resolved_formula.bottle.stable.rebuild;
 
@@ -230,6 +234,7 @@ impl PreparedFormulaOci {
 pub(crate) struct FetchedFormula {
     name: String,
     version: String,
+    prefix_dir: PathBuf,
     cellar_dir: PathBuf,
     rack_dir: PathBuf,
     keg_dir: PathBuf,
@@ -240,6 +245,7 @@ impl From<(PreparedFormula, PreparedPackageDest)> for FetchedFormula {
         Self {
             name: prepared_formula.name,
             version: prepared_formula.version,
+            prefix_dir: dest.dir_location_greatgrandparent,
             cellar_dir: dest.dir_location_grandparent,
             rack_dir: dest.dir_location_parent,
             keg_dir: dest.dir_location,
@@ -254,6 +260,38 @@ impl Packageable for FetchedFormula {
 
     fn version(&self) -> &str {
         &self.version
+    }
+}
+
+impl FetchedFormula {
+    #[cfg(target_os = "macos")]
+    pub(crate) fn relocate_keg(&self, context: &Context) -> Result<()> {
+        use crate::os::macos::{Codesign, Relocation};
+
+        let relocation = Relocation::from(&context.homebrew_dirs);
+
+        for entry in WalkDir::new(&self.keg_dir) {
+            let entry = entry?;
+
+            let path = entry.path();
+
+            relocation.patch_file(path)?;
+
+            Codesign::sign_in_place(path)?;
+        }
+
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn relocate_keg(&self, _context: &Context) -> Result<()> {
+        for entry in WalkDir::new(&self.keg_dir) {
+            let entry = entry?;
+
+            let _path = entry.path();
+        }
+
+        Ok(())
     }
 }
 
@@ -290,7 +328,9 @@ impl BottleStable {
 
     #[cfg(target_os = "macos")]
     fn tag(&self) -> Result<Option<String>> {
-        let current_macos_tag = MacosTag::try_default()?;
+        use crate::{ext::ResultExt as _, os::macos};
+
+        let current_macos_tag = macos::Tag::try_default()?;
 
         #[cfg(debug_assertions)]
         #[expect(clippy::redundant_iter_cloned)]
@@ -298,7 +338,7 @@ impl BottleStable {
             .files
             .keys()
             .cloned()
-            .map(|tag| tag.parse::<MacosTag>().map(|macos_tag| (tag, macos_tag)))
+            .map(|tag| tag.parse::<macos::Tag>().map(|macos_tag| (tag, macos_tag)))
             .filter_map(Result::transpose_err)
             .try_collect::<Vec<_>>()?;
 
@@ -308,7 +348,7 @@ impl BottleStable {
             .files
             .keys()
             .cloned()
-            .map(|tag| tag.parse::<MacosTag>().map(|macos_tag| (tag, macos_tag)))
+            .map(|tag| tag.parse::<macos::Tag>().map(|macos_tag| (tag, macos_tag)))
             .filter_map(Result::transpose_err)
             .collect::<Result<Vec<_>>>()?;
 
@@ -413,165 +453,5 @@ impl BottleStableFile {
         };
 
         Some(oci)
-    }
-}
-
-#[cfg(target_os = "macos")]
-mod macos {
-    use std::{cmp::Ordering, str::FromStr};
-
-    use anyhow::{Result, anyhow};
-    use oci_client::config::Architecture;
-    use os_info::Version;
-
-    struct MacosSemver {
-        major: u64,
-        minor: Option<u64>,
-        patch: Option<u64>,
-    }
-
-    #[derive(PartialEq, Eq, PartialOrd, Ord)]
-    enum MacosCodename {
-        Catalina,
-        BigSur,
-        Monterey,
-        Ventura,
-        Sonoma,
-        Sequoia,
-        Tahoe,
-    }
-
-    impl TryFrom<MacosSemver> for MacosCodename {
-        type Error = Option<anyhow::Error>;
-
-        fn try_from(semver: MacosSemver) -> Result<Self, Self::Error> {
-            let this = match (semver.major, semver.minor, semver.patch) {
-                (26, ..) => Self::Tahoe,
-                (15, ..) => Self::Sequoia,
-                (14, ..) => Self::Sonoma,
-                (13, ..) => Self::Ventura,
-                (12, ..) => Self::Monterey,
-                (11, ..) => Self::BigSur,
-                (10, Some(15), _) => Self::Catalina,
-                _ => return Err(None),
-            };
-
-            Ok(this)
-        }
-    }
-
-    impl FromStr for MacosCodename {
-        type Err = Option<anyhow::Error>;
-
-        fn from_str(codename: &str) -> Result<Self, Self::Err> {
-            let this = match codename {
-                "tahoe" => Self::Tahoe,
-                "sequoia" => Self::Sequoia,
-                "sonoma" => Self::Sonoma,
-                "ventura" => Self::Ventura,
-                "monterey" => Self::Monterey,
-                "big_sur" => Self::BigSur,
-                "catalina" => Self::Catalina,
-                _ => return Err(None),
-            };
-
-            Ok(this)
-        }
-    }
-
-    #[derive(PartialEq, Eq)]
-    pub(super) struct MacosTag {
-        architecture: Architecture,
-        codename: MacosCodename,
-    }
-
-    impl MacosTag {
-        pub(super) fn architecture(&self) -> &Architecture {
-            &self.architecture
-        }
-
-        pub(super) fn try_default() -> Result<Self> {
-            let architecture = Architecture::default();
-
-            let info = os_info::get();
-
-            let version = info.version();
-
-            let &Version::Semantic(major, minor, patch) = version else {
-                let err = anyhow!(r#"Unsupported macOS version detected: "{version}""#);
-
-                return Err(err);
-            };
-
-            let semver = MacosSemver {
-                major,
-                minor: Some(minor),
-                patch: Some(patch),
-            };
-
-            let this = match Self::try_from((architecture, semver)) {
-                Ok(this) => this,
-                Err(Some(err)) => return Err(err),
-                Err(None) => {
-                    let err = anyhow!(r#"Unsupported macOS semver detected: "{version}""#);
-
-                    return Err(err);
-                },
-            };
-
-            Ok(this)
-        }
-    }
-
-    impl TryFrom<(Architecture, MacosSemver)> for MacosTag {
-        type Error = Option<anyhow::Error>;
-
-        fn try_from(
-            (architecture, semver): (Architecture, MacosSemver),
-        ) -> Result<Self, Self::Error> {
-            let codename = MacosCodename::try_from(semver)?;
-
-            let this = Self {
-                architecture,
-                codename,
-            };
-
-            Ok(this)
-        }
-    }
-
-    impl FromStr for MacosTag {
-        type Err = Option<anyhow::Error>;
-
-        fn from_str(tag: &str) -> Result<Self, Self::Err> {
-            let (codename, architecture) = match tag.strip_prefix("arm64_") {
-                Some(codename) => (codename, Architecture::ARM64),
-                None => (tag, Architecture::Amd64),
-            };
-
-            let codename = codename.parse::<MacosCodename>()?;
-
-            let this = Self {
-                architecture,
-                codename,
-            };
-
-            Ok(this)
-        }
-    }
-
-    impl PartialOrd for MacosTag {
-        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-            Some(self.cmp(other))
-        }
-    }
-
-    impl Ord for MacosTag {
-        fn cmp(&self, other: &Self) -> Ordering {
-            self.architecture
-                .to_string()
-                .cmp(&other.architecture.to_string())
-                .then_with(|| self.codename.cmp(&other.codename))
-        }
     }
 }

@@ -32,13 +32,6 @@
 #![doc(test(attr(warn(unused), deny(warnings))))]
 #![expect(rustdoc::missing_crate_level_docs)]
 
-use clap::{ArgMatches, FromArgMatches as _};
-use proc_exit::prelude::*;
-#[cfg(debug_assertions)]
-use visibility as _;
-
-use self::{commands::Cli, context::Context};
-
 pub mod commands;
 pub mod context;
 mod ext;
@@ -47,6 +40,11 @@ mod os;
 mod package;
 mod pipeline;
 mod registry;
+
+use clap::{ArgMatches, FromArgMatches as _};
+use proc_exit::prelude::*;
+
+use self::{commands::Cli, context::Context};
 
 #[expect(clippy::missing_errors_doc)]
 pub async fn run(matches: &ArgMatches, context: Context) -> proc_exit::ExitResult {
@@ -57,3 +55,6 @@ pub async fn run(matches: &ArgMatches, context: Context) -> proc_exit::ExitResul
 
     proc_exit::Code::SUCCESS.ok()
 }
+
+#[cfg(debug_assertions)]
+use visibility as _;

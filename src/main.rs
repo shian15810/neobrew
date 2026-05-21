@@ -32,8 +32,6 @@
 
 use clap::CommandFactory as _;
 use clap_verbosity_flag::VerbosityFilter;
-#[cfg(not(all(debug_assertions, not(test))))]
-use console_subscriber as _;
 use neobrew::{commands::Cli, context::Context};
 use proc_exit::prelude::*;
 use tokio::{signal, task};
@@ -100,3 +98,6 @@ fn init_tracing(verbosity_filter: VerbosityFilter) {
 
     registry.with(filtered_layer).init();
 }
+
+#[cfg(not(all(debug_assertions, not(test))))]
+use console_subscriber as _;

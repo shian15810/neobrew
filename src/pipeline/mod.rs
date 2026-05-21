@@ -1,3 +1,7 @@
+pub(crate) mod handler;
+pub(crate) mod pull_operator;
+pub(crate) mod push_operator;
+
 use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 
 use anyhow::Result;
@@ -13,14 +17,7 @@ use futures::{
 use tokio::task;
 use tokio_util::{sync::PollSender, task::AbortOnDropHandle};
 
-pub(crate) use self::{
-    pull_operators::Pourer,
-    push_operators::{Hasher, Writer},
-};
 use crate::context::Context;
-
-mod pull_operators;
-mod push_operators;
 
 pub(crate) struct Pipeline<Item, St, Si, Handles> {
     stream: St,
@@ -153,10 +150,4 @@ pub(crate) trait Operator<Item, _Marker> {
         self,
         context: &Context,
     ) -> (PollSender<Item>, AbortOnDropHandle<Result<Self::Output>>);
-}
-
-pub(crate) trait AtomicFsHandler {
-    async fn cleanup(self) -> Result<()>;
-
-    async fn persist(self) -> Result<()>;
 }

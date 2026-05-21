@@ -19,7 +19,7 @@ use super::{
     RawPackageable,
     ResolvedPackageable,
 };
-use crate::context::{Context, ProjectDirs as _};
+use crate::context::{Context, dirs::ProjectDirs as _};
 
 #[derive(Deserialize)]
 pub(crate) struct RawCask {
@@ -109,8 +109,15 @@ pub(crate) struct PreparedCask {
 
 impl From<ResolvedCask> for PreparedCask {
     fn from(resolved_cask: ResolvedCask) -> Self {
-        #[expect(resolving_to_items_shadowing_supertrait_items)]
+        #[cfg(debug_assertions)]
+        #[cfg_attr(
+            debug_assertions,
+            expect(resolving_to_items_shadowing_supertrait_items)
+        )]
         let version = resolved_cask.version().into_owned();
+
+        #[cfg(not(debug_assertions))]
+        let version = ResolvedPackageable::version(&resolved_cask).into_owned();
 
         Self {
             token: resolved_cask.token,
@@ -178,6 +185,7 @@ impl PreparedCask {
 pub(crate) struct FetchedCask {
     token: String,
     version: String,
+    prefix_dir: PathBuf,
     caskroom_dir: PathBuf,
 }
 
@@ -186,6 +194,7 @@ impl From<(PreparedCask, PreparedPackageDest)> for FetchedCask {
         Self {
             token: prepared_cask.token,
             version: prepared_cask.version,
+            prefix_dir: dest.dir_location_greatgrandparent,
             caskroom_dir: dest.dir_location_grandparent,
         }
     }
