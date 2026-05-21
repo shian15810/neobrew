@@ -5,7 +5,7 @@ use clap::Args;
 use tokio::task::JoinSet;
 
 use super::{Resolution, Runner};
-use crate::{context::Context, package::ResolvedPackage, registry::Registry};
+use crate::{context::Context, package::resolved::ResolvedPackage, registry::Registry};
 
 #[derive(Args)]
 pub(super) struct Uninstall {

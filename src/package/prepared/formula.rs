@@ -1,157 +1,23 @@
-use std::{borrow::Cow, collections::HashMap, path::PathBuf, sync::Arc};
-
 use anyhow::{Result, anyhow};
 use base16ct::HexDisplay;
 use oci_client::{Reference, manifest::OciDescriptor};
-use serde::Deserialize;
 use sha2::{Digest as _, Sha256};
-use walkdir::WalkDir;
 
 use super::{
-    Packageable,
+    super::{
+        Packageable,
+        raw::{BottleStable, BottleStableFile},
+        resolved::{ResolvedFormula, ResolvedPackageable as _},
+    },
     PreparedPackageCache,
-    PreparedPackageDest,
     PreparedPackageable,
     PreparedPackageableInner,
-    RawPackageCache,
-    RawPackageable,
-    ResolvedPackageable,
 };
 use crate::context::{Context, dirs::ProjectDirs as _};
 
-#[derive(Deserialize)]
-pub(crate) struct RawFormula {
-    name: String,
-    versions: Versions,
-    revision: u64,
-    bottle: Bottle,
-    dependencies: Vec<String>,
-}
-
-impl RawFormula {
-    pub(crate) fn dependencies(&self) -> &[String] {
-        &self.dependencies
-    }
-}
-
-impl Packageable for RawFormula {
-    fn id(&self) -> &str {
-        &self.name
-    }
-
-    fn version(&self) -> &str {
-        &self.versions.stable
-    }
-}
-
-impl RawPackageable for RawFormula {
-    fn version(&self) -> Cow<'_, str> {
-        let version = &self.versions.stable;
-
-        match self.revision {
-            0 => Cow::Borrowed(version),
-            revision => {
-                let version_revision = format!("{version}_{revision}");
-
-                Cow::Owned(version_revision)
-            },
-        }
-    }
-
-    fn cache(&self, context: &Context) -> RawPackageCache {
-        let id = self.id();
-
-        let file_name = format!("{id}.json");
-
-        let cache_dir = context.homebrew_dirs.cache_dir();
-
-        let file_location_parent = cache_dir.join("api").join("formula");
-
-        let file_location = file_location_parent.join(file_name);
-
-        RawPackageCache {
-            file_location_parent,
-            file_location,
-        }
-    }
-}
-
-pub(crate) struct ResolvedFormula {
-    name: String,
-    versions: Versions,
-    revision: u64,
-    bottle: Bottle,
-    dependencies: Vec<Arc<Self>>,
-}
-
-impl From<(RawFormula, Vec<Arc<Self>>)> for ResolvedFormula {
-    fn from((raw_formula, this_dependencies): (RawFormula, Vec<Arc<Self>>)) -> Self {
-        Self {
-            name: raw_formula.name,
-            versions: raw_formula.versions,
-            revision: raw_formula.revision,
-            bottle: raw_formula.bottle,
-            dependencies: this_dependencies,
-        }
-    }
-}
-
-impl Packageable for ResolvedFormula {
-    fn id(&self) -> &str {
-        &self.name
-    }
-
-    fn version(&self) -> &str {
-        &self.versions.stable
-    }
-}
-
-impl ResolvedPackageable for ResolvedFormula {
-    fn version(&self) -> Cow<'_, str> {
-        let version = &self.versions.stable;
-
-        match self.revision {
-            0 => Cow::Borrowed(version),
-            revision => {
-                let version_revision = format!("{version}_{revision}");
-
-                Cow::Owned(version_revision)
-            },
-        }
-    }
-}
-
-impl ResolvedFormula {
-    pub(super) fn iter(self: &Arc<Self>) -> impl Iterator<Item = Arc<Self>> + use<> {
-        let this = Arc::clone(self);
-
-        ResolvedFormulaIter {
-            stack: vec![this],
-        }
-    }
-}
-
-struct ResolvedFormulaIter {
-    stack: Vec<Arc<ResolvedFormula>>,
-}
-
-impl Iterator for ResolvedFormulaIter {
-    type Item = Arc<ResolvedFormula>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let resolved_formula = self.stack.pop()?;
-
-        let resolved_formula_dependencies = resolved_formula.dependencies.iter().cloned();
-
-        self.stack.extend(resolved_formula_dependencies);
-
-        Some(resolved_formula)
-    }
-}
-
 pub(crate) struct PreparedFormula {
-    name: String,
-    version: String,
+    pub(in super::super) name: String,
+    pub(in super::super) version: String,
     bottle_rebuild: u64,
     bottle_tag: String,
     bottle_file: BottleStableFile,
@@ -214,101 +80,21 @@ impl PreparedPackageable for PreparedFormula {
 impl PreparedPackageableInner for PreparedFormula {}
 
 impl PreparedFormula {
-    pub(crate) fn oci(&self) -> Option<PreparedFormulaOci> {
+    pub(super) fn oci(&self) -> Option<PreparedFormulaOci> {
         let oci = self.bottle_file.oci()?;
 
         Some(oci)
     }
 }
 
-pub(crate) struct PreparedFormulaOci {
-    pub(crate) registry: &'static str,
-    pub(crate) reference: Reference,
-    pub(crate) descriptor: OciDescriptor,
+pub(super) struct PreparedFormulaOci {
+    pub(super) registry: &'static str,
+    pub(super) reference: Reference,
+    pub(super) descriptor: OciDescriptor,
 }
 
 impl PreparedFormulaOci {
     const REGISTRY: &str = "ghcr.io";
-}
-
-pub(crate) struct FetchedFormula {
-    name: String,
-    version: String,
-    prefix_dir: PathBuf,
-    cellar_dir: PathBuf,
-    rack_dir: PathBuf,
-    keg_dir: PathBuf,
-}
-
-impl From<(PreparedFormula, PreparedPackageDest)> for FetchedFormula {
-    fn from((prepared_formula, dest): (PreparedFormula, PreparedPackageDest)) -> Self {
-        Self {
-            name: prepared_formula.name,
-            version: prepared_formula.version,
-            prefix_dir: dest.dir_location_greatgrandparent,
-            cellar_dir: dest.dir_location_grandparent,
-            rack_dir: dest.dir_location_parent,
-            keg_dir: dest.dir_location,
-        }
-    }
-}
-
-impl Packageable for FetchedFormula {
-    fn id(&self) -> &str {
-        &self.name
-    }
-
-    fn version(&self) -> &str {
-        &self.version
-    }
-}
-
-impl FetchedFormula {
-    #[cfg(target_os = "macos")]
-    pub(crate) fn relocate_keg(&self, context: &Context) -> Result<()> {
-        use crate::os::macos::{Codesign, Relocation};
-
-        let relocation = Relocation::from(&context.homebrew_dirs);
-
-        for entry in WalkDir::new(&self.keg_dir) {
-            let entry = entry?;
-
-            let path = entry.path();
-
-            relocation.patch_file(path)?;
-
-            Codesign::sign_in_place(path)?;
-        }
-
-        Ok(())
-    }
-
-    #[cfg(target_os = "linux")]
-    pub(crate) fn relocate_keg(&self, _context: &Context) -> Result<()> {
-        for entry in WalkDir::new(&self.keg_dir) {
-            let entry = entry?;
-
-            let _path = entry.path();
-        }
-
-        Ok(())
-    }
-}
-
-#[derive(Deserialize)]
-struct Versions {
-    stable: String,
-}
-
-#[derive(Deserialize)]
-struct Bottle {
-    stable: BottleStable,
-}
-
-#[derive(Deserialize)]
-struct BottleStable {
-    rebuild: u64,
-    files: HashMap<String, BottleStableFile>,
 }
 
 impl BottleStable {
@@ -390,12 +176,6 @@ impl BottleStable {
 
         Some(tag)
     }
-}
-
-#[derive(Deserialize)]
-struct BottleStableFile {
-    url: String,
-    sha256: String,
 }
 
 impl BottleStableFile {

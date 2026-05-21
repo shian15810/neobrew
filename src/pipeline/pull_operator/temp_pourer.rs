@@ -14,7 +14,7 @@ use tokio::task;
 use tokio_util::task::AbortOnDropHandle;
 
 use super::{super::handler, PullOperator};
-use crate::package::PreparedPackageDest;
+use crate::package::prepared::PreparedPackageDest;
 
 pub(crate) struct TempPourer {
     dest: PreparedPackageDest,

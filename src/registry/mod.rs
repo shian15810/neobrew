@@ -19,7 +19,11 @@ use tokio_util::task::AbortOnDropHandle;
 use self::{cask::CaskRegistry, formula::FormulaRegistry};
 use crate::{
     context::Context,
-    package::{Packageable as _, RawPackage, RawPackageable as _, ResolvedPackage},
+    package::{
+        Packageable as _,
+        raw::{RawPackage, RawPackageable as _},
+        resolved::ResolvedPackage,
+    },
 };
 
 pub(crate) struct Registry {

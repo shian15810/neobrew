@@ -9,8 +9,8 @@ use super::Registrable;
 use crate::{
     context::Context,
     package::{
-        RawPackage,
-        formula::{RawFormula, ResolvedFormula},
+        raw::{RawFormula, RawPackage},
+        resolved::ResolvedFormula,
     },
 };
 

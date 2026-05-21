@@ -11,7 +11,7 @@ use tokio::task;
 use tokio_util::task::AbortOnDropHandle;
 
 use super::{super::handler, PushOperator};
-use crate::package::PreparedPackageCache;
+use crate::package::prepared::PreparedPackageCache;
 
 pub(crate) struct TempWriter {
     buf_file: BufWriter<NamedTempFile>,

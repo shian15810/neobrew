@@ -7,8 +7,8 @@ use super::Registrable;
 use crate::{
     context::Context,
     package::{
-        RawPackage,
-        cask::{RawCask, ResolvedCask},
+        raw::{RawCask, RawPackage},
+        resolved::ResolvedCask,
     },
 };
 
