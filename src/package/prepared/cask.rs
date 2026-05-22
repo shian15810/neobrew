@@ -6,10 +6,7 @@ use sha2::{Digest as _, Sha256};
 use url::Url;
 
 use super::{
-    super::{
-        Packageable,
-        resolved::{ResolvedCask, ResolvedPackageable as _},
-    },
+    super::{Packageable, resolved::ResolvedCask},
     PreparedPackageCache,
     PreparedPackageable,
     PreparedPackageableInner,
@@ -30,10 +27,22 @@ impl From<ResolvedCask> for PreparedCask {
             debug_assertions,
             expect(resolving_to_items_shadowing_supertrait_items)
         )]
-        let version = resolved_cask.version().into_owned();
+        let version = {
+            use super::super::resolved::ResolvedPackageable as _;
+
+            let version = resolved_cask.version();
+
+            version.into_owned()
+        };
 
         #[cfg(not(debug_assertions))]
-        let version = ResolvedPackageable::version(&resolved_cask).into_owned();
+        let version = {
+            use super::super::resolved::ResolvedPackageable;
+
+            let version = ResolvedPackageable::version(&resolved_cask);
+
+            version.into_owned()
+        };
 
         Self {
             token: resolved_cask.token,

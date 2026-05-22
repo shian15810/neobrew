@@ -51,13 +51,10 @@ impl CaskRegistry {
             .get_or_fetch(&package, || {
                 let this = Arc::clone(&self);
 
-                let package = Arc::clone(&package);
-
-                this.fetch(package)
+                this.fetch(Arc::clone(&package))
             })
             .await?;
-        let resolved_cask = resolved_cask.value();
-        let resolved_cask = Arc::clone(resolved_cask);
+        let resolved_cask = Arc::clone(resolved_cask.value());
 
         Ok(resolved_cask)
     }
@@ -74,14 +71,8 @@ impl CaskRegistry {
 
         let raw_package = RawPackage::Cask(raw_cask);
 
-        {
-            let this = Arc::as_ref(&self);
-
-            let context = Arc::as_ref(&self.context);
-
-            this.cache_raw_package_json(&raw_package, bytes, context)
-                .await?;
-        }
+        self.cache_raw_package_json(&raw_package, bytes, &self.context)
+            .await?;
 
         #[expect(clippy::disallowed_macros)]
         let RawPackage::Cask(raw_cask) = raw_package else {

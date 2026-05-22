@@ -1,10 +1,10 @@
-use std::{cmp::Reverse, fs, io::Write as _, path::Path};
+use std::{cmp::Reverse, collections::HashMap, fs, io::Write as _, path::Path};
 
 use anyhow::{Context as _, Result};
-use arwen::macho::{MachoContainer, MachoType};
+use arwen::elf::rewriter::Writer;
 use tempfile::NamedTempFile;
 
-use super::mach_o::MachO;
+use super::elf::Elf;
 use crate::context::dirs::HomebrewDirs;
 
 pub(crate) struct Relocation {
@@ -47,7 +47,7 @@ impl Relocation {
 
         let bytes = fs::read(path)?;
 
-        let has_magic_number = MachO::has_magic_number(&bytes)?;
+        let has_magic_number = Elf::has_magic_number(&bytes)?;
 
         if !has_magic_number {
             return Ok(());
@@ -65,7 +65,7 @@ impl Relocation {
 
         let path_parent = path
             .parent()
-            .context("Relocating Mach-O binary has no parent")?;
+            .context("Relocating ELF binary has no parent")?;
 
         let mut file = NamedTempFile::new_in(path_parent)?;
 
@@ -79,60 +79,53 @@ impl Relocation {
     }
 
     fn replace_bytes(&self, bytes: &[u8]) -> Result<Vec<u8>> {
-        let mut container = MachoContainer::parse(bytes)?;
+        let mut rewriter = Writer::read(bytes)?;
 
-        let rpaths = match &container.inner {
-            MachoType::SingleArch(single) => single.inner.rpaths.clone(),
-            MachoType::Fat(fat) => fat
-                .archs
-                .iter()
-                .flat_map(|arch| arch.inner.inner.rpaths.iter().copied())
-                .collect::<Vec<_>>(),
-        };
+        if let Some(runpath) = rewriter.elf_runpath() {
+            let old_runpath = String::from_utf8_lossy(runpath);
 
-        let install_ids = match &container.inner {
-            MachoType::SingleArch(single) => single.inner.name.into_iter().collect::<Vec<_>>(),
-            MachoType::Fat(fat) => fat
-                .archs
-                .iter()
-                .filter_map(|arch| arch.inner.inner.name)
-                .collect::<Vec<_>>(),
-        };
+            let new_runpath = old_runpath
+                .split(':')
+                .map(|component| self.replace_text(component))
+                .collect::<Vec<_>>();
+            let new_runpath = new_runpath.join(":");
 
-        let install_names = match &container.inner {
-            MachoType::SingleArch(single) => single.inner.libs.clone(),
-            MachoType::Fat(fat) => fat
-                .archs
-                .iter()
-                .flat_map(|arch| arch.inner.inner.libs.iter().copied())
-                .collect::<Vec<_>>(),
-        };
+            if new_runpath != old_runpath {
+                let new_runpath = new_runpath.into_bytes();
 
-        for old_rpath in rpaths {
-            let new_rpath = self.replace_text(old_rpath);
-
-            if new_rpath != old_rpath {
-                container.change_rpath(old_rpath, &new_rpath)?;
+                rewriter.elf_set_runpath(new_runpath)?;
             }
         }
 
-        for old_install_id in install_ids {
-            let new_install_id = self.replace_text(old_install_id);
+        let old_needed = rewriter
+            .elf_needed()
+            .map(|bytes| String::from_utf8_lossy(bytes))
+            .collect::<Vec<_>>();
 
-            if new_install_id != old_install_id {
-                container.change_install_id(&new_install_id)?;
-            }
+        let new_needed = old_needed
+            .into_iter()
+            .filter_map(|old_need| {
+                let old_need = old_need.into_owned();
+
+                let new_need = self.replace_text(&old_need);
+
+                (new_need != old_need).then(|| {
+                    let old_need = old_need.into_bytes();
+
+                    let new_need = new_need.into_bytes();
+
+                    (old_need, new_need)
+                })
+            })
+            .collect::<HashMap<_, _>>();
+
+        if !new_needed.is_empty() {
+            rewriter.elf_replace_needed(&new_needed)?;
         }
 
-        for old_install_name in install_names {
-            let new_install_name = self.replace_text(old_install_name);
+        let mut data = Vec::new();
 
-            if new_install_name != old_install_name {
-                container.change_install_name(old_install_name, &new_install_name)?;
-            }
-        }
-
-        let data = container.data;
+        rewriter.write(&mut data)?;
 
         Ok(data)
     }

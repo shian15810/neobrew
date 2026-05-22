@@ -1,13 +1,12 @@
 mod cask;
 mod formula;
 
-use std::{borrow::Cow, iter, sync::Arc};
+use std::{borrow::Cow, sync::Arc};
 
 use either::Either::{Left, Right};
 use enum_dispatch::enum_dispatch;
 
 pub(crate) use self::{cask::ResolvedCask, formula::ResolvedFormula};
-
 use super::Packageable;
 
 #[enum_dispatch]
@@ -24,11 +23,8 @@ impl ResolvedPackage {
 
                 Left(formulae)
             },
-
             Self::Cask(cask) => {
-                let cask = Arc::clone(cask);
-
-                let casks = iter::once(cask).map(Self::Cask);
+                let casks = cask.iter().map(Self::Cask);
 
                 Right(casks)
             },
@@ -43,22 +39,11 @@ pub(super) trait ResolvedPackageable: Packageable {
 }
 
 impl<ResolvedPackage: ResolvedPackageable> ResolvedPackageable for Arc<ResolvedPackage> {
-    #[cfg_attr(not(debug_assertions), expect(unconditional_recursion))]
     fn version(&self) -> Cow<'_, str> {
-        #[cfg_attr(not(debug_assertions), expect(unused_variables))]
-        #[expect(clippy::use_self)]
-        let this = Arc::as_ref(self);
-
-        #[cfg(debug_assertions)]
-        #[cfg_attr(
-            debug_assertions,
-            expect(resolving_to_items_shadowing_supertrait_items)
-        )]
-        let version = this.version();
-
-        #[cfg(not(debug_assertions))]
-        let version = ResolvedPackageable::version(self);
-
-        version
+        <ResolvedPackage as ResolvedPackageable>::version(self)
     }
+}
+
+trait ResolvedPackageableIter: ResolvedPackageable {
+    fn iter(self: &Arc<Self>) -> impl Iterator<Item = Arc<Self>> + use<Self>;
 }

@@ -31,16 +31,10 @@ pub(crate) trait Packageable {
 
 impl<Package: Packageable> Packageable for Arc<Package> {
     fn id(&self) -> &str {
-        #[expect(clippy::use_self)]
-        let this = Arc::as_ref(self);
-
-        this.id()
+        Package::id(self)
     }
 
     fn version(&self) -> &str {
-        #[expect(clippy::use_self)]
-        let this = Arc::as_ref(self);
-
-        this.version()
+        Package::version(self)
     }
 }

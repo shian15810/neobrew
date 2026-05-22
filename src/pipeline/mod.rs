@@ -63,9 +63,7 @@ impl<
         sink::Fanout<Si, sink::SinkErrInto<PollSender<Item>, Item, anyhow::Error>>,
         HCons<AbortOnDropHandle<Result<Op::Output>>, Handles>,
     > {
-        let context = Arc::as_ref(&self.context);
-
-        let (sink, handle) = operator.spawn_blocking(context);
+        let (sink, handle) = operator.spawn_blocking(&self.context);
 
         let sink = sink.sink_err_into();
         let sink = self.sink.fanout(sink);

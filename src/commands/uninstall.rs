@@ -22,11 +22,7 @@ impl Runner for Uninstall {
             return Ok(());
         }
 
-        let resolved_packages = {
-            let context = Arc::clone(&context);
-
-            self.resolve_packages(context).await?
-        };
+        let resolved_packages = self.resolve_packages(Arc::clone(&context)).await?;
 
         let mut set = JoinSet::new();
 

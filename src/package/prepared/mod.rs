@@ -42,7 +42,6 @@ impl TryFrom<ResolvedPackage> for PreparedPackage {
 
                 Self::Formula(prepared_formula)
             },
-
             ResolvedPackage::Cask(resolved_cask) => {
                 let Some(resolved_cask) = Arc::into_inner(resolved_cask) else {
                     let err = anyhow!("`Arc<ResolvedCask>` still has multiple strong references");
@@ -115,7 +114,6 @@ impl PreparedPackage {
 
                 stream.left_stream()
             },
-
             Self::Cask(prepared_cask) => {
                 let url = prepared_cask.url();
 

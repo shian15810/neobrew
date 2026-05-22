@@ -1,8 +1,9 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, iter, sync::Arc};
 
 use super::{
     super::{Packageable, raw::RawCask},
     ResolvedPackageable,
+    ResolvedPackageableIter,
 };
 
 pub(crate) struct ResolvedCask {
@@ -38,5 +39,13 @@ impl ResolvedPackageable for ResolvedCask {
         let version = &self.version;
 
         Cow::Borrowed(version)
+    }
+}
+
+impl ResolvedPackageableIter for ResolvedCask {
+    fn iter(self: &Arc<Self>) -> impl Iterator<Item = Arc<Self>> + use<> {
+        let this = Arc::clone(self);
+
+        iter::once(this)
     }
 }

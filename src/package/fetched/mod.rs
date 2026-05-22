@@ -23,7 +23,6 @@ impl From<(PreparedPackage, PreparedPackageDest)> for FetchedPackage {
 
                 Self::Formula(fetched_formula)
             },
-
             PreparedPackage::Cask(prepared_cask) => {
                 let fetched_cask = FetchedCask::from((prepared_cask, dest));
 

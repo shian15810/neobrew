@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
+use walkdir::WalkDir;
 
 use super::super::{
     Packageable,
@@ -43,8 +44,6 @@ impl Packageable for FetchedFormula {
 impl FetchedFormula {
     #[cfg(target_os = "macos")]
     pub(crate) fn relocate_keg(&self, context: &Context) -> Result<()> {
-        use walkdir::WalkDir;
-
         use crate::os::macos::{Codesign, Relocation};
 
         let relocation = Relocation::from(&context.homebrew_dirs);
@@ -63,11 +62,17 @@ impl FetchedFormula {
     }
 
     #[cfg(target_os = "linux")]
-    pub(crate) fn relocate_keg(&self, _context: &Context) -> Result<()> {
+    pub(crate) fn relocate_keg(&self, context: &Context) -> Result<()> {
+        use crate::os::linux::Relocation;
+
+        let relocation = Relocation::from(&context.homebrew_dirs);
+
         for entry in WalkDir::new(&self.keg_dir) {
             let entry = entry?;
 
-            let _path = entry.path();
+            let path = entry.path();
+
+            relocation.patch_file(path)?;
         }
 
         Ok(())

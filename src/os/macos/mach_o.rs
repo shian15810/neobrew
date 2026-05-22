@@ -1,8 +1,6 @@
 use anyhow::{Result, anyhow};
 
-pub(super) struct MachO {
-    magic_number: u32,
-}
+pub(super) struct MachO;
 
 impl MachO {
     const FAT_MAGIC: u32 = 0xcafe_babe;
@@ -30,52 +28,28 @@ impl MachO {
     ];
 }
 
-impl TryFrom<&[u8; 4]> for MachO {
-    type Error = Option<anyhow::Error>;
-
-    fn try_from(bytes: &[u8; 4]) -> Result<Self, Self::Error> {
-        let be_magic_number = u32::from_be_bytes(*bytes);
-
-        if Self::BE_MAGIC_NUMBERS.contains(&be_magic_number) {
-            let this = Self {
-                magic_number: be_magic_number,
-            };
-
-            return Ok(this);
-        }
-
-        let le_magic_number = u32::from_le_bytes(*bytes);
-
-        if Self::LE_MAGIC_NUMBERS.contains(&le_magic_number) {
-            let this = Self {
-                magic_number: le_magic_number,
-            };
-
-            return Ok(this);
-        }
-
-        Err(None)
-    }
-}
-
 impl MachO {
-    pub(super) fn detect_magic_number(bytes: &[u8]) -> Result<Option<u32>> {
-        let Some(bytes) = bytes.get(0..4) else {
-            let err = anyhow!("Not enough magic bytes");
+    pub(super) fn has_magic_number(bytes: &[u8]) -> Result<bool> {
+        let &[b0, b1, b2, b3, ..] = bytes else {
+            let err = anyhow!("Not enough header bytes");
 
             return Err(err);
         };
 
-        let bytes: &[u8; 4] = bytes.try_into()?;
+        let header_bytes = &[b0, b1, b2, b3];
 
-        let this = match Self::try_from(bytes) {
-            Ok(bytes) => bytes,
-            Err(Some(err)) => return Err(err),
-            Err(None) => return Ok(None),
-        };
+        let be_magic_number = u32::from_be_bytes(*header_bytes);
 
-        let magic_number = this.magic_number;
+        if Self::BE_MAGIC_NUMBERS.contains(&be_magic_number) {
+            return Ok(true);
+        }
 
-        Ok(Some(magic_number))
+        let le_magic_number = u32::from_le_bytes(*header_bytes);
+
+        if Self::LE_MAGIC_NUMBERS.contains(&le_magic_number) {
+            return Ok(true);
+        }
+
+        Ok(false)
     }
 }

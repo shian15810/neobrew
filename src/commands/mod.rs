@@ -96,13 +96,10 @@ impl Commands {
 
                 let result = internal.run_concurrent(context).await;
 
-                result
-                    .with_code(proc_exit::sysexits::SOFTWARE_ERR)
-                    .with_code(proc_exit::sysexits::SOFTWARE_ERR)?;
+                result.with_code(proc_exit::sysexits::SOFTWARE_ERR)?;
 
                 proc_exit::Code::SUCCESS.ok()
             },
-
             Self::External(args) => {
                 let mut cmd = Command::new("brew");
 

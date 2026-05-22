@@ -7,7 +7,7 @@ use super::{
     super::{
         Packageable,
         raw::{BottleStable, BottleStableFile},
-        resolved::{ResolvedFormula, ResolvedPackageable as _},
+        resolved::ResolvedFormula,
     },
     PreparedPackageCache,
     PreparedPackageable,
@@ -32,10 +32,22 @@ impl TryFrom<ResolvedFormula> for PreparedFormula {
             debug_assertions,
             expect(resolving_to_items_shadowing_supertrait_items)
         )]
-        let version = resolved_formula.version().into_owned();
+        let version = {
+            use super::super::resolved::ResolvedPackageable as _;
+
+            let version = resolved_formula.version();
+
+            version.into_owned()
+        };
 
         #[cfg(not(debug_assertions))]
-        let version = ResolvedPackageable::version(&resolved_formula).into_owned();
+        let version = {
+            use super::super::resolved::ResolvedPackageable;
+
+            let version = ResolvedPackageable::version(&resolved_formula);
+
+            version.into_owned()
+        };
 
         let bottle_rebuild = resolved_formula.bottle.stable.rebuild;
 

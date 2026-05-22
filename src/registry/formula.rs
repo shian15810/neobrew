@@ -70,24 +70,17 @@ impl FormulaRegistry {
             return Err(err);
         }
 
-        {
-            let package = Arc::clone(&package);
-
-            stack.push(package);
-        }
+        stack.push(Arc::clone(&package));
 
         let resolved_formula = self
             .store
             .get_or_fetch(&package, || {
                 let this = Arc::clone(&self);
 
-                let package = Arc::clone(&package);
-
-                this.with_stack(package, stack)
+                this.with_stack(Arc::clone(&package), stack)
             })
             .await?;
-        let resolved_formula = resolved_formula.value();
-        let resolved_formula = Arc::clone(resolved_formula);
+        let resolved_formula = Arc::clone(resolved_formula.value());
 
         Ok(resolved_formula)
     }
@@ -115,14 +108,8 @@ impl FormulaRegistry {
 
         let raw_package = RawPackage::Formula(raw_formula);
 
-        {
-            let this = Arc::as_ref(&self);
-
-            let context = Arc::as_ref(&self.context);
-
-            this.cache_raw_package_json(&raw_package, bytes, context)
-                .await?;
-        }
+        self.cache_raw_package_json(&raw_package, bytes, &self.context)
+            .await?;
 
         let resolved_formula_dependencies = stream::iter(raw_formula_dependencies)
             .map(async |raw_formula_dependency| -> Result<_> {
@@ -137,8 +124,8 @@ impl FormulaRegistry {
                 Ok(resolved_formula_dependency)
             })
             .buffer_unordered(*self.context.concurrency_limit)
-            .try_collect::<Vec<_>>()
-            .await?;
+            .try_collect::<Vec<_>>();
+        let resolved_formula_dependencies = resolved_formula_dependencies.await?;
 
         #[expect(clippy::disallowed_macros)]
         let RawPackage::Formula(raw_formula) = raw_package else {

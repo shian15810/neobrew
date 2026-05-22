@@ -73,8 +73,8 @@ impl Registry {
                 Ok(resolved_package)
             })
             .buffer_unordered(*self.context.concurrency_limit)
-            .try_collect::<Vec<_>>()
-            .await?;
+            .try_collect::<Vec<_>>();
+        let resolved_packages = resolved_packages.await?;
 
         Ok(resolved_packages)
     }
@@ -88,12 +88,9 @@ impl Registry {
             strategy,
             ResolutionStrategy::FormulaOnly | ResolutionStrategy::Both,
         ) {
-            let formula_registry = self.formula();
-            let formula_registry = Arc::clone(formula_registry);
+            let formula_registry = Arc::clone(self.formula());
 
-            let package = Arc::clone(&package);
-
-            if let Ok(resolved_formula) = formula_registry.resolve(package).await {
+            if let Ok(resolved_formula) = formula_registry.resolve(Arc::clone(&package)).await {
                 let resolved_package = ResolvedPackage::Formula(resolved_formula);
 
                 return Ok(resolved_package);
@@ -104,12 +101,9 @@ impl Registry {
             strategy,
             ResolutionStrategy::CaskOnly | ResolutionStrategy::Both,
         ) {
-            let cask_registry = self.cask();
-            let cask_registry = Arc::clone(cask_registry);
+            let cask_registry = Arc::clone(self.cask());
 
-            let package = Arc::clone(&package);
-
-            if let Ok(resolved_cask) = cask_registry.resolve(package).await {
+            if let Ok(resolved_cask) = cask_registry.resolve(Arc::clone(&package)).await {
                 let resolved_package = ResolvedPackage::Cask(resolved_cask);
 
                 return Ok(resolved_package);
@@ -123,9 +117,7 @@ impl Registry {
 
     fn formula(&self) -> &Arc<FormulaRegistry> {
         self.formula.get_or_init(|| {
-            let context = Arc::clone(&self.context);
-
-            let formula_registry = FormulaRegistry::new(context);
+            let formula_registry = FormulaRegistry::new(Arc::clone(&self.context));
 
             Arc::new(formula_registry)
         })
@@ -133,9 +125,7 @@ impl Registry {
 
     fn cask(&self) -> &Arc<CaskRegistry> {
         self.cask.get_or_init(|| {
-            let context = Arc::clone(&self.context);
-
-            let cask_registry = CaskRegistry::new(context);
+            let cask_registry = CaskRegistry::new(Arc::clone(&self.context));
 
             Arc::new(cask_registry)
         })

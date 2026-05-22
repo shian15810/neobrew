@@ -43,11 +43,7 @@ impl Runner for Install {
             return Ok(());
         }
 
-        let resolved_packages = {
-            let context = Arc::clone(&context);
-
-            self.resolve_packages(context).await?
-        };
+        let resolved_packages = self.resolve_packages(Arc::clone(&context)).await?;
 
         let prepared_packages = Self::prepare_packages(resolved_packages)?;
 
@@ -63,21 +59,14 @@ impl Runner for Install {
             let context = Arc::clone(&context);
 
             set.spawn(async move {
-                let fetched_package = {
-                    let context = Arc::clone(&context);
-
-                    Self::fetch_package(prepared_package, context).await?
-                };
+                let fetched_package =
+                    Self::fetch_package(prepared_package, Arc::clone(&context)).await?;
 
                 let Some(fetched_package) = fetched_package else {
                     return Ok(());
                 };
 
-                let () = {
-                    let context = Arc::as_ref(&context);
-
-                    Self::install_package(fetched_package, context)?;
-                };
+                let () = Self::install_package(fetched_package, &context)?;
 
                 anyhow::Ok(())
             });
@@ -128,23 +117,14 @@ impl Install {
 
         let version = prepared_package.version();
 
-        let dest = {
-            let context = Arc::as_ref(&context);
+        let dest = prepared_package.dest(&context);
 
-            prepared_package.dest(context)
-        };
-
+        #[expect(clippy::disallowed_macros)]
         if dest.dir_location.is_dir() {
-            let fetched_package = FetchedPackage::from((prepared_package, dest));
-
-            return Ok(Some(fetched_package));
+            todo!();
         }
 
-        let cache = {
-            let context = Arc::as_ref(&context);
-
-            prepared_package.cache(context).await?
-        };
+        let cache = prepared_package.cache(&context).await?;
 
         let sha256 = prepared_package.sha256();
 
@@ -155,7 +135,8 @@ impl Install {
             let cache_file_sha256 = cache.file_sha256().await?;
 
             if cache_file_sha256 == sha256 {
-                Self::fetch_from_cache(id, version, dest.clone(), cache, sha256, context).await?;
+                Self::fetch_package_from_cache(id, version, dest.clone(), cache, sha256, context)
+                    .await?;
 
                 let fetched_package = FetchedPackage::from((prepared_package, dest));
 
@@ -163,24 +144,19 @@ impl Install {
             }
         }
 
-        let stream = {
-            let context = Arc::as_ref(&context);
-
-            prepared_package.stream(context).await?
-        };
-
-        let Some(stream) = stream else {
+        let Some(stream) = prepared_package.stream(&context).await? else {
             return Ok(None);
         };
 
-        Self::fetch_from_url(id, version, dest.clone(), cache, sha256, stream, context).await?;
+        Self::fetch_package_from_url(id, version, dest.clone(), cache, sha256, stream, context)
+            .await?;
 
         let fetched_package = FetchedPackage::from((prepared_package, dest));
 
         Ok(Some(fetched_package))
     }
 
-    async fn fetch_from_cache(
+    async fn fetch_package_from_cache(
         id: &str,
         version: &str,
         dest: PreparedPackageDest,
@@ -205,7 +181,12 @@ impl Install {
         if hashed_sha256 != sha256 {
             poured_temp_dest.cleanup().await?;
 
-            let err = Self::fetch_hashed_sha256_mismatch_err(id, version, &hashed_sha256, sha256);
+            let err = Self::fetch_package_err_of_hashed_sha256_mismatch(
+                id,
+                version,
+                &hashed_sha256,
+                sha256,
+            );
 
             return Err(err);
         }
@@ -215,7 +196,7 @@ impl Install {
         Ok(())
     }
 
-    async fn fetch_from_url(
+    async fn fetch_package_from_url(
         id: &str,
         version: &str,
         dest: PreparedPackageDest,
@@ -243,7 +224,12 @@ impl Install {
 
             written_temp_cache.cleanup().await?;
 
-            let err = Self::fetch_hashed_sha256_mismatch_err(id, version, &hashed_sha256, sha256);
+            let err = Self::fetch_package_err_of_hashed_sha256_mismatch(
+                id,
+                version,
+                &hashed_sha256,
+                sha256,
+            );
 
             return Err(err);
         }
@@ -255,7 +241,7 @@ impl Install {
         Ok(())
     }
 
-    fn fetch_hashed_sha256_mismatch_err(
+    fn fetch_package_err_of_hashed_sha256_mismatch(
         id: &str,
         version: &str,
         actual: &str,
@@ -276,8 +262,10 @@ impl Install {
 
                 Ok(())
             },
-
-            FetchedPackage::Cask(_fetched_cask) => Ok(()),
+            #[expect(clippy::disallowed_macros)]
+            FetchedPackage::Cask(_fetched_cask) => {
+                todo!();
+            },
         }
     }
 }

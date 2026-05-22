@@ -6,6 +6,7 @@ use super::{
         raw::{Bottle, RawFormula, Versions},
     },
     ResolvedPackageable,
+    ResolvedPackageableIter,
 };
 
 pub(crate) struct ResolvedFormula {
@@ -53,8 +54,8 @@ impl ResolvedPackageable for ResolvedFormula {
     }
 }
 
-impl ResolvedFormula {
-    pub(super) fn iter(self: &Arc<Self>) -> impl Iterator<Item = Arc<Self>> + use<> {
+impl ResolvedPackageableIter for ResolvedFormula {
+    fn iter(self: &Arc<Self>) -> impl Iterator<Item = Arc<Self>> + use<> {
         let this = Arc::clone(self);
 
         ResolvedFormulaIter {
