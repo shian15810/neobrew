@@ -36,10 +36,10 @@ pub mod commands;
 pub mod context;
 mod ext;
 mod macros;
-mod os;
 mod package;
 mod pipeline;
 mod registry;
+mod utils;
 
 use clap::{ArgMatches, FromArgMatches as _};
 use proc_exit::prelude::*;

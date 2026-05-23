@@ -13,7 +13,7 @@ use tokio_util::{
     task::AbortOnDropHandle,
 };
 
-pub(crate) use self::temp_pourer::TempPourer;
+pub(crate) use self::temp_pourer::{TempPourer, TempPourerInput};
 use super::Operator;
 use crate::context::Context;
 

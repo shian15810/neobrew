@@ -4,8 +4,12 @@
     "cSpell.mergeCSpellSettings": false,
 
     "workbench.editor.customLabels.patterns": {
-        "**/mod.rs": "${dirname}/${filename}.${extname}",
-        "**/action.{yml,yaml}": "${dirname}/${filename}.${extname}",
+        "*/*/config.*": "${dirname}/${filename}.${extname}",
+        "*/.github/actions/*/action.*": "${dirname}/${filename}.${extname}",
+        "*/build/**/mod.rs": "${dirname}/${filename}.${extname}",
+        "*/src/**/mod.rs": "${dirname}/${filename}.${extname}",
+        "*/src/package/*/cask.rs": "${dirname}/${filename}.${extname}",
+        "*/src/package/*/formula.rs": "${dirname}/${filename}.${extname}",
     },
 
     "files.watcherExclude": {

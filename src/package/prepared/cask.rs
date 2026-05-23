@@ -7,11 +7,12 @@ use url::Url;
 
 use super::{
     super::{Packageable, resolved::ResolvedCask},
-    PreparedPackageCache,
     PreparedPackageable,
-    PreparedPackageableInner,
 };
-use crate::context::{Context, dirs::ProjectDirs as _};
+use crate::{
+    context::{Context, dirs::ProjectDirs as _},
+    pipeline::push_operator::TempWriterInput,
+};
 
 pub(crate) struct PreparedCask {
     pub(in super::super) token: String,
@@ -30,19 +31,17 @@ impl From<ResolvedCask> for PreparedCask {
         let version = {
             use super::super::resolved::ResolvedPackageable as _;
 
-            let version = resolved_cask.version();
-
-            version.into_owned()
+            resolved_cask.version()
         };
 
         #[cfg(not(debug_assertions))]
         let version = {
             use super::super::resolved::ResolvedPackageable;
 
-            let version = ResolvedPackageable::version(&resolved_cask);
-
-            version.into_owned()
+            ResolvedPackageable::version(&resolved_cask)
         };
+
+        let version = version.into_owned();
 
         Self {
             token: resolved_cask.token,
@@ -64,7 +63,11 @@ impl Packageable for PreparedCask {
 }
 
 impl PreparedPackageable for PreparedCask {
-    async fn cache(&self, context: &Context) -> Result<PreparedPackageCache> {
+    fn expected_sha256(&self) -> &str {
+        &self.sha256
+    }
+
+    async fn temp_writer_input(&self, context: &Context) -> Result<TempWriterInput> {
         let version = self.version();
 
         let url = Url::parse(&self.url)?;
@@ -85,21 +88,17 @@ impl PreparedPackageable for PreparedCask {
 
         let file_name = format!("{url_hash}--{segment}");
 
-        let cache_dir = context.homebrew_dirs.cache_dir();
+        let cache_dir_path = context.homebrew_dirs.cache_dir();
 
-        let symlink_location_parent = cache_dir.join("Cask");
+        let file_path = cache_dir_path.join("Cask/downloads").join(file_name);
 
-        let cache = self.cache_inner(&file_name, &symlink_name, symlink_location_parent);
+        let symlink_path = cache_dir_path.join("Cask").join(symlink_name);
 
-        Ok(cache)
-    }
+        let temp_writer_input = TempWriterInput::new(file_path, Some(symlink_path));
 
-    fn sha256(&self) -> &str {
-        &self.sha256
+        Ok(temp_writer_input)
     }
 }
-
-impl PreparedPackageableInner for PreparedCask {}
 
 impl PreparedCask {
     pub(super) fn url(&self) -> &str {

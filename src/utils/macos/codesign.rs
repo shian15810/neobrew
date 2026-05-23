@@ -6,7 +6,7 @@ use apple_codesign::{SigningSettings, UnifiedSigner};
 pub(crate) struct Codesign;
 
 impl Codesign {
-    pub(crate) fn sign_in_place(path: impl AsRef<Path>) -> Result<()> {
+    pub(crate) fn in_place(path: &Path) -> Result<()> {
         let settings = SigningSettings::default();
 
         let signer = UnifiedSigner::new(settings);

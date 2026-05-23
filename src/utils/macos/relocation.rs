@@ -1,11 +1,11 @@
 use std::{cmp::Reverse, fs, io::Write as _, path::Path};
 
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use arwen::macho::{MachoContainer, MachoType};
 use tempfile::NamedTempFile;
 
-use super::mach_o::MachO;
-use crate::context::dirs::HomebrewDirs;
+use super::{codesign::Codesign, mach_o::MachO};
+use crate::{context::dirs::HomebrewDirs, ext::std::path::PathExt as _};
 
 pub(crate) struct Relocation {
     replacement_pairs: [(&'static str, String); 4],
@@ -42,9 +42,7 @@ impl From<&HomebrewDirs> for Relocation {
 }
 
 impl Relocation {
-    pub(crate) fn patch_file(&self, path: impl AsRef<Path>) -> Result<()> {
-        let path = path.as_ref();
-
+    pub(crate) fn patch_file(&self, path: &Path) -> Result<()> {
         let bytes = fs::read(path)?;
 
         let has_magic_number = MachO::has_magic_number(&bytes)?;
@@ -63,17 +61,17 @@ impl Relocation {
 
         let permissions = metadata.permissions();
 
-        let path_parent = path
-            .parent()
-            .context("Relocating Mach-O binary has no parent")?;
+        let base_path = path.base()?;
 
-        let mut file = NamedTempFile::new_in(path_parent)?;
+        let mut file = NamedTempFile::new_in(base_path)?;
 
         file.write_all(&replaced_bytes)?;
 
         let file = file.persist(path)?;
 
         file.set_permissions(permissions)?;
+
+        Codesign::in_place(path)?;
 
         Ok(())
     }

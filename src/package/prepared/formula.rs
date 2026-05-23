@@ -9,18 +9,20 @@ use super::{
         raw::{BottleStable, BottleStableFile},
         resolved::ResolvedFormula,
     },
-    PreparedPackageCache,
     PreparedPackageable,
-    PreparedPackageableInner,
 };
-use crate::context::{Context, dirs::ProjectDirs as _};
+use crate::{
+    context::{Context, dirs::ProjectDirs as _},
+    pipeline::push_operator::TempWriterInput,
+};
 
 pub(crate) struct PreparedFormula {
     pub(in super::super) name: String,
-    pub(in super::super) version: String,
+    pub(in super::super) version_revision: String,
     bottle_rebuild: u64,
     bottle_tag: String,
-    bottle_file: BottleStableFile,
+    pub(in super::super) bottle_file: BottleStableFile,
+    pub(in super::super) keg_only: bool,
 }
 
 impl TryFrom<ResolvedFormula> for PreparedFormula {
@@ -32,22 +34,20 @@ impl TryFrom<ResolvedFormula> for PreparedFormula {
             debug_assertions,
             expect(resolving_to_items_shadowing_supertrait_items)
         )]
-        let version = {
+        let version_revision = {
             use super::super::resolved::ResolvedPackageable as _;
 
-            let version = resolved_formula.version();
-
-            version.into_owned()
+            resolved_formula.version()
         };
 
         #[cfg(not(debug_assertions))]
-        let version = {
+        let version_revision = {
             use super::super::resolved::ResolvedPackageable;
 
-            let version = ResolvedPackageable::version(&resolved_formula);
-
-            version.into_owned()
+            ResolvedPackageable::version(&resolved_formula)
         };
+
+        let version_revision = version_revision.into_owned();
 
         let bottle_rebuild = resolved_formula.bottle.stable.rebuild;
 
@@ -57,10 +57,11 @@ impl TryFrom<ResolvedFormula> for PreparedFormula {
 
         let this = Self {
             name: resolved_formula.name,
-            version,
+            version_revision,
             bottle_rebuild,
             bottle_tag,
             bottle_file,
+            keg_only: resolved_formula.keg_only,
         };
 
         Ok(this)
@@ -73,23 +74,21 @@ impl Packageable for PreparedFormula {
     }
 
     fn version(&self) -> &str {
-        &self.version
+        &self.version_revision
     }
 }
 
 impl PreparedPackageable for PreparedFormula {
-    async fn cache(&self, context: &Context) -> Result<PreparedPackageCache> {
-        let cache = self.bottle_file.cache(self, context);
-
-        Ok(cache)
-    }
-
-    fn sha256(&self) -> &str {
+    fn expected_sha256(&self) -> &str {
         &self.bottle_file.sha256
     }
-}
 
-impl PreparedPackageableInner for PreparedFormula {}
+    async fn temp_writer_input(&self, context: &Context) -> Result<TempWriterInput> {
+        let temp_writer_input = self.bottle_file.temp_writer_input(self, context);
+
+        Ok(temp_writer_input)
+    }
+}
 
 impl PreparedFormula {
     pub(super) fn oci(&self) -> Option<PreparedFormulaOci> {
@@ -126,7 +125,7 @@ impl BottleStable {
 
     #[cfg(target_os = "macos")]
     fn tag(&self) -> Result<Option<String>> {
-        use crate::{ext::ResultExt as _, os::macos};
+        use crate::{ext::core::result::ResultExt as _, utils::macos};
 
         let current_macos_tag = macos::Tag::try_default()?;
 
@@ -191,7 +190,11 @@ impl BottleStable {
 }
 
 impl BottleStableFile {
-    fn cache(&self, prepared_formula: &PreparedFormula, context: &Context) -> PreparedPackageCache {
+    fn temp_writer_input(
+        &self,
+        prepared_formula: &PreparedFormula,
+        context: &Context,
+    ) -> TempWriterInput {
         let id = prepared_formula.id();
 
         let version = prepared_formula.version();
@@ -211,11 +214,13 @@ impl BottleStableFile {
             },
         };
 
-        let cache_dir = context.homebrew_dirs.cache_dir();
+        let cache_dir_path = context.homebrew_dirs.cache_dir();
 
-        let symlink_location_parent = cache_dir;
+        let file_path = cache_dir_path.join("downloads").join(file_name);
 
-        prepared_formula.cache_inner(&file_name, &symlink_name, symlink_location_parent)
+        let symlink_path = cache_dir_path.join(symlink_name);
+
+        TempWriterInput::new(file_path, Some(symlink_path))
     }
 
     fn oci(&self) -> Option<PreparedFormulaOci> {

@@ -19,6 +19,7 @@ use tokio_util::task::AbortOnDropHandle;
 use self::{cask::CaskRegistry, formula::FormulaRegistry};
 use crate::{
     context::Context,
+    ext::std::path::PathExt as _,
     package::{
         Packageable as _,
         raw::{RawPackage, RawPackageable as _},
@@ -65,12 +66,12 @@ impl Registry {
         strategy: ResolutionStrategy,
     ) -> Result<Vec<ResolvedPackage>> {
         let resolved_packages = stream::iter(packages)
-            .map(async |package| -> Result<_> {
+            .map(async |package| {
                 let package = Arc::from(package);
 
                 let resolved_package = self.resolve_one(package, strategy).await?;
 
-                Ok(resolved_package)
+                anyhow::Ok(resolved_package)
             })
             .buffer_unordered(*self.context.concurrency_limit)
             .try_collect::<Vec<_>>();
@@ -153,6 +154,7 @@ trait Registrable {
 
     const JSON_URL: &str;
     const JWS_JSON_URL: &str;
+
     const TAP_MIGRATIONS_URL: &str;
     const TAP_MIGRATIONS_JWS_URL: &str;
 
@@ -166,16 +168,18 @@ trait Registrable {
         bytes: Bytes,
         context: &Context,
     ) -> Result<()> {
-        let cache = raw_package.cache(context);
+        let cache_path = raw_package.cache_path(context);
 
         let handle = task::spawn_blocking(move || {
-            fs::create_dir_all(&cache.file_location_parent)?;
+            let cache_base_path = cache_path.base()?;
 
-            let mut file = NamedTempFile::new_in(cache.file_location_parent)?;
+            fs::create_dir_all(cache_base_path)?;
+
+            let mut file = NamedTempFile::new_in(cache_base_path)?;
 
             file.write_all(&bytes)?;
 
-            file.persist(cache.file_location)?;
+            file.persist(cache_path)?;
 
             anyhow::Ok(())
         });

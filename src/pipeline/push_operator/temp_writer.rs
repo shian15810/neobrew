@@ -1,7 +1,7 @@
 use std::{
     fs,
     io::{BufWriter, Write as _},
-    os::unix::fs as unix_fs,
+    path::PathBuf,
 };
 
 use anyhow::Result;
@@ -11,25 +11,41 @@ use tokio::task;
 use tokio_util::task::AbortOnDropHandle;
 
 use super::{super::handler, PushOperator};
-use crate::package::prepared::PreparedPackageCache;
+use crate::ext::std::path::PathExt as _;
+
+pub(crate) struct TempWriterInput {
+    pub(crate) file_path: PathBuf,
+    pub(crate) symlink_path: Option<PathBuf>,
+}
+
+impl TempWriterInput {
+    pub(crate) fn new(file_path: PathBuf, symlink_path: Option<PathBuf>) -> Self {
+        Self {
+            file_path,
+            symlink_path,
+        }
+    }
+}
 
 pub(crate) struct TempWriter {
     buf_file: BufWriter<NamedTempFile>,
 
-    cache: PreparedPackageCache,
+    input: TempWriterInput,
 }
 
 impl TempWriter {
-    pub(crate) async fn create(cache: PreparedPackageCache) -> Result<Self> {
+    pub(crate) async fn create(input: TempWriterInput) -> Result<Self> {
         let handle = task::spawn_blocking(move || {
-            fs::create_dir_all(&cache.file_location_parent)?;
+            let file_base_path = input.file_path.base()?;
 
-            let file = NamedTempFile::new_in(&cache.file_location_parent)?;
+            fs::create_dir_all(file_base_path)?;
+
+            let file = NamedTempFile::new_in(file_base_path)?;
 
             let this = Self {
                 buf_file: BufWriter::new(file),
 
-                cache,
+                input,
             };
 
             anyhow::Ok(this)
@@ -44,7 +60,7 @@ impl TempWriter {
 
 impl PushOperator for TempWriter {
     type Item = Bytes;
-    type Output = WrittenTempFile;
+    type Output = TempWriterOutput;
 
     fn feed(&mut self, chunk: Self::Item) -> Result<()> {
         self.buf_file.write_all(&chunk)?;
@@ -55,19 +71,19 @@ impl PushOperator for TempWriter {
     fn flush(mut self) -> Result<Self::Output> {
         self.buf_file.flush()?;
 
-        let written_temp_file = WrittenTempFile::try_from(self)?;
+        let temp_writer_output = TempWriterOutput::try_from(self)?;
 
-        Ok(written_temp_file)
+        Ok(temp_writer_output)
     }
 }
 
-pub(crate) struct WrittenTempFile {
+pub(crate) struct TempWriterOutput {
     file: NamedTempFile,
 
-    cache: PreparedPackageCache,
+    input: TempWriterInput,
 }
 
-impl TryFrom<TempWriter> for WrittenTempFile {
+impl TryFrom<TempWriter> for TempWriterOutput {
     type Error = anyhow::Error;
 
     fn try_from(temp_writer: TempWriter) -> Result<Self, Self::Error> {
@@ -76,14 +92,14 @@ impl TryFrom<TempWriter> for WrittenTempFile {
         let this = Self {
             file,
 
-            cache: temp_writer.cache,
+            input: temp_writer.input,
         };
 
         Ok(this)
     }
 }
 
-impl handler::AtomicWriter for WrittenTempFile {
+impl handler::AtomicWriter for TempWriterOutput {
     async fn cleanup(self) -> Result<()> {
         let handle = task::spawn_blocking(move || {
             self.file.close()?;
@@ -99,17 +115,13 @@ impl handler::AtomicWriter for WrittenTempFile {
 
     async fn persist(self) -> Result<()> {
         let handle = task::spawn_blocking(move || {
-            self.file.persist(&self.cache.file_location)?;
+            self.file.persist(&self.input.file_path)?;
 
-            unix_fs::symlink(
-                self.cache.symlink_location_diff()?,
-                self.cache.symlink_location_tmp(),
-            )?;
-
-            fs::rename(
-                self.cache.symlink_location_tmp(),
-                self.cache.symlink_location,
-            )?;
+            if let Some(symlink_path) = self.input.symlink_path {
+                self.input
+                    .file_path
+                    .create_relative_symlink_atomically_at(symlink_path)?;
+            }
 
             anyhow::Ok(())
         });

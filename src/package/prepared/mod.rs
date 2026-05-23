@@ -1,23 +1,30 @@
 mod cask;
 mod formula;
 
-use std::{fs::File, io, path::PathBuf, sync::Arc};
+use std::{
+    fs::File,
+    io::{self, ErrorKind},
+    path::Path,
+    sync::Arc,
+};
 
-use anyhow::{Context as _, Result, anyhow};
+use anyhow::{Result, anyhow};
 use base16ct::HexDisplay;
 use bytes::Bytes;
 use digest_io::IoWrapper;
 use enum_dispatch::enum_dispatch;
 use futures::stream::{Stream, StreamExt as _, TryStreamExt as _};
 use oci_client::secrets::RegistryAuth;
-use pathdiff::diff_paths;
 use sha2::{Digest as _, Sha256};
 use tokio::task;
 use tokio_util::task::AbortOnDropHandle;
 
 pub(crate) use self::{cask::PreparedCask, formula::PreparedFormula};
 use super::{Packageable, resolved::ResolvedPackage};
-use crate::context::Context;
+use crate::{
+    context::Context,
+    pipeline::{pull_operator::TempPourerInput, push_operator::TempWriterInput},
+};
 
 #[enum_dispatch]
 pub(crate) enum PreparedPackage {
@@ -59,36 +66,50 @@ impl TryFrom<ResolvedPackage> for PreparedPackage {
     }
 }
 
+#[enum_dispatch(PreparedPackage)]
+pub(crate) trait PreparedPackageable: Packageable {
+    fn expected_sha256(&self) -> &str;
+
+    async fn temp_writer_input(&self, context: &Context) -> Result<TempWriterInput>;
+}
+
 impl PreparedPackage {
-    pub(crate) fn dest(&self, context: &Context) -> PreparedPackageDest {
-        let id = self.id();
+    pub(crate) async fn cache_file_sha256(&self, file_path: &Path) -> Result<Option<String>> {
+        let file_path = file_path.to_owned();
 
-        let version = self.version();
+        let handle = task::spawn_blocking(move || {
+            let mut file = match File::open(file_path) {
+                Ok(file) => file,
+                Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+                Err(err) => return Err(err)?,
+            };
 
-        let prefix_dir = context.homebrew_dirs.prefix_dir();
+            let mut hasher = IoWrapper(Sha256::new());
 
-        let dest_dir = match self {
+            io::copy(&mut file, &mut hasher)?;
+
+            anyhow::Ok(Some(hasher))
+        });
+        let handle = AbortOnDropHandle::new(handle);
+
+        let Some(hasher) = handle.await?? else {
+            return Ok(None);
+        };
+
+        let file_sha256 = hasher.0.finalize();
+        let file_sha256 = HexDisplay(&file_sha256);
+        let file_sha256 = format!("{file_sha256:x}");
+
+        Ok(Some(file_sha256))
+    }
+
+    pub(crate) fn temp_pourer_input(&self, context: &Context) -> TempPourerInput {
+        let dir_path = match self {
             Self::Formula(_) => context.homebrew_dirs.cellar_dir(),
             Self::Cask(_) => context.homebrew_dirs.caskroom_dir(),
         };
 
-        let dir_location_greatgrandparent = prefix_dir;
-
-        let dir_location_grandparent = dest_dir;
-
-        let dir_location_parent = dir_location_grandparent.join(id);
-
-        let dir_location = dir_location_parent.join(version);
-
-        PreparedPackageDest {
-            id: id.to_owned(),
-            version: version.to_owned(),
-
-            dir_location_greatgrandparent,
-            dir_location_grandparent,
-            dir_location_parent,
-            dir_location,
-        }
+        TempPourerInput::new(dir_path)
     }
 
     pub(crate) async fn stream(
@@ -128,92 +149,5 @@ impl PreparedPackage {
         };
 
         Ok(Some(stream))
-    }
-}
-
-#[expect(private_bounds)]
-#[enum_dispatch(PreparedPackage)]
-pub(crate) trait PreparedPackageable: PreparedPackageableInner {
-    async fn cache(&self, context: &Context) -> Result<PreparedPackageCache>;
-
-    fn sha256(&self) -> &str;
-}
-
-#[enum_dispatch(PreparedPackage)]
-trait PreparedPackageableInner: Packageable {
-    fn cache_inner(
-        &self,
-        file_name: &str,
-        symlink_name: &str,
-        symlink_location_parent: PathBuf,
-    ) -> PreparedPackageCache {
-        let file_location_parent = symlink_location_parent.join("downloads");
-
-        let file_location = file_location_parent.join(file_name);
-
-        let symlink_location = symlink_location_parent.join(symlink_name);
-
-        PreparedPackageCache {
-            file_location_parent,
-            file_location,
-
-            symlink_location_parent,
-            symlink_location,
-        }
-    }
-}
-
-#[derive(Clone)]
-pub(crate) struct PreparedPackageDest {
-    pub(crate) id: String,
-    pub(crate) version: String,
-
-    pub(crate) dir_location_greatgrandparent: PathBuf,
-    pub(crate) dir_location_grandparent: PathBuf,
-    pub(crate) dir_location_parent: PathBuf,
-    pub(crate) dir_location: PathBuf,
-}
-
-pub(crate) struct PreparedPackageCache {
-    pub(crate) file_location_parent: PathBuf,
-    pub(crate) file_location: PathBuf,
-
-    symlink_location_parent: PathBuf,
-    pub(crate) symlink_location: PathBuf,
-}
-
-impl PreparedPackageCache {
-    pub(crate) async fn file_sha256(&self) -> Result<String> {
-        let file_location = self.file_location.clone();
-
-        let handle = task::spawn_blocking(move || {
-            let mut file = File::open(file_location)?;
-
-            let mut hasher = IoWrapper(Sha256::new());
-
-            io::copy(&mut file, &mut hasher)?;
-
-            let file_sha256 = hasher.0.finalize();
-            let file_sha256 = HexDisplay(&file_sha256);
-            let file_sha256 = format!("{file_sha256:x}");
-
-            anyhow::Ok(file_sha256)
-        });
-        let handle = AbortOnDropHandle::new(handle);
-
-        let file_sha256 = handle.await??;
-
-        Ok(file_sha256)
-    }
-
-    pub(crate) fn symlink_location_diff(&self) -> Result<PathBuf> {
-        let symlink_location_diff = diff_paths(&self.file_location, &self.symlink_location_parent)
-            .context("Failed to diff paths")?;
-
-        Ok(symlink_location_diff)
-    }
-
-    pub(crate) fn symlink_location_tmp(&self) -> PathBuf {
-        self.symlink_location.with_extension("tmp")
     }
 }

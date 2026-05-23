@@ -1,8 +1,8 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, path::PathBuf};
 
 use serde::Deserialize;
 
-use super::{super::Packageable, RawPackageCache, RawPackageable};
+use super::{super::Packageable, RawPackageable};
 use crate::context::{Context, dirs::ProjectDirs as _};
 
 #[derive(Deserialize)]
@@ -30,20 +30,13 @@ impl RawPackageable for RawCask {
         Cow::Borrowed(version)
     }
 
-    fn cache(&self, context: &Context) -> RawPackageCache {
+    fn cache_path(&self, context: &Context) -> PathBuf {
         let id = self.id();
 
         let file_name = format!("{id}.json");
 
         let cache_dir = context.homebrew_dirs.cache_dir();
 
-        let file_location_parent = cache_dir.join("api").join("cask");
-
-        let file_location = file_location_parent.join(file_name);
-
-        RawPackageCache {
-            file_location_parent,
-            file_location,
-        }
+        cache_dir.join("api/cask").join(file_name)
     }
 }

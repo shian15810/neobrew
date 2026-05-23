@@ -5,4 +5,4 @@ mod relocation;
 mod semver;
 mod tag;
 
-pub(crate) use self::{codesign::Codesign, relocation::Relocation, tag::Tag};
+pub(crate) use self::{relocation::Relocation, tag::Tag};

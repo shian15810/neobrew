@@ -1,11 +1,12 @@
 use std::{cmp::Reverse, collections::HashMap, fs, io::Write as _, path::Path};
 
-use anyhow::{Context as _, Result};
+use anyhow::Result;
 use arwen::elf::rewriter::Writer;
+use itertools::Itertools as _;
 use tempfile::NamedTempFile;
 
 use super::elf::Elf;
-use crate::context::dirs::HomebrewDirs;
+use crate::{context::dirs::HomebrewDirs, ext::std::path::PathExt as _};
 
 pub(crate) struct Relocation {
     replacement_pairs: [(&'static str, String); 4],
@@ -42,9 +43,7 @@ impl From<&HomebrewDirs> for Relocation {
 }
 
 impl Relocation {
-    pub(crate) fn patch_file(&self, path: impl AsRef<Path>) -> Result<()> {
-        let path = path.as_ref();
-
+    pub(crate) fn patch_file(&self, path: &Path) -> Result<()> {
         let bytes = fs::read(path)?;
 
         let has_magic_number = Elf::has_magic_number(&bytes)?;
@@ -63,11 +62,9 @@ impl Relocation {
 
         let permissions = metadata.permissions();
 
-        let path_parent = path
-            .parent()
-            .context("Relocating ELF binary has no parent")?;
+        let base_path = path.base()?;
 
-        let mut file = NamedTempFile::new_in(path_parent)?;
+        let mut file = NamedTempFile::new_in(base_path)?;
 
         file.write_all(&replaced_bytes)?;
 
@@ -87,8 +84,7 @@ impl Relocation {
             let new_runpath = old_runpath
                 .split(':')
                 .map(|component| self.replace_text(component))
-                .collect::<Vec<_>>();
-            let new_runpath = new_runpath.join(":");
+                .join(":");
 
             if new_runpath != old_runpath {
                 let new_runpath = new_runpath.into_bytes();
