@@ -1,16 +1,15 @@
 use std::{
-    fs,
     path::Path,
     sync::{Arc, LazyLock},
 };
 
 use anyhow::Result;
-use tokio::task;
-use tokio_util::task::AbortOnDropHandle;
+use async_recursion::async_recursion;
+use tokio::fs;
 
 use crate::{
     context::Context,
-    ext::std::path::PathExt as _,
+    ext::tokio::path::PathExt as _,
     package::{Packageable as _, fetched::FetchedFormula},
 };
 
@@ -43,18 +42,11 @@ impl Linker {
     pub(crate) async fn create(context: Arc<Context>) -> Result<Self> {
         let prefix_dir_path = context.homebrew_dirs.prefix_dir();
 
-        let handle = task::spawn_blocking(move || {
-            for must_exist_dir_name in MUST_EXIST_DIR_NAMES.as_slice() {
-                let must_exist_dir_path = prefix_dir_path.join(must_exist_dir_name);
+        for must_exist_dir_name in MUST_EXIST_DIR_NAMES.as_slice() {
+            let must_exist_dir_path = prefix_dir_path.join(must_exist_dir_name);
 
-                fs::create_dir_all(must_exist_dir_path)?;
-            }
-
-            anyhow::Ok(())
-        });
-        let handle = AbortOnDropHandle::new(handle);
-
-        handle.await??;
+            fs::create_dir_all(must_exist_dir_path).await?;
+        }
 
         let this = Self {
             context,
@@ -72,14 +64,9 @@ impl Linker {
 
         let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version);
 
-        let handle = task::spawn_blocking(move || {
-            keg_dir_path.create_relative_symlink_atomically_at(opt_prefix_symlink_path)?;
-
-            anyhow::Ok(())
-        });
-        let handle = AbortOnDropHandle::new(handle);
-
-        handle.await??;
+        keg_dir_path
+            .create_relative_symlink_atomically_at(opt_prefix_symlink_path)
+            .await?;
 
         Ok(())
     }
@@ -96,57 +83,56 @@ impl Linker {
         let linked_keg_prefix_symlink_path =
             self.context.homebrew_dirs.linked_keg_prefix_symlink(id);
 
-        let handle = task::spawn_blocking(move || {
-            for keg_link_dir_name in KEG_LINK_DIR_NAMES {
-                let keg_link_dir_path = keg_dir_path.join(keg_link_dir_name);
+        for keg_link_dir_name in KEG_LINK_DIR_NAMES {
+            let keg_link_dir_path = keg_dir_path.join(keg_link_dir_name);
 
-                if !keg_link_dir_path.try_exists()? {
-                    continue;
-                }
-
-                let prefix_link_dir_path = prefix_dir_path.join(keg_link_dir_name);
-
-                let should_skip_link_dir = SKIP_LINK_DIR_NAMES.contains(keg_link_dir_name);
-
-                Self::link_dir(
-                    &keg_link_dir_path,
-                    &prefix_link_dir_path,
-                    should_skip_link_dir,
-                )?;
+            if !keg_link_dir_path.try_exists()? {
+                continue;
             }
 
-            keg_dir_path.create_relative_symlink_atomically_at(linked_keg_prefix_symlink_path)?;
+            let prefix_link_dir_path = prefix_dir_path.join(keg_link_dir_name);
 
-            anyhow::Ok(())
-        });
-        let handle = AbortOnDropHandle::new(handle);
+            let should_skip_link_dir = SKIP_LINK_DIR_NAMES.contains(keg_link_dir_name);
 
-        handle.await??;
+            Self::link_dir(
+                &keg_link_dir_path,
+                &prefix_link_dir_path,
+                should_skip_link_dir,
+            )
+            .await?;
+        }
+
+        keg_dir_path
+            .create_relative_symlink_atomically_at(linked_keg_prefix_symlink_path)
+            .await?;
 
         Ok(())
     }
 
-    fn link_dir(src_dir_path: &Path, dest_dir_path: &Path, should_skip: bool) -> Result<()> {
-        fs::create_dir_all(dest_dir_path)?;
+    #[async_recursion]
+    async fn link_dir(src_dir_path: &Path, dest_dir_path: &Path, should_skip: bool) -> Result<()> {
+        fs::create_dir_all(dest_dir_path).await?;
 
-        for entry in fs::read_dir(src_dir_path)? {
-            let entry = entry?;
+        let mut entries = fs::read_dir(src_dir_path).await?;
 
+        while let Some(entry) = entries.next_entry().await? {
             let src_path = entry.path();
 
             let dest_path = dest_dir_path.join(entry.file_name());
 
-            if src_path.is_dir() {
+            if src_path.is_dir_nofollow().await? {
                 if should_skip {
                     continue;
                 }
 
-                Self::link_dir(&src_path, &dest_path, false)?;
+                Self::link_dir(&src_path, &dest_path, false).await?;
 
                 continue;
             }
 
-            src_path.create_relative_symlink_atomically_at(dest_path)?;
+            src_path
+                .create_relative_symlink_atomically_at(dest_path)
+                .await?;
         }
 
         Ok(())

@@ -1,13 +1,14 @@
-use std::{fs, io::BufRead, path::PathBuf};
+use std::{io::BufRead, path::PathBuf};
 
 use anyhow::Result;
 use flate2::bufread::GzDecoder;
 use tar::Archive;
 use tempfile::TempDir;
-use tokio::task;
+use tokio::{fs, task};
 use tokio_util::task::AbortOnDropHandle;
 
 use super::{super::handler, PullOperator};
+use crate::ext::tokio::path::PathExt as _;
 
 pub(crate) struct TempPourerInput {
     pub(crate) dir_path: PathBuf,
@@ -37,7 +38,7 @@ impl PullOperator for TempPourer {
     type Output = TempPourerOutput;
 
     fn from_reader(self, reader: impl BufRead) -> Result<Self::Output> {
-        fs::create_dir_all(&self.input.dir_path)?;
+        std::fs::create_dir_all(&self.input.dir_path)?;
 
         let dir = TempDir::new_in(&self.input.dir_path)?;
 
@@ -88,32 +89,25 @@ impl handler::AtomicWriter for TempPourerOutput {
 
         let dest_dir_path = self.input.dir_path;
 
-        let handle = task::spawn_blocking(move || {
-            for entry in fs::read_dir(&src_dir_path)? {
-                let entry = entry?;
+        let mut entries = fs::read_dir(&src_dir_path).await?;
 
-                let src_path = entry.path();
+        while let Some(entry) = entries.next_entry().await? {
+            let src_path = entry.path();
 
-                let dest_path = dest_dir_path.join(entry.file_name());
+            let dest_path = dest_dir_path.join(entry.file_name());
 
-                if !src_path.is_dir() {
-                    continue;
-                }
-
-                if dest_path.is_dir() {
-                    fs::remove_dir_all(&dest_path)?;
-                }
-
-                fs::rename(src_path, dest_path)?;
+            if !src_path.is_dir_nofollow().await? {
+                continue;
             }
 
-            src_dir_path.close()?;
+            if dest_path.is_dir_nofollow().await? {
+                fs::remove_dir_all(&dest_path).await?;
+            }
 
-            anyhow::Ok(())
-        });
-        let handle = AbortOnDropHandle::new(handle);
+            fs::rename(src_path, dest_path).await?;
+        }
 
-        handle.await??;
+        src_dir_path.close()?;
 
         Ok(())
     }

@@ -6,13 +6,13 @@ use clap::Args;
 use frunk::hlist_pat;
 use futures::stream::Stream;
 use indoc::formatdoc;
-use tokio::{fs::File as AsyncFile, task::JoinSet};
+use tokio::{fs::File, task::JoinSet};
 use tokio_util::io::ReaderStream;
 
 use super::{Resolution, Runner};
 use crate::{
     context::Context,
-    ext::core::result::ResultExt as _,
+    ext::{core::result::ResultExt as _, tokio::path::PathExt as _},
     package::{
         Packageable as _,
         fetched::FetchedPackage,
@@ -125,7 +125,7 @@ impl Install {
 
         let keg_dir_path = context.homebrew_dirs.keg_dir(id, version);
 
-        if keg_dir_path.is_dir() {
+        if keg_dir_path.is_dir_nofollow().await? {
             let fetched_package = FetchedPackage::from(prepared_package);
 
             return Ok(Some(fetched_package));
@@ -199,7 +199,7 @@ impl Install {
         temp_pourer_input: TempPourerInput,
         context: Arc<Context>,
     ) -> Result<Option<()>> {
-        let cache_file = match AsyncFile::open(temp_writer_input.file_path).await {
+        let cache_file = match File::open(temp_writer_input.file_path).await {
             Ok(cache_file) => cache_file,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
             Err(err) => return Err(err)?,
