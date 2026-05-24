@@ -21,13 +21,13 @@ impl PushOperator for Hasher {
     type Item = Bytes;
     type Output = String;
 
-    fn feed(&mut self, chunk: Self::Item) -> Result<()> {
+    async fn feed(&mut self, chunk: Self::Item) -> Result<()> {
         self.sha256.update(chunk);
 
         Ok(())
     }
 
-    fn flush(self) -> Result<Self::Output> {
+    async fn flush(self) -> Result<Self::Output> {
         let hashed_sha256 = self.sha256.finalize();
         let hashed_sha256 = HexDisplay(&hashed_sha256);
         let hashed_sha256 = format!("{hashed_sha256:x}");

@@ -17,12 +17,14 @@ pub(super) struct NeobrewMetadata {
 
 impl NeobrewMetadata {
     const RERUN_IF_CHANGED: &[&str] = &["Cargo.toml"];
+
     const RERUN_IF_ENV_CHANGED: &[&str] = &[];
 
     const ENV_PREFIX: &str = "CARGO_PKG_METADATA_NEOBREW_";
 
     pub(super) fn setup() -> Result<()> {
         Self::rerun_if_changed();
+
         Self::rerun_if_env_changed();
 
         Self::set_rustc_env()?;

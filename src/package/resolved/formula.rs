@@ -15,6 +15,7 @@ pub(crate) struct ResolvedFormula {
     revision: u64,
     pub(in super::super) bottle: Bottle,
     dependencies: Vec<Arc<Self>>,
+    pub(in super::super) keg_only: bool,
 }
 
 impl From<(RawFormula, Vec<Arc<Self>>)> for ResolvedFormula {
@@ -25,6 +26,7 @@ impl From<(RawFormula, Vec<Arc<Self>>)> for ResolvedFormula {
             revision: raw_formula.revision,
             bottle: raw_formula.bottle,
             dependencies: this_dependencies,
+            keg_only: raw_formula.keg_only,
         }
     }
 }

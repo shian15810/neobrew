@@ -63,7 +63,7 @@ impl<
         sink::Fanout<Si, sink::SinkErrInto<PollSender<Item>, Item, anyhow::Error>>,
         HCons<AbortOnDropHandle<Result<Op::Output>>, Handles>,
     > {
-        let (sink, handle) = operator.spawn_blocking(&self.context);
+        let (sink, handle) = operator.launch(&self.context);
 
         let sink = sink.sink_err_into();
         let sink = self.sink.fanout(sink);
@@ -144,7 +144,7 @@ impl<Item, Handles: Collect> Collect for HCons<AbortOnDropHandle<Result<Item>>, 
 pub(crate) trait Operator<Item, _Marker> {
     type Output;
 
-    fn spawn_blocking(
+    fn launch(
         self,
         context: &Context,
     ) -> (PollSender<Item>, AbortOnDropHandle<Result<Self::Output>>);

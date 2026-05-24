@@ -8,17 +8,17 @@ impl MachO {
     const FAT_MAGIC_64: u32 = 0xcafe_babf;
     const FAT_CIGAM_64: u32 = 0xbfba_feca;
 
-    const MH_MAGIC: u32 = 0xfeed_face;
-    const MH_CIGAM: u32 = 0xcefa_edfe;
-    const MH_MAGIC_64: u32 = 0xfeed_facf;
-    const MH_CIGAM_64: u32 = 0xcffa_edfe;
-
     const BE_MAGIC_NUMBERS: &[u32] = &[
         Self::FAT_MAGIC,
         Self::FAT_MAGIC_64,
         Self::MH_MAGIC,
         Self::MH_MAGIC_64,
     ];
+
+    const MH_MAGIC: u32 = 0xfeed_face;
+    const MH_CIGAM: u32 = 0xcefa_edfe;
+    const MH_MAGIC_64: u32 = 0xfeed_facf;
+    const MH_CIGAM_64: u32 = 0xcffa_edfe;
 
     const LE_MAGIC_NUMBERS: &[u32] = &[
         Self::FAT_CIGAM,

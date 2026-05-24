@@ -1,131 +1,103 @@
-use std::{
-    ffi::OsStr,
-    fs::{self, DirEntry},
-    io::BufRead,
-    path::Path,
-};
+use std::path::PathBuf;
 
-use anyhow::{Result, anyhow};
-use flate2::bufread::GzDecoder;
-use itertools::Itertools as _;
-use tar::Archive;
+use anyhow::Result;
+use async_compression::tokio::bufread::GzipDecoder;
 use tempfile::TempDir;
-use tokio::task;
-use tokio_util::task::AbortOnDropHandle;
+use tokio::{
+    fs,
+    io::{AsyncRead, BufReader},
+};
+use tokio_tar::Archive;
 
 use super::{super::handler, PullOperator};
-use crate::package::prepared::PreparedPackageDest;
+use crate::ext::tokio::path::PathExt as _;
 
-pub(crate) struct TempPourer {
-    dest: PreparedPackageDest,
+pub(crate) struct TempPourerInput {
+    pub(crate) dir_path: PathBuf,
 }
 
-impl From<PreparedPackageDest> for TempPourer {
-    fn from(dest: PreparedPackageDest) -> Self {
+impl TempPourerInput {
+    pub(crate) fn new(dir_path: PathBuf) -> Self {
         Self {
-            dest,
+            dir_path,
+        }
+    }
+}
+
+pub(crate) struct TempPourer {
+    input: TempPourerInput,
+}
+
+impl TempPourer {
+    pub(crate) fn create(input: TempPourerInput) -> Self {
+        Self {
+            input,
         }
     }
 }
 
 impl PullOperator for TempPourer {
-    type Output = PouredTempDest;
+    type Output = TempPourerOutput;
 
-    fn from_reader(self, reader: impl BufRead) -> Result<Self::Output> {
-        fs::create_dir_all(&self.dest.dir_location_grandparent)?;
+    async fn from_reader(self, reader: impl AsyncRead + Unpin + Send) -> Result<Self::Output> {
+        fs::create_dir_all(&self.input.dir_path).await?;
 
-        let dir = TempDir::new_in(&self.dest.dir_location_grandparent)?;
+        let dir = TempDir::new_in(&self.input.dir_path)?;
 
-        let gz_decoder = GzDecoder::new(reader);
+        let buf_reader = BufReader::new(reader);
+
+        let gz_decoder = GzipDecoder::new(buf_reader);
 
         let mut archive = Archive::new(gz_decoder);
 
-        archive.unpack(dir.path())?;
+        archive.unpack(dir.path()).await?;
 
-        let poured_temp_dest = PouredTempDest::from((dir, self));
-
-        Ok(poured_temp_dest)
-    }
-}
-
-pub(crate) struct PouredTempDest {
-    dir: TempDir,
-
-    dest: PreparedPackageDest,
-}
-
-impl From<(TempDir, TempPourer)> for PouredTempDest {
-    fn from((dir, temp_pourer): (TempDir, TempPourer)) -> Self {
-        Self {
+        let output = TempPourerOutput {
+            input: self.input,
             dir,
+        };
 
-            dest: temp_pourer.dest,
-        }
+        Ok(output)
     }
 }
 
-impl handler::AtomicWriter for PouredTempDest {
+pub(crate) struct TempPourerOutput {
+    input: TempPourerInput,
+    dir: TempDir,
+}
+
+impl handler::AtomicWriter for TempPourerOutput {
     async fn cleanup(self) -> Result<()> {
-        let handle = task::spawn_blocking(move || {
-            self.dir.close()?;
-
-            anyhow::Ok(())
-        });
-        let handle = AbortOnDropHandle::new(handle);
-
-        handle.await??;
+        self.dir.close()?;
 
         Ok(())
     }
 
     async fn persist(self) -> Result<()> {
-        let handle = task::spawn_blocking(move || {
-            if self.dest.dir_location_parent.is_dir() {
-                fs::remove_dir_all(&self.dest.dir_location_parent)?;
+        let src_dir_path = self.dir.path();
+
+        let dest_dir_path = self.input.dir_path;
+
+        let mut entries = fs::read_dir(&src_dir_path).await?;
+
+        while let Some(entry) = entries.next_entry().await? {
+            let src_path = entry.path();
+
+            let dest_path = dest_dir_path.join(entry.file_name());
+
+            if !src_path.is_dir_exists_nofollow().await? {
+                continue;
             }
 
-            fs::rename(self.dir_entry()?.path(), self.dest.dir_location_parent)?;
+            if dest_path.is_dir_exists_nofollow().await? {
+                fs::remove_dir_all(&dest_path).await?;
+            }
 
-            anyhow::Ok(())
-        });
-        let handle = AbortOnDropHandle::new(handle);
-
-        handle.await??;
-
-        Ok(())
-    }
-}
-
-impl PouredTempDest {
-    fn dir_entry(&self) -> Result<DirEntry> {
-        let entry = Self::exactly_one_dir_entry(self.dir.path(), &self.dest.id)?;
-
-        Self::exactly_one_dir_entry(entry.path(), &self.dest.version)?;
-
-        Ok(entry)
-    }
-
-    fn exactly_one_dir_entry(
-        path: impl AsRef<Path>,
-        expected_name: impl AsRef<OsStr>,
-    ) -> Result<DirEntry> {
-        let expected_name = expected_name.as_ref();
-
-        let entry = fs::read_dir(path)?.exactly_one()??;
-
-        let actual_name = entry.file_name();
-
-        if entry.path().is_dir() && actual_name == expected_name {
-            return Ok(entry);
+            fs::rename(src_path, dest_path).await?;
         }
 
-        let actual_name = actual_name.display();
+        self.dir.close()?;
 
-        let expected_name = expected_name.display();
-
-        let err =
-            anyhow!(r#"Expected a directory named "{expected_name}" but found "{actual_name}""#);
-
-        Err(err)
+        Ok(())
     }
 }

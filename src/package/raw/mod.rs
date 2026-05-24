@@ -5,7 +5,13 @@ use std::{borrow::Cow, path::PathBuf};
 
 use enum_dispatch::enum_dispatch;
 
-pub(super) use self::formula::{Bottle, BottleStable, BottleStableFile, Versions};
+pub(super) use self::formula::{
+    Bottle,
+    BottleStable,
+    BottleStableFile,
+    BottleStableFileCellar,
+    Versions,
+};
 pub(crate) use self::{cask::RawCask, formula::RawFormula};
 use super::Packageable;
 use crate::context::Context;
@@ -21,10 +27,5 @@ pub(crate) enum RawPackage {
 pub(crate) trait RawPackageable: Packageable {
     fn version(&self) -> Cow<'_, str>;
 
-    fn cache(&self, context: &Context) -> RawPackageCache;
-}
-
-pub(crate) struct RawPackageCache {
-    pub(crate) file_location_parent: PathBuf,
-    pub(crate) file_location: PathBuf,
+    fn cache_path(&self, context: &Context) -> PathBuf;
 }

@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{io::ErrorKind, sync::Arc};
 
 use anyhow::{Result, anyhow};
 use bytes::Bytes;
@@ -6,26 +6,27 @@ use clap::Args;
 use frunk::hlist_pat;
 use futures::stream::Stream;
 use indoc::formatdoc;
-use tokio::{fs::File as AsyncFile, task::JoinSet};
+use tokio::{fs::File, task::JoinSet};
 use tokio_util::io::ReaderStream;
 
 use super::{Resolution, Runner};
 use crate::{
     context::Context,
-    ext::ResultExt as _,
+    ext::{core::result::ResultExt as _, tokio::path::PathExt as _},
     package::{
         Packageable as _,
         fetched::FetchedPackage,
-        prepared::{
-            PreparedPackage,
-            PreparedPackageCache,
-            PreparedPackageDest,
-            PreparedPackageable as _,
-        },
+        prepared::{PreparedPackage, PreparedPackageable as _},
         resolved::ResolvedPackage,
     },
-    pipeline::{Pipeline, handler::AtomicWriter as _, pull_operator, push_operator},
+    pipeline::{
+        Pipeline,
+        handler::AtomicWriter as _,
+        pull_operator::{self, TempPourerInput},
+        push_operator::{self, TempWriterInput},
+    },
     registry::Registry,
+    utils::{Linker, Relocation},
 };
 
 #[derive(Args)]
@@ -47,6 +48,12 @@ impl Runner for Install {
 
         let prepared_packages = Self::prepare_packages(resolved_packages)?;
 
+        let relocation = Relocation::from(&context.homebrew_dirs);
+        let relocation = Arc::new(relocation);
+
+        let linker = Linker::create(Arc::clone(&context)).await?;
+        let linker = Arc::new(linker);
+
         let mut set = JoinSet::new();
 
         for prepared_package in prepared_packages {
@@ -58,6 +65,10 @@ impl Runner for Install {
 
             let context = Arc::clone(&context);
 
+            let relocation = Arc::clone(&relocation);
+
+            let linker = Arc::clone(&linker);
+
             set.spawn(async move {
                 let fetched_package =
                     Self::fetch_package(prepared_package, Arc::clone(&context)).await?;
@@ -66,7 +77,8 @@ impl Runner for Install {
                     return Ok(());
                 };
 
-                let () = Self::install_package(fetched_package, &context)?;
+                let () =
+                    Self::install_package(fetched_package, relocation, &linker, &context).await?;
 
                 anyhow::Ok(())
             });
@@ -117,28 +129,47 @@ impl Install {
 
         let version = prepared_package.version();
 
-        let dest = prepared_package.dest(&context);
+        let keg_dir_path = context.homebrew_dirs.keg_dir(id, version);
 
-        #[expect(clippy::disallowed_macros)]
-        if dest.dir_location.is_dir() {
-            todo!();
+        if keg_dir_path.is_dir_exists_nofollow().await? {
+            let fetched_package = FetchedPackage::from(prepared_package);
+
+            return Ok(Some(fetched_package));
         }
 
-        let cache = prepared_package.cache(&context).await?;
+        let expected_sha256 = prepared_package.expected_sha256();
 
-        let sha256 = prepared_package.sha256();
+        let temp_writer_input = prepared_package.temp_writer_input(&context).await?;
 
-        if cache.symlink_location.is_symlink()
-            && cache.file_location.is_file()
-            && cache.symlink_location.canonicalize()? == cache.file_location.canonicalize()?
+        let cache_file_path = &temp_writer_input.file_path;
+
+        if let Some(cache_symlink_path) = &temp_writer_input.symlink_path
+            && cache_symlink_path.is_symlink_exists_nofollow().await?
+            && cache_file_path.is_file_exists_nofollow().await?
+            && cache_symlink_path.canonicalize()? == cache_file_path.canonicalize()?
         {
-            let cache_file_sha256 = cache.file_sha256().await?;
+            let cache_file_sha256 = prepared_package.cache_file_sha256(cache_file_path).await?;
 
-            if cache_file_sha256 == sha256 {
-                Self::fetch_package_from_cache(id, version, dest.clone(), cache, sha256, context)
-                    .await?;
+            if let Some(cache_file_sha256) = cache_file_sha256
+                && cache_file_sha256 == expected_sha256
+            {
+                let temp_pourer_input = prepared_package.temp_pourer_input(&context);
 
-                let fetched_package = FetchedPackage::from((prepared_package, dest));
+                let fetch_package_from_cache = Self::fetch_package_from_cache(
+                    id,
+                    version,
+                    expected_sha256,
+                    temp_writer_input,
+                    temp_pourer_input,
+                    context,
+                )
+                .await?;
+
+                let Some(()) = fetch_package_from_cache else {
+                    return Ok(None);
+                };
+
+                let fetched_package = FetchedPackage::from(prepared_package);
 
                 return Ok(Some(fetched_package));
             }
@@ -148,10 +179,20 @@ impl Install {
             return Ok(None);
         };
 
-        Self::fetch_package_from_url(id, version, dest.clone(), cache, sha256, stream, context)
-            .await?;
+        let temp_pourer_input = prepared_package.temp_pourer_input(&context);
 
-        let fetched_package = FetchedPackage::from((prepared_package, dest));
+        Self::fetch_package_from_url(
+            id,
+            version,
+            expected_sha256,
+            temp_writer_input,
+            temp_pourer_input,
+            stream,
+            context,
+        )
+        .await?;
+
+        let fetched_package = FetchedPackage::from(prepared_package);
 
         Ok(Some(fetched_package))
     }
@@ -159,84 +200,88 @@ impl Install {
     async fn fetch_package_from_cache(
         id: &str,
         version: &str,
-        dest: PreparedPackageDest,
-        cache: PreparedPackageCache,
-        sha256: &str,
+        expected_sha256: &str,
+        temp_writer_input: TempWriterInput,
+        temp_pourer_input: TempPourerInput,
         context: Arc<Context>,
-    ) -> Result<()> {
-        let cache_file = AsyncFile::open(cache.file_location).await?;
+    ) -> Result<Option<()>> {
+        let cache_file = match File::open(temp_writer_input.file_path).await {
+            Ok(cache_file) => cache_file,
+            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Err(err)?,
+        };
 
         let stream = ReaderStream::new(cache_file);
 
-        let temp_pourer = pull_operator::TempPourer::from(dest);
-
         let hasher = push_operator::Hasher::new();
 
-        let hlist_pat![poured_temp_dest, hashed_sha256] = Pipeline::new(stream, context)
-            .fanout(temp_pourer)
+        let temp_pourer = pull_operator::TempPourer::create(temp_pourer_input);
+
+        let hlist_pat![hashed_sha256, temp_pourer_output] = Pipeline::new(stream, context)
             .fanout(hasher)
+            .fanout(temp_pourer)
             .run_parallel()
             .await?;
 
-        if hashed_sha256 != sha256 {
-            poured_temp_dest.cleanup().await?;
+        if hashed_sha256 != expected_sha256 {
+            temp_pourer_output.cleanup().await?;
 
             let err = Self::fetch_package_err_of_hashed_sha256_mismatch(
                 id,
                 version,
                 &hashed_sha256,
-                sha256,
+                expected_sha256,
             );
 
             return Err(err);
         }
 
-        poured_temp_dest.persist().await?;
+        temp_pourer_output.persist().await?;
 
-        Ok(())
+        Ok(Some(()))
     }
 
     async fn fetch_package_from_url(
         id: &str,
         version: &str,
-        dest: PreparedPackageDest,
-        cache: PreparedPackageCache,
-        sha256: &str,
+        expected_sha256: &str,
+        temp_writer_input: TempWriterInput,
+        temp_pourer_input: TempPourerInput,
         stream: impl Stream<Item = Result<Bytes>> + Send + 'static,
         context: Arc<Context>,
     ) -> Result<()> {
-        let temp_pourer = pull_operator::TempPourer::from(dest);
-
-        let temp_writer = push_operator::TempWriter::create(cache).await?;
-
         let hasher = push_operator::Hasher::new();
 
-        let hlist_pat![poured_temp_dest, written_temp_cache, hashed_sha256] =
+        let temp_writer = push_operator::TempWriter::create(temp_writer_input).await?;
+
+        let temp_pourer = pull_operator::TempPourer::create(temp_pourer_input);
+
+        let hlist_pat![hashed_sha256, temp_writer_output, temp_pourer_output] =
             Pipeline::new(stream, context)
-                .fanout(temp_pourer)
-                .fanout(temp_writer)
                 .fanout(hasher)
+                .fanout(temp_writer)
+                .fanout(temp_pourer)
                 .run_parallel()
                 .await?;
 
-        if hashed_sha256 != sha256 {
-            poured_temp_dest.cleanup().await?;
+        if hashed_sha256 != expected_sha256 {
+            temp_writer_output.cleanup().await?;
 
-            written_temp_cache.cleanup().await?;
+            temp_pourer_output.cleanup().await?;
 
             let err = Self::fetch_package_err_of_hashed_sha256_mismatch(
                 id,
                 version,
                 &hashed_sha256,
-                sha256,
+                expected_sha256,
             );
 
             return Err(err);
         }
 
-        poured_temp_dest.persist().await?;
+        temp_writer_output.persist().await?;
 
-        written_temp_cache.persist().await?;
+        temp_pourer_output.persist().await?;
 
         Ok(())
     }
@@ -250,22 +295,26 @@ impl Install {
         anyhow!(formatdoc! {r#"
             SHA-256 mismatch detected for package "{id}" of version "{version}":
 
-            Actual  : "{actual}"
-            Expected: "{expected}""#,
+                - Actual    :   "{actual}"
+                - Expected  :   "{expected}""#,
         })
     }
 
-    fn install_package(fetched_package: FetchedPackage, context: &Context) -> Result<()> {
+    async fn install_package(
+        fetched_package: FetchedPackage,
+        relocation: Arc<Relocation>,
+        linker: &Linker,
+        context: &Context,
+    ) -> Result<()> {
         match fetched_package {
             FetchedPackage::Formula(fetched_formula) => {
-                fetched_formula.relocate_keg(context)?;
+                fetched_formula.relocate(relocation, context).await?;
+
+                fetched_formula.link(linker).await?;
 
                 Ok(())
             },
-            #[expect(clippy::disallowed_macros)]
-            FetchedPackage::Cask(_fetched_cask) => {
-                todo!();
-            },
+            FetchedPackage::Cask(_fetched_cask) => Ok(()),
         }
     }
 }

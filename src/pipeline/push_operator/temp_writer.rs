@@ -1,42 +1,53 @@
-use std::{
-    fs,
-    io::{BufWriter, Write as _},
-    os::unix::fs as unix_fs,
-};
+use std::path::PathBuf;
 
 use anyhow::Result;
 use bytes::Bytes;
 use tempfile::NamedTempFile;
-use tokio::task;
-use tokio_util::task::AbortOnDropHandle;
+use tokio::{
+    fs::{self, File, OpenOptions},
+    io::{AsyncWriteExt as _, BufWriter},
+};
 
 use super::{super::handler, PushOperator};
-use crate::package::prepared::PreparedPackageCache;
+use crate::ext::{std::path::PathExt as _, tokio::path::PathExt as _};
+
+pub(crate) struct TempWriterInput {
+    pub(crate) file_path: PathBuf,
+    pub(crate) symlink_path: Option<PathBuf>,
+}
+
+impl TempWriterInput {
+    pub(crate) fn new(file_path: PathBuf, symlink_path: Option<PathBuf>) -> Self {
+        Self {
+            file_path,
+            symlink_path,
+        }
+    }
+}
 
 pub(crate) struct TempWriter {
-    buf_file: BufWriter<NamedTempFile>,
-
-    cache: PreparedPackageCache,
+    input: TempWriterInput,
+    file: NamedTempFile,
+    buf_file: BufWriter<File>,
 }
 
 impl TempWriter {
-    pub(crate) async fn create(cache: PreparedPackageCache) -> Result<Self> {
-        let handle = task::spawn_blocking(move || {
-            fs::create_dir_all(&cache.file_location_parent)?;
+    pub(crate) async fn create(input: TempWriterInput) -> Result<Self> {
+        let file_base_path = input.file_path.base()?;
 
-            let file = NamedTempFile::new_in(&cache.file_location_parent)?;
+        fs::create_dir_all(file_base_path).await?;
 
-            let this = Self {
-                buf_file: BufWriter::new(file),
+        let file = NamedTempFile::new_in(file_base_path)?;
 
-                cache,
-            };
+        let async_file = OpenOptions::new().write(true).open(file.path()).await?;
 
-            anyhow::Ok(this)
-        });
-        let handle = AbortOnDropHandle::new(handle);
+        let buf_file = BufWriter::new(async_file);
 
-        let this = handle.await??;
+        let this = Self {
+            input,
+            file,
+            buf_file,
+        };
 
         Ok(this)
     }
@@ -44,78 +55,47 @@ impl TempWriter {
 
 impl PushOperator for TempWriter {
     type Item = Bytes;
-    type Output = WrittenTempFile;
+    type Output = TempWriterOutput;
 
-    fn feed(&mut self, chunk: Self::Item) -> Result<()> {
-        self.buf_file.write_all(&chunk)?;
+    async fn feed(&mut self, chunk: Self::Item) -> Result<()> {
+        self.buf_file.write_all(&chunk).await?;
 
         Ok(())
     }
 
-    fn flush(mut self) -> Result<Self::Output> {
-        self.buf_file.flush()?;
+    async fn flush(mut self) -> Result<Self::Output> {
+        self.buf_file.shutdown().await?;
 
-        let written_temp_file = WrittenTempFile::try_from(self)?;
-
-        Ok(written_temp_file)
-    }
-}
-
-pub(crate) struct WrittenTempFile {
-    file: NamedTempFile,
-
-    cache: PreparedPackageCache,
-}
-
-impl TryFrom<TempWriter> for WrittenTempFile {
-    type Error = anyhow::Error;
-
-    fn try_from(temp_writer: TempWriter) -> Result<Self, Self::Error> {
-        let file = temp_writer.buf_file.into_inner()?;
-
-        let this = Self {
-            file,
-
-            cache: temp_writer.cache,
+        let output = TempWriterOutput {
+            input: self.input,
+            file: self.file,
         };
 
-        Ok(this)
+        Ok(output)
     }
 }
 
-impl handler::AtomicWriter for WrittenTempFile {
+pub(crate) struct TempWriterOutput {
+    input: TempWriterInput,
+    file: NamedTempFile,
+}
+
+impl handler::AtomicWriter for TempWriterOutput {
     async fn cleanup(self) -> Result<()> {
-        let handle = task::spawn_blocking(move || {
-            self.file.close()?;
-
-            anyhow::Ok(())
-        });
-        let handle = AbortOnDropHandle::new(handle);
-
-        handle.await??;
+        self.file.close()?;
 
         Ok(())
     }
 
     async fn persist(self) -> Result<()> {
-        let handle = task::spawn_blocking(move || {
-            self.file.persist(&self.cache.file_location)?;
+        self.file.persist(&self.input.file_path)?;
 
-            unix_fs::symlink(
-                self.cache.symlink_location_diff()?,
-                self.cache.symlink_location_tmp(),
-            )?;
-
-            fs::rename(
-                self.cache.symlink_location_tmp(),
-                self.cache.symlink_location,
-            )?;
-
-            anyhow::Ok(())
-        });
-        let handle = AbortOnDropHandle::new(handle);
-
-        handle.await??;
+        if let Some(symlink_path) = self.input.symlink_path {
+            self.input
+                .file_path
+                .create_relative_symlink_atomically_at(symlink_path)
+                .await?;
+        }
 
         Ok(())
     }

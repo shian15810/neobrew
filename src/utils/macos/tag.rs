@@ -93,9 +93,10 @@ impl PartialOrd for Tag {
 
 impl Ord for Tag {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.architecture
-            .to_string()
-            .cmp(&other.architecture.to_string())
-            .then_with(|| self.codename.cmp(&other.codename))
+        self.codename.cmp(&other.codename).then_with(|| {
+            self.architecture
+                .to_string()
+                .cmp(&other.architecture.to_string())
+        })
     }
 }

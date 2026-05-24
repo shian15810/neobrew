@@ -1,24 +1,15 @@
-use std::path::PathBuf;
-
-use super::super::{
-    Packageable,
-    prepared::{PreparedCask, PreparedPackageDest},
-};
+use super::super::{Packageable, prepared::PreparedCask};
 
 pub(crate) struct FetchedCask {
     token: String,
     version: String,
-    prefix_dir: PathBuf,
-    caskroom_dir: PathBuf,
 }
 
-impl From<(PreparedCask, PreparedPackageDest)> for FetchedCask {
-    fn from((prepared_cask, dest): (PreparedCask, PreparedPackageDest)) -> Self {
+impl From<PreparedCask> for FetchedCask {
+    fn from(prepared_cask: PreparedCask) -> Self {
         Self {
             token: prepared_cask.token,
             version: prepared_cask.version,
-            prefix_dir: dest.dir_location_greatgrandparent,
-            caskroom_dir: dest.dir_location_grandparent,
         }
     }
 }

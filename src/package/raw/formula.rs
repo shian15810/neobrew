@@ -1,8 +1,8 @@
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow, collections::HashMap, path::PathBuf};
 
 use serde::Deserialize;
 
-use super::{super::Packageable, RawPackageCache, RawPackageable};
+use super::{super::Packageable, RawPackageable};
 use crate::context::{Context, dirs::ProjectDirs as _};
 
 #[derive(Deserialize)]
@@ -12,6 +12,7 @@ pub(crate) struct RawFormula {
     pub(in super::super) revision: u64,
     pub(in super::super) bottle: Bottle,
     dependencies: Vec<String>,
+    pub(in super::super) keg_only: bool,
 }
 
 impl RawFormula {
@@ -44,21 +45,14 @@ impl RawPackageable for RawFormula {
         }
     }
 
-    fn cache(&self, context: &Context) -> RawPackageCache {
+    fn cache_path(&self, context: &Context) -> PathBuf {
         let id = self.id();
 
         let file_name = format!("{id}.json");
 
         let cache_dir = context.homebrew_dirs.cache_dir();
 
-        let file_location_parent = cache_dir.join("api").join("formula");
-
-        let file_location = file_location_parent.join(file_name);
-
-        RawPackageCache {
-            file_location_parent,
-            file_location,
-        }
+        cache_dir.join("api/formula").join(file_name)
     }
 }
 
@@ -80,6 +74,15 @@ pub(in super::super) struct BottleStable {
 
 #[derive(Deserialize)]
 pub(in super::super) struct BottleStableFile {
+    pub(in super::super) cellar: BottleStableFileCellar,
     pub(in super::super) url: String,
     pub(in super::super) sha256: String,
+}
+
+#[derive(PartialEq, Deserialize)]
+pub(in super::super) enum BottleStableFileCellar {
+    #[serde(rename = ":any")]
+    Any,
+    #[serde(rename = ":any_skip_relocation")]
+    AnySkipRelocation,
 }

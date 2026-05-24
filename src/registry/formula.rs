@@ -4,6 +4,7 @@ use anyhow::{Result, anyhow};
 use async_recursion::async_recursion;
 use foyer::{Cache, CacheBuilder};
 use futures::stream::{self, StreamExt as _, TryStreamExt as _};
+use itertools::Itertools as _;
 
 use super::Registrable;
 use crate::{
@@ -27,6 +28,7 @@ impl Registrable for FormulaRegistry {
 
     const JSON_URL: &str = "https://formulae.brew.sh/api/formula.json";
     const JWS_JSON_URL: &str = "https://formulae.brew.sh/api/formula.jws.json";
+
     const TAP_MIGRATIONS_URL: &str = "https://formulae.brew.sh/api/formula_tap_migrations.json";
     const TAP_MIGRATIONS_JWS_URL: &str =
         "https://formulae.brew.sh/api/formula_tap_migrations.jws.json";
@@ -62,8 +64,7 @@ impl FormulaRegistry {
             let stack = stack
                 .into_iter()
                 .map(|formula| format!(r#""{formula}""#))
-                .collect::<Vec<_>>();
-            let stack = stack.join(" -> ");
+                .join(" -> ");
 
             let err = anyhow!("Circular package dependency detected: {stack}");
 
@@ -112,7 +113,7 @@ impl FormulaRegistry {
             .await?;
 
         let resolved_formula_dependencies = stream::iter(raw_formula_dependencies)
-            .map(async |raw_formula_dependency| -> Result<_> {
+            .map(async |raw_formula_dependency| {
                 let this = Arc::clone(&self);
 
                 let raw_formula_dependency = Arc::from(raw_formula_dependency);
@@ -121,7 +122,7 @@ impl FormulaRegistry {
                     .resolve_with_stack(raw_formula_dependency, stack.clone())
                     .await?;
 
-                Ok(resolved_formula_dependency)
+                anyhow::Ok(resolved_formula_dependency)
             })
             .buffer_unordered(*self.context.concurrency_limit)
             .try_collect::<Vec<_>>();
