@@ -12,13 +12,14 @@ pub(crate) use self::{
 use super::Operator;
 use crate::context::Context;
 
+#[trait_variant::make(Send)]
 pub(crate) trait PushOperator {
     type Item;
     type Output;
 
-    fn feed(&mut self, chunk: Self::Item) -> Result<()>;
+    async fn feed(&mut self, chunk: Self::Item) -> Result<()>;
 
-    fn flush(self) -> Result<Self::Output>;
+    async fn flush(self) -> Result<Self::Output>;
 }
 
 impl<
@@ -29,7 +30,7 @@ impl<
 {
     type Output = PushOp::Output;
 
-    fn spawn_blocking(
+    fn launch(
         mut self,
         context: &Context,
     ) -> (PollSender<Item>, AbortOnDropHandle<Result<Self::Output>>) {
@@ -37,12 +38,12 @@ impl<
 
         let sink = PollSender::new(tx);
 
-        let handle = task::spawn_blocking(move || {
-            while let Some(item) = rx.blocking_recv() {
-                self.feed(item)?;
+        let handle = task::spawn(async move {
+            while let Some(item) = rx.recv().await {
+                self.feed(item).await?;
             }
 
-            let output = self.flush()?;
+            let output = self.flush().await?;
 
             anyhow::Ok(output)
         });

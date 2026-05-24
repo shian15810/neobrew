@@ -26,7 +26,7 @@ use crate::{
         push_operator::{self, TempWriterInput},
     },
     registry::Registry,
-    utils::Linker,
+    utils::{Linker, Relocation},
 };
 
 #[derive(Args)]
@@ -48,6 +48,9 @@ impl Runner for Install {
 
         let prepared_packages = Self::prepare_packages(resolved_packages)?;
 
+        let relocation = Relocation::from(&context.homebrew_dirs);
+        let relocation = Arc::new(relocation);
+
         let linker = Linker::create(Arc::clone(&context)).await?;
         let linker = Arc::new(linker);
 
@@ -62,6 +65,8 @@ impl Runner for Install {
 
             let context = Arc::clone(&context);
 
+            let relocation = Arc::clone(&relocation);
+
             let linker = Arc::clone(&linker);
 
             set.spawn(async move {
@@ -72,7 +77,8 @@ impl Runner for Install {
                     return Ok(());
                 };
 
-                let () = Self::install_package(fetched_package, &linker, &context).await?;
+                let () =
+                    Self::install_package(fetched_package, relocation, &linker, &context).await?;
 
                 anyhow::Ok(())
             });
@@ -125,7 +131,7 @@ impl Install {
 
         let keg_dir_path = context.homebrew_dirs.keg_dir(id, version);
 
-        if keg_dir_path.is_dir_nofollow().await? {
+        if keg_dir_path.is_dir_exists_nofollow().await? {
             let fetched_package = FetchedPackage::from(prepared_package);
 
             return Ok(Some(fetched_package));
@@ -138,8 +144,8 @@ impl Install {
         let cache_file_path = &temp_writer_input.file_path;
 
         if let Some(cache_symlink_path) = &temp_writer_input.symlink_path
-            && cache_symlink_path.is_symlink()
-            && cache_file_path.is_file()
+            && cache_symlink_path.is_symlink_exists_nofollow().await?
+            && cache_file_path.is_file_exists_nofollow().await?
             && cache_symlink_path.canonicalize()? == cache_file_path.canonicalize()?
         {
             let cache_file_sha256 = prepared_package.cache_file_sha256(cache_file_path).await?;
@@ -296,12 +302,13 @@ impl Install {
 
     async fn install_package(
         fetched_package: FetchedPackage,
+        relocation: Arc<Relocation>,
         linker: &Linker,
         context: &Context,
     ) -> Result<()> {
         match fetched_package {
             FetchedPackage::Formula(fetched_formula) => {
-                fetched_formula.relocate(context).await?;
+                fetched_formula.relocate(relocation, context).await?;
 
                 fetched_formula.link(linker).await?;
 

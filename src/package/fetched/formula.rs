@@ -1,7 +1,6 @@
+use std::sync::Arc;
+
 use anyhow::Result;
-use tokio::task;
-use tokio_util::task::AbortOnDropHandle;
-use walkdir::WalkDir;
 
 use super::super::{Packageable, prepared::PreparedFormula, raw::BottleStableFileCellar};
 use crate::{
@@ -38,33 +37,18 @@ impl Packageable for FetchedFormula {
 }
 
 impl FetchedFormula {
-    pub(crate) async fn relocate(&self, context: &Context) -> Result<()> {
+    pub(crate) async fn relocate(
+        &self,
+        relocation: Arc<Relocation>,
+        context: &Context,
+    ) -> Result<()> {
         if self.bottle_file_cellar == BottleStableFileCellar::AnySkipRelocation {
             return Ok(());
         }
 
-        let relocation = Relocation::from(&context.homebrew_dirs);
-
         let keg_dir_path = context.homebrew_dirs.keg_dir(self.id(), self.version());
 
-        let handle = task::spawn_blocking(move || {
-            for entry in WalkDir::new(keg_dir_path) {
-                let entry = entry?;
-
-                let path = entry.path();
-
-                if !path.is_file() {
-                    continue;
-                }
-
-                relocation.patch_file(path)?;
-            }
-
-            anyhow::Ok(())
-        });
-        let handle = AbortOnDropHandle::new(handle);
-
-        handle.await??;
+        relocation.patch_keg(&keg_dir_path).await?;
 
         Ok(())
     }

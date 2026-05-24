@@ -1,12 +1,23 @@
-use std::{cmp::Reverse, collections::HashMap, fs, io::Write as _, path::Path};
+use std::{cmp::Reverse, collections::HashMap, path::Path, sync::Arc};
 
 use anyhow::Result;
 use arwen::elf::rewriter::Writer;
+use async_walkdir::WalkDir;
+use futures::stream::StreamExt as _;
 use itertools::Itertools as _;
 use tempfile::NamedTempFile;
+use tokio::{
+    fs::{self, OpenOptions},
+    io::AsyncWriteExt as _,
+    task,
+};
+use tokio_util::task::AbortOnDropHandle;
 
 use super::elf::Elf;
-use crate::{context::dirs::HomebrewDirs, ext::std::path::PathExt as _};
+use crate::{
+    context::dirs::HomebrewDirs,
+    ext::{std::path::PathExt as _, tokio::path::PathExt as _},
+};
 
 pub(crate) struct Relocation {
     replacement_pairs: [(&'static str, String); 4],
@@ -43,8 +54,26 @@ impl From<&HomebrewDirs> for Relocation {
 }
 
 impl Relocation {
-    pub(crate) fn patch_file(&self, path: &Path) -> Result<()> {
-        let bytes = fs::read(path)?;
+    pub(crate) async fn patch_keg(self: Arc<Self>, keg_dir_path: &Path) -> Result<()> {
+        let mut entries = WalkDir::new(keg_dir_path);
+
+        while let Some(entry) = entries.next().await {
+            let path = entry?.path();
+
+            if !path.is_file_exists_nofollow().await? {
+                continue;
+            }
+
+            let this = Arc::clone(&self);
+
+            this.patch_file(&path).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn patch_file(self: Arc<Self>, path: &Path) -> Result<()> {
+        let bytes = fs::read(path).await?;
 
         let has_magic_number = Elf::has_magic_number(&bytes)?;
 
@@ -52,21 +81,35 @@ impl Relocation {
             return Ok(());
         }
 
-        let replaced_bytes = self.replace_bytes(&bytes)?;
+        let handle = task::spawn_blocking(move || {
+            let replaced_bytes = self.replace_bytes(&bytes)?;
 
-        if replaced_bytes == bytes {
+            if replaced_bytes == bytes {
+                return Ok(None);
+            }
+
+            anyhow::Ok(Some(replaced_bytes))
+        });
+
+        let handle = AbortOnDropHandle::new(handle);
+
+        let Some(replaced_bytes) = handle.await?? else {
             return Ok(());
-        }
+        };
 
-        let metadata = fs::metadata(path)?;
+        let metadata = fs::symlink_metadata(path).await?;
 
         let permissions = metadata.permissions();
 
         let base_path = path.base()?;
 
-        let mut file = NamedTempFile::new_in(base_path)?;
+        let file = NamedTempFile::new_in(base_path)?;
 
-        file.write_all(&replaced_bytes)?;
+        let mut async_file = OpenOptions::new().write(true).open(file.path()).await?;
+
+        async_file.write_all(&replaced_bytes).await?;
+
+        async_file.shutdown().await?;
 
         let file = file.persist(path)?;
 

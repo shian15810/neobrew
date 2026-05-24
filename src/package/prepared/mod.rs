@@ -2,7 +2,6 @@ mod cask;
 mod formula;
 
 use std::{
-    fs::File,
     io::{self, ErrorKind},
     path::Path,
     sync::Arc,
@@ -16,7 +15,7 @@ use enum_dispatch::enum_dispatch;
 use futures::stream::{Stream, StreamExt as _, TryStreamExt as _};
 use oci_client::secrets::RegistryAuth;
 use sha2::{Digest as _, Sha256};
-use tokio::task;
+use tokio::{fs::File, task};
 use tokio_util::task::AbortOnDropHandle;
 
 pub(crate) use self::{cask::PreparedCask, formula::PreparedFormula};
@@ -75,17 +74,16 @@ pub(crate) trait PreparedPackageable: Packageable {
 
 impl PreparedPackage {
     pub(crate) async fn cache_file_sha256(&self, file_path: &Path) -> Result<Option<String>> {
-        let file_path = file_path.to_owned();
+        let file = match File::open(file_path).await {
+            Ok(file) => file,
+            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Err(err)?,
+        };
+        let mut file = file.into_std().await;
+
+        let mut hasher = IoWrapper(Sha256::new());
 
         let handle = task::spawn_blocking(move || {
-            let mut file = match File::open(file_path) {
-                Ok(file) => file,
-                Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-                Err(err) => return Err(err)?,
-            };
-
-            let mut hasher = IoWrapper(Sha256::new());
-
             io::copy(&mut file, &mut hasher)?;
 
             anyhow::Ok(Some(hasher))

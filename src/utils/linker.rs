@@ -120,7 +120,7 @@ impl Linker {
 
             let dest_path = dest_dir_path.join(entry.file_name());
 
-            if src_path.is_dir_nofollow().await? {
+            if src_path.is_dir_exists_nofollow().await? {
                 if should_skip {
                     continue;
                 }

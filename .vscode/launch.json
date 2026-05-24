@@ -28,7 +28,7 @@
             "cargo": {
                 "args": [
                     "run",
-                    "--bin=neobrew",
+                    "--bin=nbrew",
                 ],
                 "env": {
                     "RUSTUP_TOOLCHAIN": "nightly",
@@ -43,7 +43,7 @@
             "cargo": {
                 "args": [
                     "test",
-                    "--bin=neobrew",
+                    "--bin=nbrew",
                 ],
                 "env": {
                     "RUSTUP_TOOLCHAIN": "nightly",

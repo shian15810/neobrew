@@ -1,27 +1,26 @@
 mod temp_pourer;
 
-use std::io::{self, BufRead};
-
 use anyhow::Result;
 use bytes::Buf;
 use futures::stream::StreamExt as _;
-use tokio::{sync::mpsc, task};
-use tokio_stream::wrappers::ReceiverStream;
-use tokio_util::{
-    io::{StreamReader, SyncIoBridge},
-    sync::PollSender,
-    task::AbortOnDropHandle,
+use tokio::{
+    io::{self, AsyncRead},
+    sync::mpsc,
+    task,
 };
+use tokio_stream::wrappers::ReceiverStream;
+use tokio_util::{io::StreamReader, sync::PollSender, task::AbortOnDropHandle};
 
 pub(crate) use self::temp_pourer::{TempPourer, TempPourerInput};
 use super::Operator;
 use crate::context::Context;
 
+#[trait_variant::make(Send)]
 pub(crate) trait PullOperator {
     type Output;
 
     #[expect(clippy::wrong_self_convention)]
-    fn from_reader(self, reader: impl BufRead) -> Result<Self::Output>;
+    async fn from_reader(self, reader: impl AsyncRead + Unpin + Send) -> Result<Self::Output>;
 }
 
 impl<
@@ -32,7 +31,7 @@ impl<
 {
     type Output = PullOp::Output;
 
-    fn spawn_blocking(
+    fn launch(
         self,
         context: &Context,
     ) -> (PollSender<Item>, AbortOnDropHandle<Result<Self::Output>>) {
@@ -45,10 +44,8 @@ impl<
 
         let reader = StreamReader::new(stream);
 
-        let sync_reader = SyncIoBridge::new(reader);
-
-        let handle = task::spawn_blocking(move || {
-            let output = self.from_reader(sync_reader)?;
+        let handle = task::spawn(async move {
+            let output = self.from_reader(reader).await?;
 
             anyhow::Ok(output)
         });

@@ -1,11 +1,13 @@
-use std::{io::BufRead, path::PathBuf};
+use std::path::PathBuf;
 
 use anyhow::Result;
-use flate2::bufread::GzDecoder;
-use tar::Archive;
+use async_compression::tokio::bufread::GzipDecoder;
 use tempfile::TempDir;
-use tokio::{fs, task};
-use tokio_util::task::AbortOnDropHandle;
+use tokio::{
+    fs,
+    io::{AsyncRead, BufReader},
+};
+use tokio_tar::Archive;
 
 use super::{super::handler, PullOperator};
 use crate::ext::tokio::path::PathExt as _;
@@ -37,55 +39,42 @@ impl TempPourer {
 impl PullOperator for TempPourer {
     type Output = TempPourerOutput;
 
-    fn from_reader(self, reader: impl BufRead) -> Result<Self::Output> {
-        std::fs::create_dir_all(&self.input.dir_path)?;
+    async fn from_reader(self, reader: impl AsyncRead + Unpin + Send) -> Result<Self::Output> {
+        fs::create_dir_all(&self.input.dir_path).await?;
 
         let dir = TempDir::new_in(&self.input.dir_path)?;
 
-        let gz_decoder = GzDecoder::new(reader);
+        let buf_reader = BufReader::new(reader);
+
+        let gz_decoder = GzipDecoder::new(buf_reader);
 
         let mut archive = Archive::new(gz_decoder);
 
-        archive.unpack(dir.path())?;
+        archive.unpack(dir.path()).await?;
 
-        let temp_pourer_output = TempPourerOutput::from((dir, self));
+        let output = TempPourerOutput {
+            input: self.input,
+            dir,
+        };
 
-        Ok(temp_pourer_output)
+        Ok(output)
     }
 }
 
 pub(crate) struct TempPourerOutput {
-    dir: TempDir,
-
     input: TempPourerInput,
-}
-
-impl From<(TempDir, TempPourer)> for TempPourerOutput {
-    fn from((dir, temp_pourer): (TempDir, TempPourer)) -> Self {
-        Self {
-            dir,
-
-            input: temp_pourer.input,
-        }
-    }
+    dir: TempDir,
 }
 
 impl handler::AtomicWriter for TempPourerOutput {
     async fn cleanup(self) -> Result<()> {
-        let handle = task::spawn_blocking(move || {
-            self.dir.close()?;
-
-            anyhow::Ok(())
-        });
-        let handle = AbortOnDropHandle::new(handle);
-
-        handle.await??;
+        self.dir.close()?;
 
         Ok(())
     }
 
     async fn persist(self) -> Result<()> {
-        let src_dir_path = self.dir;
+        let src_dir_path = self.dir.path();
 
         let dest_dir_path = self.input.dir_path;
 
@@ -96,18 +85,18 @@ impl handler::AtomicWriter for TempPourerOutput {
 
             let dest_path = dest_dir_path.join(entry.file_name());
 
-            if !src_path.is_dir_nofollow().await? {
+            if !src_path.is_dir_exists_nofollow().await? {
                 continue;
             }
 
-            if dest_path.is_dir_nofollow().await? {
+            if dest_path.is_dir_exists_nofollow().await? {
                 fs::remove_dir_all(&dest_path).await?;
             }
 
             fs::rename(src_path, dest_path).await?;
         }
 
-        src_dir_path.close()?;
+        self.dir.close()?;
 
         Ok(())
     }

@@ -1,11 +1,7 @@
 mod cask;
 mod formula;
 
-use std::{
-    fs,
-    io::Write as _,
-    sync::{Arc, OnceLock},
-};
+use std::sync::{Arc, OnceLock};
 
 use anyhow::{Result, anyhow};
 use bytes::Bytes;
@@ -13,8 +9,10 @@ use enum_dispatch::enum_dispatch;
 use futures::stream::{self, StreamExt as _, TryStreamExt as _};
 use itertools::Itertools as _;
 use tempfile::NamedTempFile;
-use tokio::task;
-use tokio_util::task::AbortOnDropHandle;
+use tokio::{
+    fs::{self, OpenOptions},
+    io::AsyncWriteExt as _,
+};
 
 use self::{cask::CaskRegistry, formula::FormulaRegistry};
 use crate::{
@@ -170,22 +168,19 @@ trait Registrable {
     ) -> Result<()> {
         let cache_path = raw_package.cache_path(context);
 
-        let handle = task::spawn_blocking(move || {
-            let cache_base_path = cache_path.base()?;
+        let cache_base_path = cache_path.base()?;
 
-            fs::create_dir_all(cache_base_path)?;
+        fs::create_dir_all(cache_base_path).await?;
 
-            let mut file = NamedTempFile::new_in(cache_base_path)?;
+        let file = NamedTempFile::new_in(cache_base_path)?;
 
-            file.write_all(&bytes)?;
+        let mut async_file = OpenOptions::new().write(true).open(file.path()).await?;
 
-            file.persist(cache_path)?;
+        async_file.write_all(&bytes).await?;
 
-            anyhow::Ok(())
-        });
-        let handle = AbortOnDropHandle::new(handle);
+        async_file.shutdown().await?;
 
-        handle.await??;
+        file.persist(cache_path)?;
 
         Ok(())
     }
