@@ -33,6 +33,7 @@ impl PathExt for Path {
 
         Ok(file_type)
     }
+
     async fn is_dir_exists_nofollow(&self) -> Result<bool> {
         let metadata = match fs::symlink_metadata(self).await {
             Ok(metadata) => metadata,

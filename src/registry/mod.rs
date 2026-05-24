@@ -10,14 +10,14 @@ use futures::stream::{self, StreamExt as _, TryStreamExt as _};
 use itertools::Itertools as _;
 use tempfile::NamedTempFile;
 use tokio::{
-    fs::{self, OpenOptions},
+    fs::{self, File},
     io::AsyncWriteExt as _,
 };
 
 use self::{cask::CaskRegistry, formula::FormulaRegistry};
 use crate::{
     context::Context,
-    ext::std::path::PathExt as _,
+    ext::{std::path::PathExt as _, tokio::fs::FileExt as _},
     package::{
         Packageable as _,
         raw::{RawPackage, RawPackageable as _},
@@ -174,7 +174,7 @@ trait Registrable {
 
         let file = NamedTempFile::new_in(cache_base_path)?;
 
-        let mut async_file = OpenOptions::new().write(true).open(file.path()).await?;
+        let mut async_file = File::open_write(file.path()).await?;
 
         async_file.write_all(&bytes).await?;
 

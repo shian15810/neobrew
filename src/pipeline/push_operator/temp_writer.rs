@@ -4,12 +4,15 @@ use anyhow::Result;
 use bytes::Bytes;
 use tempfile::NamedTempFile;
 use tokio::{
-    fs::{self, File, OpenOptions},
+    fs::{self, File},
     io::{AsyncWriteExt as _, BufWriter},
 };
 
 use super::{super::handler, PushOperator};
-use crate::ext::{std::path::PathExt as _, tokio::path::PathExt as _};
+use crate::ext::{
+    std::path::PathExt as _,
+    tokio::{fs::FileExt as _, path::PathExt as _},
+};
 
 pub(crate) struct TempWriterInput {
     pub(crate) file_path: PathBuf,
@@ -39,7 +42,7 @@ impl TempWriter {
 
         let file = NamedTempFile::new_in(file_base_path)?;
 
-        let async_file = OpenOptions::new().write(true).open(file.path()).await?;
+        let async_file = File::open_write(file.path()).await?;
 
         let buf_file = BufWriter::new(async_file);
 

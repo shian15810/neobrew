@@ -10,7 +10,7 @@ use async_walkdir::WalkDir;
 use futures::stream::StreamExt as _;
 use tempfile::NamedTempFile;
 use tokio::{
-    fs::{self, OpenOptions},
+    fs::{self, File},
     io::AsyncWriteExt as _,
     task,
 };
@@ -19,7 +19,10 @@ use tokio_util::task::AbortOnDropHandle;
 use super::{codesign::Codesign, mach_o::MachO};
 use crate::{
     context::dirs::HomebrewDirs,
-    ext::{std::path::PathExt as _, tokio::path::PathExt as _},
+    ext::{
+        std::path::PathExt as _,
+        tokio::{fs::FileExt as _, path::PathExt as _},
+    },
 };
 
 pub(crate) struct Relocation {
@@ -108,7 +111,7 @@ impl Relocation {
 
         let file = NamedTempFile::new_in(base_path)?;
 
-        let mut async_file = OpenOptions::new().write(true).open(file.path()).await?;
+        let mut async_file = File::open_write(file.path()).await?;
 
         async_file.write_all(&replaced_bytes).await?;
 

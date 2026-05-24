@@ -1,11 +1,7 @@
 mod cask;
 mod formula;
 
-use std::{
-    io::{self, ErrorKind},
-    path::Path,
-    sync::Arc,
-};
+use std::{io, path::Path, sync::Arc};
 
 use anyhow::{Result, anyhow};
 use base16ct::HexDisplay;
@@ -22,6 +18,7 @@ pub(crate) use self::{cask::PreparedCask, formula::PreparedFormula};
 use super::{Packageable, resolved::ResolvedPackage};
 use crate::{
     context::Context,
+    ext::tokio::fs::FileExt as _,
     pipeline::{pull_operator::TempPourerInput, push_operator::TempWriterInput},
 };
 
@@ -74,11 +71,10 @@ pub(crate) trait PreparedPackageable: Packageable {
 
 impl PreparedPackage {
     pub(crate) async fn cache_file_sha256(&self, file_path: &Path) -> Result<Option<String>> {
-        let file = match File::open(file_path).await {
-            Ok(file) => file,
-            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-            Err(err) => return Err(err)?,
+        let Some(file) = File::open_if_exists(file_path).await? else {
+            return Ok(None);
         };
+
         let mut file = file.into_std().await;
 
         let mut hasher = IoWrapper(Sha256::new());

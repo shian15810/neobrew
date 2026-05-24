@@ -105,7 +105,7 @@ impl Relocation {
 
         let file = NamedTempFile::new_in(base_path)?;
 
-        let mut async_file = OpenOptions::new().write(true).open(file.path()).await?;
+        let mut async_file = File::open_write(file.path()).await?;
 
         async_file.write_all(&replaced_bytes).await?;
 

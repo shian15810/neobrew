@@ -1,4 +1,4 @@
-use std::{io::ErrorKind, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
 use bytes::Bytes;
@@ -12,7 +12,10 @@ use tokio_util::io::ReaderStream;
 use super::{Resolution, Runner};
 use crate::{
     context::Context,
-    ext::{core::result::ResultExt as _, tokio::path::PathExt as _},
+    ext::{
+        core::result::ResultExt as _,
+        tokio::{fs::FileExt as _, path::PathExt as _},
+    },
     package::{
         Packageable as _,
         fetched::FetchedPackage,
@@ -143,32 +146,37 @@ impl Install {
 
         let cache_file_path = &temp_writer_input.file_path;
 
-        if let Some(cache_symlink_path) = &temp_writer_input.symlink_path
+        let try_fetch_package_from_cache = if let Some(cache_symlink_path) =
+            &temp_writer_input.symlink_path
             && cache_symlink_path.is_symlink_exists_nofollow().await?
             && cache_file_path.is_file_exists_nofollow().await?
             && cache_symlink_path.canonicalize()? == cache_file_path.canonicalize()?
         {
             let cache_file_sha256 = prepared_package.cache_file_sha256(cache_file_path).await?;
 
-            if let Some(cache_file_sha256) = cache_file_sha256
-                && cache_file_sha256 == expected_sha256
-            {
-                let temp_pourer_input = prepared_package.temp_pourer_input(&context);
+            if let Some(cache_file_sha256) = cache_file_sha256 {
+                cache_file_sha256 == expected_sha256
+            } else {
+                false
+            }
+        } else {
+            false
+        };
 
-                let fetch_package_from_cache = Self::fetch_package_from_cache(
-                    id,
-                    version,
-                    expected_sha256,
-                    temp_writer_input,
-                    temp_pourer_input,
-                    context,
-                )
-                .await?;
+        if try_fetch_package_from_cache {
+            let temp_pourer_input = prepared_package.temp_pourer_input(&context);
 
-                let Some(()) = fetch_package_from_cache else {
-                    return Ok(None);
-                };
+            let fetch_package_from_cache_res = Self::fetch_package_from_cache(
+                id,
+                version,
+                expected_sha256,
+                temp_writer_input,
+                temp_pourer_input,
+                Arc::clone(&context),
+            )
+            .await;
 
+            if fetch_package_from_cache_res.is_ok() {
                 let fetched_package = FetchedPackage::from(prepared_package);
 
                 return Ok(Some(fetched_package));
@@ -178,6 +186,8 @@ impl Install {
         let Some(stream) = prepared_package.stream(&context).await? else {
             return Ok(None);
         };
+
+        let temp_writer_input = prepared_package.temp_writer_input(&context).await?;
 
         let temp_pourer_input = prepared_package.temp_pourer_input(&context);
 
@@ -204,11 +214,11 @@ impl Install {
         temp_writer_input: TempWriterInput,
         temp_pourer_input: TempPourerInput,
         context: Arc<Context>,
-    ) -> Result<Option<()>> {
-        let cache_file = match File::open(temp_writer_input.file_path).await {
-            Ok(cache_file) => cache_file,
-            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-            Err(err) => return Err(err)?,
+    ) -> Result<()> {
+        let Some(cache_file) = File::open_if_exists(temp_writer_input.file_path).await? else {
+            let err = anyhow!("No cache file found");
+
+            return Err(err);
         };
 
         let stream = ReaderStream::new(cache_file);
@@ -238,7 +248,7 @@ impl Install {
 
         temp_pourer_output.persist().await?;
 
-        Ok(Some(()))
+        Ok(())
     }
 
     async fn fetch_package_from_url(
@@ -308,9 +318,19 @@ impl Install {
     ) -> Result<()> {
         match fetched_package {
             FetchedPackage::Formula(fetched_formula) => {
-                fetched_formula.relocate(relocation, context).await?;
+                if fetched_formula.should_relocate() {
+                    let keg_dir_path = context
+                        .homebrew_dirs
+                        .keg_dir(fetched_formula.id(), fetched_formula.version());
 
-                fetched_formula.link(linker).await?;
+                    relocation.patch_keg(&keg_dir_path).await?;
+                }
+
+                linker.link_opt(&fetched_formula).await?;
+
+                if fetched_formula.should_link_keg() {
+                    linker.link_keg(&fetched_formula).await?;
+                }
 
                 Ok(())
             },
