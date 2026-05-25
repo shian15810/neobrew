@@ -21,7 +21,7 @@ use proc_exit::prelude::*;
 use tokio::process::Command;
 
 use self::{install::Install, uninstall::Uninstall};
-use crate::{context::Context, registry::ResolutionStrategy};
+use crate::{context::Context, registries::ResolutionStrategy};
 
 #[derive(Parser)]
 #[command(

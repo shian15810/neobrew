@@ -1,17 +1,6 @@
-use std::path::Path;
-
-use anyhow::{Context as _, Result};
-use base16ct::HexDisplay;
-use sha2::{Digest as _, Sha256};
-use url::Url;
-
 use super::{
     super::{Packageable, resolved::ResolvedCask},
     PreparedPackageable,
-};
-use crate::{
-    context::{Context, dirs::ProjectDirs as _},
-    pipeline::push_operator::TempWriterInput,
 };
 
 pub(crate) struct PreparedCask {
@@ -63,40 +52,12 @@ impl Packageable for PreparedCask {
 }
 
 impl PreparedPackageable for PreparedCask {
-    fn expected_sha256(&self) -> &str {
-        &self.sha256
+    fn cache_url(&self) -> &str {
+        &self.url
     }
 
-    async fn temp_writer_input(&self, context: &Context) -> Result<TempWriterInput> {
-        let version = self.version();
-
-        let url = Url::parse(&self.url)?;
-
-        let mut segment = url.path_segments().context("Invalid URL")?;
-        let segment = segment.next_back().context("Empty URL path segments")?;
-
-        let path = Path::new(segment);
-
-        let extension = path.extension().context("Invalid file name")?;
-        let extension = extension.to_str().context("Invalid file extension")?;
-
-        let url_hash = Sha256::digest(&self.url);
-        let url_hash = HexDisplay(&url_hash);
-        let url_hash = format!("{url_hash:x}");
-
-        let symlink_name = format!("{segment}--{version}.{extension}");
-
-        let file_name = format!("{url_hash}--{segment}");
-
-        let cache_dir_path = context.homebrew_dirs.cache_dir();
-
-        let file_path = cache_dir_path.join("Cask/downloads").join(file_name);
-
-        let symlink_path = cache_dir_path.join("Cask").join(symlink_name);
-
-        let temp_writer_input = TempWriterInput::new(file_path, Some(symlink_path));
-
-        Ok(temp_writer_input)
+    fn expected_sha256(&self) -> &str {
+        &self.sha256
     }
 }
 

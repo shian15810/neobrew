@@ -1,9 +1,8 @@
-use std::{borrow::Cow, collections::HashMap, path::PathBuf};
+use std::{borrow::Cow, collections::HashMap};
 
 use serde::Deserialize;
 
 use super::{super::Packageable, RawPackageable};
-use crate::context::{Context, dirs::ProjectDirs as _};
 
 #[derive(Deserialize)]
 pub(crate) struct RawFormula {
@@ -43,16 +42,6 @@ impl RawPackageable for RawFormula {
                 Cow::Owned(version_revision)
             },
         }
-    }
-
-    fn cache_path(&self, context: &Context) -> PathBuf {
-        let id = self.id();
-
-        let file_name = format!("{id}.json");
-
-        let cache_dir = context.homebrew_dirs.cache_dir();
-
-        cache_dir.join("api/formula").join(file_name)
     }
 }
 

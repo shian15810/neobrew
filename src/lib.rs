@@ -32,19 +32,22 @@
 #![doc(test(attr(warn(unused), deny(warnings))))]
 #![expect(rustdoc::missing_crate_level_docs)]
 
-pub mod commands;
+mod caches;
+pub mod command;
 pub mod context;
 mod ext;
+mod linker;
 mod macros;
 mod package;
 mod pipeline;
-mod registry;
-mod utils;
+mod registries;
+mod relocation;
+mod util;
 
 use clap::{ArgMatches, FromArgMatches as _};
 use proc_exit::prelude::*;
 
-use self::{commands::Cli, context::Context};
+use self::{command::Cli, context::Context};
 
 #[expect(clippy::missing_errors_doc)]
 pub async fn run(matches: &ArgMatches, context: Context) -> proc_exit::ExitResult {

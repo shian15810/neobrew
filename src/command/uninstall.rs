@@ -5,7 +5,7 @@ use clap::Args;
 use tokio::task::JoinSet;
 
 use super::{Resolution, Runner};
-use crate::{context::Context, package::resolved::ResolvedPackage, registry::Registry};
+use crate::{context::Context, package::resolved::ResolvedPackage, registries::Registries};
 
 #[derive(Args)]
 pub(super) struct Uninstall {
@@ -48,11 +48,11 @@ impl Runner for Uninstall {
 
 impl Uninstall {
     async fn resolve_packages(self, context: Arc<Context>) -> Result<Vec<ResolvedPackage>> {
-        let registry = Registry::new(context);
+        let registries = Registries::new(context);
 
         let strategy = self.resolution.strategy();
 
-        let resolved_packages = registry.resolve(self.packages, strategy).await?;
+        let resolved_packages = registries.resolve(self.packages, strategy).await?;
 
         Ok(resolved_packages)
     }

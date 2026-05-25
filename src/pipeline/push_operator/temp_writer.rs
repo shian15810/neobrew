@@ -14,29 +14,17 @@ use crate::ext::{
     tokio::{fs::FileExt as _, path::PathExt as _},
 };
 
-pub(crate) struct TempWriterInput {
-    pub(crate) file_path: PathBuf,
-    pub(crate) symlink_path: Option<PathBuf>,
-}
-
-impl TempWriterInput {
-    pub(crate) fn new(file_path: PathBuf, symlink_path: Option<PathBuf>) -> Self {
-        Self {
-            file_path,
-            symlink_path,
-        }
-    }
-}
-
 pub(crate) struct TempWriter {
-    input: TempWriterInput,
     file: NamedTempFile,
     buf_file: BufWriter<File>,
+
+    file_path: PathBuf,
+    symlink_paths: Vec<PathBuf>,
 }
 
 impl TempWriter {
-    pub(crate) async fn create(input: TempWriterInput) -> Result<Self> {
-        let file_base_path = input.file_path.base()?;
+    pub(crate) async fn create(file_path: PathBuf, symlink_paths: Vec<PathBuf>) -> Result<Self> {
+        let file_base_path = file_path.base()?;
 
         fs::create_dir_all(file_base_path).await?;
 
@@ -47,9 +35,11 @@ impl TempWriter {
         let buf_file = BufWriter::new(async_file);
 
         let this = Self {
-            input,
             file,
             buf_file,
+
+            file_path,
+            symlink_paths,
         };
 
         Ok(this)
@@ -70,8 +60,10 @@ impl PushOperator for TempWriter {
         self.buf_file.shutdown().await?;
 
         let output = TempWriterOutput {
-            input: self.input,
             file: self.file,
+
+            file_path: self.file_path,
+            symlink_paths: self.symlink_paths,
         };
 
         Ok(output)
@@ -79,8 +71,10 @@ impl PushOperator for TempWriter {
 }
 
 pub(crate) struct TempWriterOutput {
-    input: TempWriterInput,
     file: NamedTempFile,
+
+    file_path: PathBuf,
+    symlink_paths: Vec<PathBuf>,
 }
 
 impl handler::AtomicWriter for TempWriterOutput {
@@ -91,11 +85,10 @@ impl handler::AtomicWriter for TempWriterOutput {
     }
 
     async fn persist(self) -> Result<()> {
-        self.file.persist(&self.input.file_path)?;
+        self.file.persist(&self.file_path)?;
 
-        if let Some(symlink_path) = self.input.symlink_path {
-            self.input
-                .file_path
+        for symlink_path in self.symlink_paths {
+            self.file_path
                 .create_relative_symlink_atomically_at(symlink_path)
                 .await?;
         }

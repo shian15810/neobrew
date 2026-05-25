@@ -12,26 +12,14 @@ use tokio_tar::Archive;
 use super::{super::handler, PullOperator};
 use crate::ext::tokio::path::PathExt as _;
 
-pub(crate) struct TempPourerInput {
-    pub(crate) dir_path: PathBuf,
-}
-
-impl TempPourerInput {
-    pub(crate) fn new(dir_path: PathBuf) -> Self {
-        Self {
-            dir_path,
-        }
-    }
-}
-
 pub(crate) struct TempPourer {
-    input: TempPourerInput,
+    dir_path: PathBuf,
 }
 
 impl TempPourer {
-    pub(crate) fn create(input: TempPourerInput) -> Self {
+    pub(crate) fn create(dir_path: PathBuf) -> Self {
         Self {
-            input,
+            dir_path,
         }
     }
 }
@@ -40,9 +28,9 @@ impl PullOperator for TempPourer {
     type Output = TempPourerOutput;
 
     async fn from_reader(self, reader: impl AsyncRead + Unpin + Send) -> Result<Self::Output> {
-        fs::create_dir_all(&self.input.dir_path).await?;
+        fs::create_dir_all(&self.dir_path).await?;
 
-        let dir = TempDir::new_in(&self.input.dir_path)?;
+        let dir = TempDir::new_in(&self.dir_path)?;
 
         let buf_reader = BufReader::new(reader);
 
@@ -53,8 +41,9 @@ impl PullOperator for TempPourer {
         archive.unpack(dir.path()).await?;
 
         let output = TempPourerOutput {
-            input: self.input,
             dir,
+
+            dir_path: self.dir_path,
         };
 
         Ok(output)
@@ -62,8 +51,9 @@ impl PullOperator for TempPourer {
 }
 
 pub(crate) struct TempPourerOutput {
-    input: TempPourerInput,
     dir: TempDir,
+
+    dir_path: PathBuf,
 }
 
 impl handler::AtomicWriter for TempPourerOutput {
@@ -76,9 +66,9 @@ impl handler::AtomicWriter for TempPourerOutput {
     async fn persist(self) -> Result<()> {
         let src_dir_path = self.dir.path();
 
-        let dest_dir_path = self.input.dir_path;
+        let dest_dir_path = self.dir_path;
 
-        let mut entries = fs::read_dir(&src_dir_path).await?;
+        let mut entries = fs::read_dir(src_dir_path).await?;
 
         while let Some(entry) = entries.next_entry().await? {
             let src_path = entry.path();

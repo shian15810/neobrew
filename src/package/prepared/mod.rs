@@ -1,26 +1,17 @@
 mod cask;
 mod formula;
 
-use std::{io, path::Path, sync::Arc};
+use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
-use base16ct::HexDisplay;
 use bytes::Bytes;
-use digest_io::IoWrapper;
 use enum_dispatch::enum_dispatch;
 use futures::stream::{Stream, StreamExt as _, TryStreamExt as _};
 use oci_client::secrets::RegistryAuth;
-use sha2::{Digest as _, Sha256};
-use tokio::{fs::File, task};
-use tokio_util::task::AbortOnDropHandle;
 
 pub(crate) use self::{cask::PreparedCask, formula::PreparedFormula};
 use super::{Packageable, resolved::ResolvedPackage};
-use crate::{
-    context::Context,
-    ext::tokio::fs::FileExt as _,
-    pipeline::{pull_operator::TempPourerInput, push_operator::TempWriterInput},
-};
+use crate::context::Context;
 
 #[enum_dispatch]
 pub(crate) enum PreparedPackage {
@@ -64,48 +55,12 @@ impl TryFrom<ResolvedPackage> for PreparedPackage {
 
 #[enum_dispatch(PreparedPackage)]
 pub(crate) trait PreparedPackageable: Packageable {
-    fn expected_sha256(&self) -> &str;
+    fn cache_url(&self) -> &str;
 
-    async fn temp_writer_input(&self, context: &Context) -> Result<TempWriterInput>;
+    fn expected_sha256(&self) -> &str;
 }
 
 impl PreparedPackage {
-    pub(crate) async fn cache_file_sha256(&self, file_path: &Path) -> Result<Option<String>> {
-        let Some(file) = File::open_if_exists(file_path).await? else {
-            return Ok(None);
-        };
-
-        let mut file = file.into_std().await;
-
-        let mut hasher = IoWrapper(Sha256::new());
-
-        let handle = task::spawn_blocking(move || {
-            io::copy(&mut file, &mut hasher)?;
-
-            anyhow::Ok(Some(hasher))
-        });
-        let handle = AbortOnDropHandle::new(handle);
-
-        let Some(hasher) = handle.await?? else {
-            return Ok(None);
-        };
-
-        let file_sha256 = hasher.0.finalize();
-        let file_sha256 = HexDisplay(&file_sha256);
-        let file_sha256 = format!("{file_sha256:x}");
-
-        Ok(Some(file_sha256))
-    }
-
-    pub(crate) fn temp_pourer_input(&self, context: &Context) -> TempPourerInput {
-        let dir_path = match self {
-            Self::Formula(_) => context.homebrew_dirs.cellar_dir(),
-            Self::Cask(_) => context.homebrew_dirs.caskroom_dir(),
-        };
-
-        TempPourerInput::new(dir_path)
-    }
-
     pub(crate) async fn stream(
         &self,
         context: &Context,

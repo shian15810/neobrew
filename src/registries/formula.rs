@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use anyhow::{Result, anyhow};
 use async_recursion::async_recursion;
@@ -6,10 +6,11 @@ use foyer::{Cache, CacheBuilder};
 use futures::stream::{self, StreamExt as _, TryStreamExt as _};
 use itertools::Itertools as _;
 
-use super::Registrable;
+use super::{Registrable, RegistrableJson};
 use crate::{
-    context::Context,
+    context::{Context, dirs::ProjectDirs as _},
     package::{
+        Packageable as _,
         raw::{RawFormula, RawPackage},
         resolved::ResolvedFormula,
     },
@@ -78,7 +79,7 @@ impl FormulaRegistry {
             .get_or_fetch(&package, || {
                 let this = Arc::clone(&self);
 
-                this.with_stack(Arc::clone(&package), stack)
+                this.fetch_with_stack(Arc::clone(&package), stack)
             })
             .await?;
         let resolved_formula = Arc::clone(resolved_formula.value());
@@ -87,7 +88,7 @@ impl FormulaRegistry {
     }
 
     #[async_recursion]
-    async fn with_stack(
+    async fn fetch_with_stack(
         self: Arc<Self>,
         package: Arc<str>,
         stack: Vec<Arc<str>>,
@@ -107,10 +108,9 @@ impl FormulaRegistry {
 
         let raw_formula_dependencies = raw_formula.dependencies().to_vec();
 
-        let raw_package = RawPackage::Formula(raw_formula);
+        let raw_formula = RawPackage::Formula(raw_formula);
 
-        self.cache_raw_package_json(&raw_package, bytes, &self.context)
-            .await?;
+        self.cache_json(raw_formula.id(), bytes).await?;
 
         let resolved_formula_dependencies = stream::iter(raw_formula_dependencies)
             .map(async |raw_formula_dependency| {
@@ -129,7 +129,7 @@ impl FormulaRegistry {
         let resolved_formula_dependencies = resolved_formula_dependencies.await?;
 
         #[expect(clippy::disallowed_macros)]
-        let RawPackage::Formula(raw_formula) = raw_package else {
+        let RawPackage::Formula(raw_formula) = raw_formula else {
             unreachable!();
         };
 
@@ -137,5 +137,15 @@ impl FormulaRegistry {
         let resolved_formula = Arc::new(resolved_formula);
 
         Ok(resolved_formula)
+    }
+}
+
+impl RegistrableJson for FormulaRegistry {
+    fn json_path(&self, id: &str) -> PathBuf {
+        let file_name = format!("{id}.json");
+
+        let cache_dir = self.context.homebrew_dirs.cache_dir();
+
+        cache_dir.join("api/formula").join(file_name)
     }
 }

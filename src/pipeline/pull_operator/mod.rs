@@ -11,7 +11,7 @@ use tokio::{
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::{io::StreamReader, sync::PollSender, task::AbortOnDropHandle};
 
-pub(crate) use self::temp_pourer::{TempPourer, TempPourerInput};
+pub(crate) use self::temp_pourer::TempPourer;
 use super::Operator;
 use crate::context::Context;
 

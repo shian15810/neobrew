@@ -32,7 +32,7 @@
 
 use clap::CommandFactory as _;
 use clap_verbosity_flag::VerbosityFilter;
-use neobrew::{commands::Cli, context::Context};
+use neobrew::{command::Cli, context::Context};
 use proc_exit::prelude::*;
 use tokio::{signal, task};
 use tracing_subscriber::{

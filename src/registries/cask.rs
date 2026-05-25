@@ -1,12 +1,13 @@
-use std::sync::Arc;
+use std::{path::PathBuf, sync::Arc};
 
 use anyhow::Result;
 use foyer::{Cache, CacheBuilder};
 
-use super::Registrable;
+use super::{Registrable, RegistrableJson};
 use crate::{
-    context::Context,
+    context::{Context, dirs::ProjectDirs as _},
     package::{
+        Packageable as _,
         raw::{RawCask, RawPackage},
         resolved::ResolvedCask,
     },
@@ -69,14 +70,12 @@ impl CaskRegistry {
         let bytes = resp.bytes().await?;
 
         let raw_cask: RawCask = serde_json::from_slice(&bytes)?;
+        let raw_cask = RawPackage::Cask(raw_cask);
 
-        let raw_package = RawPackage::Cask(raw_cask);
-
-        self.cache_raw_package_json(&raw_package, bytes, &self.context)
-            .await?;
+        self.cache_json(raw_cask.id(), bytes).await?;
 
         #[expect(clippy::disallowed_macros)]
-        let RawPackage::Cask(raw_cask) = raw_package else {
+        let RawPackage::Cask(raw_cask) = raw_cask else {
             unreachable!();
         };
 
@@ -84,5 +83,15 @@ impl CaskRegistry {
         let resolved_cask = Arc::new(resolved_cask);
 
         Ok(resolved_cask)
+    }
+}
+
+impl RegistrableJson for CaskRegistry {
+    fn json_path(&self, id: &str) -> PathBuf {
+        let file_name = format!("{id}.json");
+
+        let cache_dir = self.context.homebrew_dirs.cache_dir();
+
+        cache_dir.join("api/cask").join(file_name)
     }
 }
