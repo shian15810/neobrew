@@ -62,7 +62,7 @@ impl PreparedPackageable for PreparedCask {
 }
 
 impl PreparedCask {
-    pub(super) fn url(&self) -> &str {
+    pub(crate) fn url(&self) -> &str {
         &self.url
     }
 }

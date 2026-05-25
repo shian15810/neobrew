@@ -2,6 +2,7 @@ use std::{borrow::Cow, sync::Arc};
 
 use super::{
     super::{
+        Formulable,
         Packageable,
         raw::{Bottle, RawFormula, Versions},
     },
@@ -53,6 +54,12 @@ impl ResolvedPackageable for ResolvedFormula {
                 Cow::Owned(version_revision)
             },
         }
+    }
+}
+
+impl Formulable for ResolvedFormula {
+    fn keg_only(&self) -> bool {
+        self.keg_only
     }
 }
 

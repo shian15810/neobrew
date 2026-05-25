@@ -6,11 +6,7 @@ use foyer::{Cache, CacheBuilder};
 use super::{Registrable, RegistrableJson};
 use crate::{
     context::{Context, dirs::ProjectDirs as _},
-    package::{
-        Packageable as _,
-        raw::{RawCask, RawPackage},
-        resolved::ResolvedCask,
-    },
+    package::{Packageable as _, raw::RawCask, resolved::ResolvedCask},
 };
 
 pub(super) struct CaskRegistry {
@@ -70,14 +66,8 @@ impl CaskRegistry {
         let bytes = resp.bytes().await?;
 
         let raw_cask: RawCask = serde_json::from_slice(&bytes)?;
-        let raw_cask = RawPackage::Cask(raw_cask);
 
         self.cache_json(raw_cask.id(), bytes).await?;
-
-        #[expect(clippy::disallowed_macros)]
-        let RawPackage::Cask(raw_cask) = raw_cask else {
-            unreachable!();
-        };
 
         let resolved_cask = ResolvedCask::from(raw_cask);
         let resolved_cask = Arc::new(resolved_cask);

@@ -14,12 +14,14 @@ use crate::ext::tokio::path::PathExt as _;
 
 pub(crate) struct TempPourer {
     dir_path: PathBuf,
+    symlink_paths: Vec<PathBuf>,
 }
 
 impl TempPourer {
-    pub(crate) fn create(dir_path: PathBuf) -> Self {
+    pub(crate) fn create(dir_path: PathBuf, symlink_paths: Vec<PathBuf>) -> Self {
         Self {
             dir_path,
+            symlink_paths,
         }
     }
 }
@@ -44,6 +46,7 @@ impl PullOperator for TempPourer {
             dir,
 
             dir_path: self.dir_path,
+            symlink_paths: self.symlink_paths,
         };
 
         Ok(output)
@@ -54,6 +57,7 @@ pub(crate) struct TempPourerOutput {
     dir: TempDir,
 
     dir_path: PathBuf,
+    symlink_paths: Vec<PathBuf>,
 }
 
 impl handler::AtomicWriter for TempPourerOutput {
@@ -87,6 +91,12 @@ impl handler::AtomicWriter for TempPourerOutput {
         }
 
         self.dir.close()?;
+
+        for symlink_path in self.symlink_paths {
+            dest_dir_path
+                .create_relative_symlink_atomically_at(symlink_path)
+                .await?;
+        }
 
         Ok(())
     }

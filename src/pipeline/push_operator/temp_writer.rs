@@ -85,10 +85,12 @@ impl handler::AtomicWriter for TempWriterOutput {
     }
 
     async fn persist(self) -> Result<()> {
-        self.file.persist(&self.file_path)?;
+        let dest_file_path = self.file_path;
+
+        self.file.persist(&dest_file_path)?;
 
         for symlink_path in self.symlink_paths {
-            self.file_path
+            dest_file_path
                 .create_relative_symlink_atomically_at(symlink_path)
                 .await?;
         }

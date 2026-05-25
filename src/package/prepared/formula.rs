@@ -1,8 +1,8 @@
 use anyhow::{Result, anyhow};
-use oci_client::{Reference, manifest::OciDescriptor};
 
 use super::{
     super::{
+        Formulable,
         Packageable,
         raw::{BottleStable, BottleStableFile},
         resolved::ResolvedFormula,
@@ -72,6 +72,12 @@ impl Packageable for PreparedFormula {
     }
 }
 
+impl Formulable for PreparedFormula {
+    fn keg_only(&self) -> bool {
+        self.keg_only
+    }
+}
+
 impl PreparedFormula {
     pub(crate) fn bottle_rebuild(&self) -> u64 {
         self.bottle_rebuild
@@ -79,6 +85,14 @@ impl PreparedFormula {
 
     pub(crate) fn bottle_tag(&self) -> &str {
         &self.bottle_tag
+    }
+
+    pub(crate) fn oci_url(&self) -> &str {
+        &self.bottle_file.url
+    }
+
+    pub(crate) fn oci_sha256(&self) -> &str {
+        &self.bottle_file.sha256
     }
 }
 
@@ -90,24 +104,6 @@ impl PreparedPackageable for PreparedFormula {
     fn expected_sha256(&self) -> &str {
         &self.bottle_file.sha256
     }
-}
-
-impl PreparedFormula {
-    pub(super) fn oci(&self) -> Option<PreparedFormulaOci> {
-        let oci = self.bottle_file.oci()?;
-
-        Some(oci)
-    }
-}
-
-pub(super) struct PreparedFormulaOci {
-    pub(super) registry: &'static str,
-    pub(super) reference: Reference,
-    pub(super) descriptor: OciDescriptor,
-}
-
-impl PreparedFormulaOci {
-    const REGISTRY: &str = "ghcr.io";
 }
 
 impl BottleStable {
@@ -188,36 +184,5 @@ impl BottleStable {
         let tag = self.files.contains_key(&tag).then_some(tag)?;
 
         Some(tag)
-    }
-}
-
-impl BottleStableFile {
-    fn oci(&self) -> Option<PreparedFormulaOci> {
-        let registry = PreparedFormulaOci::REGISTRY;
-
-        let repository = format!("https://{registry}/v2/");
-        let repository = self.url.strip_prefix(&repository)?;
-        let repository = repository.split("/blobs/").next()?;
-
-        let sha256 = &self.sha256;
-
-        let digest = format!("sha256:{sha256}");
-
-        let reference =
-            Reference::with_digest(registry.to_owned(), repository.to_owned(), digest.clone());
-
-        let descriptor = OciDescriptor {
-            digest,
-
-            ..OciDescriptor::default()
-        };
-
-        let oci = PreparedFormulaOci {
-            registry,
-            reference,
-            descriptor,
-        };
-
-        Some(oci)
     }
 }

@@ -5,7 +5,6 @@ use std::{path::PathBuf, sync::Arc};
 
 use anyhow::{Result, anyhow};
 use bytes::Bytes;
-use enum_dispatch::enum_dispatch;
 use futures::stream::{self, StreamExt as _, TryStreamExt as _};
 use itertools::Itertools as _;
 use tempfile::NamedTempFile;
@@ -124,13 +123,11 @@ pub(crate) enum ResolutionStrategy {
     Both,
 }
 
-#[enum_dispatch]
 enum Registry {
     Formula(Arc<FormulaRegistry>),
     Cask(Arc<CaskRegistry>),
 }
 
-#[enum_dispatch(Arc<Registry>)]
 trait Registrable {
     type ResolvedPackage;
 
@@ -147,7 +144,6 @@ trait Registrable {
     async fn resolve(self: Arc<Self>, package: Arc<str>) -> Result<Arc<Self::ResolvedPackage>>;
 }
 
-#[enum_dispatch(Arc<Registry>)]
 trait RegistrableJson {
     fn json_path(&self, id: &str) -> PathBuf;
 

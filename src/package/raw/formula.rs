@@ -2,7 +2,10 @@ use std::{borrow::Cow, collections::HashMap};
 
 use serde::Deserialize;
 
-use super::{super::Packageable, RawPackageable};
+use super::{
+    super::{Formulable, Packageable},
+    RawPackageable,
+};
 
 #[derive(Deserialize)]
 pub(crate) struct RawFormula {
@@ -42,6 +45,12 @@ impl RawPackageable for RawFormula {
                 Cow::Owned(version_revision)
             },
         }
+    }
+}
+
+impl Formulable for RawFormula {
+    fn keg_only(&self) -> bool {
+        self.keg_only
     }
 }
 

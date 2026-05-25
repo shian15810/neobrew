@@ -1,12 +1,14 @@
 # Custom Dictionary Words
 ascii
 bufread
+Caskable
 cfgs
 clicolor
 CLIPPYFLAGS
 doctest
 fanout
 Fanout
+Formulable
 hlist
 idents
 incompat

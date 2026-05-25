@@ -10,7 +10,6 @@ use std::{
 use anyhow::Result;
 use base16ct::HexDisplay;
 use digest_io::IoWrapper;
-use enum_dispatch::enum_dispatch;
 use sha2::{Digest as _, Sha256};
 use tokio::{fs::File, task};
 use tokio_util::task::AbortOnDropHandle;
@@ -47,8 +46,8 @@ impl Caches {
         &self,
         prepared_package: &PreparedPackage,
         expected_sha256: &str,
-    ) -> Result<PackageCache> {
-        let package_cache = match prepared_package {
+    ) -> Result<Cache> {
+        let cache = match prepared_package {
             PreparedPackage::Formula(prepared_formula) => {
                 self.formula_cache
                     .retrieve(prepared_formula, expected_sha256)
@@ -61,14 +60,8 @@ impl Caches {
             },
         };
 
-        Ok(package_cache)
+        Ok(cache)
     }
-}
-
-#[enum_dispatch]
-enum Cache {
-    Formula(FormulaCache),
-    Cask(CaskCache),
 }
 
 trait Cacheable {
@@ -127,34 +120,34 @@ trait Cacheable {
         &self,
         prepared_package: &Self::PreparedPackage,
         expected_sha256: &str,
-    ) -> Result<PackageCache> {
+    ) -> Result<Cache> {
         let (symlink_path, file_path) = self.symlink_file_paths(prepared_package)?;
 
         let Some(file_sha256) = self.file_sha256(&file_path).await? else {
-            let package_cache = PackageCache {
+            let cache = Cache {
                 symlink_path,
                 file_path,
                 is_valid: false,
             };
 
-            return Ok(package_cache);
+            return Ok(cache);
         };
 
         let is_valid = self
             .is_valid(&symlink_path, &file_path, &file_sha256, expected_sha256)
             .await?;
 
-        let package_cache = PackageCache {
+        let cache = Cache {
             symlink_path,
             file_path,
             is_valid,
         };
 
-        Ok(package_cache)
+        Ok(cache)
     }
 }
 
-pub(crate) struct PackageCache {
+pub(crate) struct Cache {
     pub(crate) symlink_path: PathBuf,
     pub(crate) file_path: PathBuf,
     pub(crate) is_valid: bool,

@@ -19,7 +19,7 @@ use crate::{
         std::path::PathExt as _,
         tokio::{fs::FileExt as _, path::PathExt as _},
     },
-    utils::linux::Elf,
+    util::linux::Elf,
 };
 
 pub(crate) struct Relocation {

@@ -42,6 +42,7 @@ mod package;
 mod pipeline;
 mod registries;
 mod relocation;
+mod streams;
 mod util;
 
 use clap::{ArgMatches, FromArgMatches as _};

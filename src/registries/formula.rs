@@ -9,11 +9,7 @@ use itertools::Itertools as _;
 use super::{Registrable, RegistrableJson};
 use crate::{
     context::{Context, dirs::ProjectDirs as _},
-    package::{
-        Packageable as _,
-        raw::{RawFormula, RawPackage},
-        resolved::ResolvedFormula,
-    },
+    package::{Packageable as _, raw::RawFormula, resolved::ResolvedFormula},
 };
 
 pub(super) struct FormulaRegistry {
@@ -106,17 +102,17 @@ impl FormulaRegistry {
 
         let raw_formula: RawFormula = serde_json::from_slice(&bytes)?;
 
-        let raw_formula_dependencies = raw_formula.dependencies().to_vec();
-
-        let raw_formula = RawPackage::Formula(raw_formula);
-
         self.cache_json(raw_formula.id(), bytes).await?;
+
+        let raw_formula_dependencies = raw_formula
+            .dependencies()
+            .iter()
+            .map(|raw_formula_dependency| Arc::from(raw_formula_dependency.as_str()))
+            .collect::<Vec<_>>();
 
         let resolved_formula_dependencies = stream::iter(raw_formula_dependencies)
             .map(async |raw_formula_dependency| {
                 let this = Arc::clone(&self);
-
-                let raw_formula_dependency = Arc::from(raw_formula_dependency);
 
                 let resolved_formula_dependency = this
                     .resolve_with_stack(raw_formula_dependency, stack.clone())
@@ -127,11 +123,6 @@ impl FormulaRegistry {
             .buffer_unordered(*self.context.concurrency_limit)
             .try_collect::<Vec<_>>();
         let resolved_formula_dependencies = resolved_formula_dependencies.await?;
-
-        #[expect(clippy::disallowed_macros)]
-        let RawPackage::Formula(raw_formula) = raw_formula else {
-            unreachable!();
-        };
 
         let resolved_formula = ResolvedFormula::from((raw_formula, resolved_formula_dependencies));
         let resolved_formula = Arc::new(resolved_formula);
