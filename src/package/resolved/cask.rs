@@ -1,5 +1,7 @@
 use std::{borrow::Cow, iter, sync::Arc};
 
+use serde_json::{Map, Value};
+
 use super::{
     super::{Packageable, raw::RawCask},
     ResolvedPackageable,
@@ -11,6 +13,7 @@ pub(crate) struct ResolvedCask {
     version: String,
     pub(in super::super) url: String,
     pub(in super::super) sha256: String,
+    artifacts: Vec<Map<String, Value>>,
 }
 
 impl From<RawCask> for ResolvedCask {
@@ -20,6 +23,7 @@ impl From<RawCask> for ResolvedCask {
             version: raw_cask.version,
             url: raw_cask.url,
             sha256: raw_cask.sha256,
+            artifacts: raw_cask.artifacts,
         }
     }
 }

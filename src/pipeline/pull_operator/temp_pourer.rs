@@ -2,24 +2,35 @@ use std::path::PathBuf;
 
 use anyhow::Result;
 use async_compression::tokio::bufread::GzipDecoder;
+use async_zip::base::read::stream::ZipFileReader;
 use tempfile::TempDir;
 use tokio::{
-    fs,
-    io::{AsyncRead, BufReader},
+    fs::{self, File},
+    io::{self, AsyncRead, BufReader},
 };
 use tokio_tar::Archive;
+use tokio_util::compat::FuturesAsyncReadCompatExt as _;
 
 use super::{super::handler, PullOperator};
-use crate::ext::tokio::path::PathExt as _;
+use crate::{
+    ext::{std::path::PathExt as _, tokio::path::PathExt as _},
+    util::ArchiveFormat,
+};
 
 pub(crate) struct TempPourer {
+    archive_format: ArchiveFormat,
     dir_path: PathBuf,
     symlink_paths: Vec<PathBuf>,
 }
 
 impl TempPourer {
-    pub(crate) fn create(dir_path: PathBuf, symlink_paths: Vec<PathBuf>) -> Self {
+    pub(crate) fn create(
+        archive_format: ArchiveFormat,
+        dir_path: PathBuf,
+        symlink_paths: Vec<PathBuf>,
+    ) -> Self {
         Self {
+            archive_format,
             dir_path,
             symlink_paths,
         }
@@ -36,11 +47,40 @@ impl PullOperator for TempPourer {
 
         let buf_reader = BufReader::new(reader);
 
-        let gz_decoder = GzipDecoder::new(buf_reader);
+        match self.archive_format {
+            ArchiveFormat::TarGz => {
+                let gz_decoder = GzipDecoder::new(buf_reader);
 
-        let mut archive = Archive::new(gz_decoder);
+                let mut archive = Archive::new(gz_decoder);
 
-        archive.unpack(dir.path()).await?;
+                archive.unpack(dir.path()).await?;
+            },
+            ArchiveFormat::Zip => {
+                let mut zip = ZipFileReader::with_tokio(buf_reader);
+
+                while let Some(mut entry_reader) = zip.next_with_entry().await? {
+                    let file_name = entry_reader.reader().entry().filename().as_str()?;
+
+                    if file_name.ends_with('/') {
+                        zip = entry_reader.skip().await?;
+                    } else {
+                        let dest_dir_path = dir.path();
+
+                        let dest_path = dest_dir_path.join(file_name);
+
+                        let dest_base_path = dest_path.base()?;
+
+                        fs::create_dir_all(dest_base_path).await?;
+
+                        let mut dest_file = File::create(dest_path).await?;
+
+                        io::copy(&mut entry_reader.reader_mut().compat(), &mut dest_file).await?;
+
+                        zip = entry_reader.done().await?;
+                    }
+                }
+            },
+        }
 
         let output = TempPourerOutput {
             dir,
@@ -72,12 +112,12 @@ impl handler::AtomicWriter for TempPourerOutput {
 
         let dest_dir_path = self.dir_path;
 
-        let mut entries = fs::read_dir(src_dir_path).await?;
+        let mut src_dir_entries = fs::read_dir(src_dir_path).await?;
 
-        while let Some(entry) = entries.next_entry().await? {
-            let src_path = entry.path();
+        while let Some(src_dir_entry) = src_dir_entries.next_entry().await? {
+            let src_path = src_dir_entry.path();
 
-            let dest_path = dest_dir_path.join(entry.file_name());
+            let dest_path = dest_dir_path.join(src_dir_entry.file_name());
 
             if !src_path.is_dir_exists_nofollow().await? {
                 continue;

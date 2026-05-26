@@ -1,4 +1,7 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    path::{Path, PathBuf},
+    sync::Arc,
+};
 
 use anyhow::Result;
 use base16ct::HexDisplay;
@@ -11,6 +14,7 @@ use crate::{
         Packageable as _,
         prepared::{PreparedFormula, PreparedPackageable as _},
     },
+    util::ArchiveFormat,
 };
 
 pub(super) struct FormulaCache {
@@ -24,6 +28,12 @@ impl Cacheable for FormulaCache {
         Self {
             context,
         }
+    }
+
+    fn archive_format(&self, _: &Path) -> Result<Option<ArchiveFormat>> {
+        let archive_format = ArchiveFormat::TarGz;
+
+        Ok(Some(archive_format))
     }
 
     fn symlink_file_paths(

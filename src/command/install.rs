@@ -49,7 +49,7 @@ struct Installation {
 
     caches: Caches,
     streams: Streams,
-    relocation: Arc<Relocation>,
+    relocation: Relocation,
     linker: Linker,
 }
 
@@ -60,7 +60,6 @@ impl Installation {
         let streams = Streams::new(Arc::clone(&context));
 
         let relocation = Relocation::from(&context.homebrew_dirs);
-        let relocation = Arc::new(relocation);
 
         let linker = Linker::create(Arc::clone(&context)).await?;
 
@@ -156,17 +155,24 @@ impl Installation {
             return Ok(());
         }
 
+        let cache = self
+            .caches
+            .retrieve(&prepared_package, expected_sha256)
+            .await?;
+
+        let Some(archive_format) = cache.archive_format else {
+            let err = anyhow!(r#"Archive file format of package "{id}" is not yet supported"#);
+
+            return Err(err);
+        };
+
         let pourer_dir_path = match prepared_package {
             PreparedPackage::Formula(_) => self.context.homebrew_dirs.cellar_dir(),
             PreparedPackage::Cask(_) => self.context.homebrew_dirs.caskroom_dir(),
         };
 
-        let temp_pourer = pull_operator::TempPourer::create(pourer_dir_path, vec![]);
-
-        let cache = self
-            .caches
-            .retrieve(&prepared_package, expected_sha256)
-            .await?;
+        let temp_pourer =
+            pull_operator::TempPourer::create(archive_format, pourer_dir_path, vec![]);
 
         if cache.is_valid {
             let cache_stream = self.streams.cache(&cache.file_path).await?;
@@ -291,9 +297,7 @@ impl Installation {
                         .homebrew_dirs
                         .keg_dir(fetched_formula.id(), fetched_formula.version());
 
-                    Arc::clone(&self.relocation)
-                        .patch_keg(&keg_dir_path)
-                        .await?;
+                    self.relocation.patch_keg(&keg_dir_path).await?;
                 }
             },
             FetchedPackage::Cask(_fetched_cask) => {},

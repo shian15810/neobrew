@@ -19,6 +19,7 @@ use crate::{
     context::Context,
     ext::tokio::{fs::FileExt as _, path::PathExt as _},
     package::prepared::PreparedPackage,
+    util::ArchiveFormat,
 };
 
 pub(crate) struct Caches {
@@ -68,6 +69,8 @@ trait Cacheable {
     type PreparedPackage;
 
     fn new(context: Arc<Context>) -> Self;
+
+    fn archive_format(&self, symlink_path: &Path) -> Result<Option<ArchiveFormat>>;
 
     fn symlink_file_paths(
         &self,
@@ -123,8 +126,11 @@ trait Cacheable {
     ) -> Result<Cache> {
         let (symlink_path, file_path) = self.symlink_file_paths(prepared_package)?;
 
+        let archive_format = self.archive_format(&symlink_path)?;
+
         let Some(file_sha256) = self.file_sha256(&file_path).await? else {
             let cache = Cache {
+                archive_format,
                 symlink_path,
                 file_path,
                 is_valid: false,
@@ -138,6 +144,7 @@ trait Cacheable {
             .await?;
 
         let cache = Cache {
+            archive_format,
             symlink_path,
             file_path,
             is_valid,
@@ -148,6 +155,7 @@ trait Cacheable {
 }
 
 pub(crate) struct Cache {
+    pub(crate) archive_format: Option<ArchiveFormat>,
     pub(crate) symlink_path: PathBuf,
     pub(crate) file_path: PathBuf,
     pub(crate) is_valid: bool,

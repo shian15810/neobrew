@@ -2,7 +2,6 @@ use anyhow::{Result, anyhow};
 
 use super::{
     super::{
-        Formulable,
         Packageable,
         raw::{BottleStable, BottleStableFile},
         resolved::ResolvedFormula,
@@ -72,12 +71,6 @@ impl Packageable for PreparedFormula {
     }
 }
 
-impl Formulable for PreparedFormula {
-    fn keg_only(&self) -> bool {
-        self.keg_only
-    }
-}
-
 impl PreparedFormula {
     pub(crate) fn bottle_rebuild(&self) -> u64 {
         self.bottle_rebuild
@@ -93,6 +86,10 @@ impl PreparedFormula {
 
     pub(crate) fn oci_sha256(&self) -> &str {
         &self.bottle_file.sha256
+    }
+
+    pub(crate) fn should_link_keg(&self) -> bool {
+        !self.keg_only
     }
 }
 

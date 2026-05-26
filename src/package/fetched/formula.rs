@@ -1,9 +1,4 @@
-use super::super::{
-    Formulable,
-    Packageable,
-    prepared::PreparedFormula,
-    raw::BottleStableFileCellar,
-};
+use super::super::{Packageable, prepared::PreparedFormula, raw::BottleStableFileCellar};
 
 pub(crate) struct FetchedFormula {
     name: String,
@@ -30,12 +25,6 @@ impl Packageable for FetchedFormula {
 
     fn version(&self) -> &str {
         &self.version_revision
-    }
-}
-
-impl Formulable for FetchedFormula {
-    fn keg_only(&self) -> bool {
-        self.keg_only
     }
 }
 

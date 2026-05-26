@@ -11,10 +11,12 @@ use url::Url;
 use super::Cacheable;
 use crate::{
     context::{Context, dirs::ProjectDirs as _},
+    ext::std::path::PathExt as _,
     package::{
         Packageable as _,
         prepared::{PreparedCask, PreparedPackageable as _},
     },
+    util::ArchiveFormat,
 };
 
 pub(super) struct CaskCache {
@@ -28,6 +30,16 @@ impl Cacheable for CaskCache {
         Self {
             context,
         }
+    }
+
+    fn archive_format(&self, symlink_path: &Path) -> Result<Option<ArchiveFormat>> {
+        let archive_format = match ArchiveFormat::try_from(symlink_path) {
+            Ok(archive_format) => archive_format,
+            Err(Some(err)) => return Err(err),
+            Err(None) => return Ok(None),
+        };
+
+        Ok(Some(archive_format))
     }
 
     fn symlink_file_paths(
@@ -48,17 +60,21 @@ impl Cacheable for CaskCache {
 
         let url = Url::parse(url)?;
 
-        let mut segment = url.path_segments().context("Invalid URL")?;
-        let segment = segment.next_back().context("Empty URL path segments")?;
+        let mut name = url.path_segments().context("Invalid URL")?;
+        let name = name.next_back().context("Empty URL path segments")?;
 
-        let path = Path::new(segment);
+        let path = Path::new(name);
 
-        let extension = path.extension().context("Invalid file name")?;
-        let extension = extension.to_str().context("Invalid file extension")?;
+        let compound_extension = path
+            .compound_extension()
+            .context("Invalid file path name")?;
+        let compound_extension = compound_extension
+            .to_str()
+            .context("Invalid file compound extension")?;
 
-        let symlink_name = format!("{segment}--{version}.{extension}");
+        let symlink_name = format!("{name}--{version}.{compound_extension}");
 
-        let file_name = format!("{url_hash}--{segment}");
+        let file_name = format!("{url_hash}--{name}");
 
         let symlink_path = cache_dir_path.join("Cask").join(symlink_name);
 
