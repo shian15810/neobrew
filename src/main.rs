@@ -63,7 +63,7 @@ async fn main() -> proc_exit::ExitResult {
         result = handle => {
             result
                 .with_code(proc_exit::sysexits::SOFTWARE_ERR)?
-                .with_code(proc_exit::sysexits::SOFTWARE_ERR)?;
+                .with_code(proc_exit::sysexits::OS_ERR)?;
 
             proc_exit::bash::SIGINT.ok()
         },

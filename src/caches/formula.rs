@@ -36,13 +36,13 @@ impl Cacheable for FormulaCache {
         Ok(Some(archive_format))
     }
 
-    fn symlink_file_paths(
+    async fn symlink_file_paths(
         &self,
         prepared_package: &Self::PreparedPackage,
     ) -> Result<(PathBuf, PathBuf)> {
         let prepared_formula = prepared_package;
 
-        let cache_dir_path = self.context.homebrew_dirs.cache_dir();
+        let dir_path = self.context.homebrew_dirs.cache_dir();
 
         let id = prepared_formula.id();
 
@@ -66,9 +66,9 @@ impl Cacheable for FormulaCache {
             bottle_rebuild => format!("{file_name}.{bottle_rebuild}.tar.gz"),
         };
 
-        let symlink_path = cache_dir_path.join(symlink_name);
+        let symlink_path = dir_path.join(symlink_name);
 
-        let file_path = cache_dir_path.join("downloads").join(file_name);
+        let file_path = dir_path.join("downloads").join(file_name);
 
         let symlink_file_paths = (symlink_path, file_path);
 

@@ -43,7 +43,7 @@ alias = "postinstall:miri"
 [tasks."cargo:run"]
 tools = { rust = "nightly" }
 run = "cargo +nightly run --all-features"
-alias = "default"
+raw_args = true
 
 [tasks."cargo:miri:run"]
 tools = { rust = "nightly" }

@@ -1,10 +1,11 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use anyhow::{Result, anyhow};
 use bytes::Bytes;
 use clap::Args;
 use frunk::hlist_pat;
 use futures::stream;
+use indicatif::{MultiProgress, ProgressBar};
 use indoc::formatdoc;
 use tokio::task::JoinSet;
 
@@ -36,25 +37,35 @@ pub(super) struct Install {
 
 impl Runner for Install {
     async fn run_concurrent(self, context: Arc<Context>) -> Result<()> {
-        let installation = Installation::init(context).await?;
+        let installation = Installation::init(self.packages, self.resolution, context).await?;
 
-        installation.run(self.packages, self.resolution).await?;
+        installation.run().await?;
 
         Ok(())
     }
 }
 
 struct Installation {
-    context: Arc<Context>,
+    packages: Vec<String>,
+    resolution: Resolution,
 
     caches: Caches,
     streams: Streams,
     relocation: Relocation,
     linker: Linker,
+
+    multi_pb: MultiProgress,
+    active_pbs: Arc<Mutex<Vec<(String, ProgressBar)>>>,
+
+    context: Arc<Context>,
 }
 
 impl Installation {
-    async fn init(context: Arc<Context>) -> Result<Arc<Self>> {
+    async fn init(
+        packages: Vec<String>,
+        resolution: Resolution,
+        context: Arc<Context>,
+    ) -> Result<Arc<Self>> {
         let caches = Caches::new(Arc::clone(&context));
 
         let streams = Streams::new(Arc::clone(&context));
@@ -63,39 +74,55 @@ impl Installation {
 
         let linker = Linker::create(Arc::clone(&context)).await?;
 
+        let multi_pb = MultiProgress::new();
+
+        let active_pbs = Vec::new();
+        let active_pbs = Mutex::new(active_pbs);
+        let active_pbs = Arc::new(active_pbs);
+
         let this = Self {
-            context,
+            packages,
+            resolution,
 
             caches,
             streams,
             relocation,
             linker,
+
+            multi_pb,
+            active_pbs,
+
+            context,
         };
         let this = Arc::new(this);
 
         Ok(this)
     }
 
-    async fn run(self: Arc<Self>, packages: Vec<String>, resolution: Resolution) -> Result<()> {
-        if packages.is_empty() {
+    async fn run(self: Arc<Self>) -> Result<()> {
+        if self.packages.is_empty() {
             return Ok(());
         }
 
-        let strategy = resolution.strategy();
+        let this = Arc::clone(&self);
 
-        self.run_many(packages, strategy).await?;
+        let strategy = self.resolution.strategy();
+
+        this.run_many(&self.packages, strategy).await?;
 
         Ok(())
     }
 
     async fn run_many(
         self: Arc<Self>,
-        packages: Vec<String>,
+        packages: &[String],
         strategy: ResolutionStrategy,
     ) -> Result<()> {
         let registries = Registries::new(Arc::clone(&self.context));
 
-        let resolved_packages = registries.resolve(packages, strategy).await?;
+        let resolved_packages = registries
+            .resolve(packages.iter().cloned(), strategy)
+            .await?;
 
         #[cfg(debug_assertions)]
         let prepared_packages = resolved_packages
@@ -111,10 +138,20 @@ impl Installation {
             .filter_map(Result::transpose_err)
             .collect::<Result<Vec<_>>>()?;
 
+        let max_id_length = prepared_packages
+            .iter()
+            .map(|prepared_package| prepared_package.id().len())
+            .max();
+
+        let max_version_length = prepared_packages
+            .iter()
+            .map(|prepared_package| prepared_package.version().len())
+            .max();
+
         let mut set = JoinSet::new();
 
         for prepared_package in prepared_packages {
-            while set.len() >= *self.context.concurrency_limit {
+            while set.len() >= self.context.concurrency_limit {
                 if let Some(res) = set.join_next().await {
                     res??;
                 }
@@ -123,7 +160,8 @@ impl Installation {
             let this = Arc::clone(&self);
 
             set.spawn(async move {
-                this.run_one(prepared_package).await?;
+                this.run_one(prepared_package, max_id_length, max_version_length)
+                    .await?;
 
                 anyhow::Ok(())
             });
@@ -136,7 +174,12 @@ impl Installation {
         Ok(())
     }
 
-    async fn run_one(&self, prepared_package: PreparedPackage) -> Result<()> {
+    async fn run_one(
+        &self,
+        prepared_package: PreparedPackage,
+        max_id_length: Option<usize>,
+        max_version_length: Option<usize>,
+    ) -> Result<()> {
         let id = prepared_package.id();
 
         let version = prepared_package.version();
@@ -160,41 +203,47 @@ impl Installation {
             .retrieve(&prepared_package, expected_sha256)
             .await?;
 
-        let Some(archive_format) = cache.archive_format else {
-            let err = anyhow!(r#"Archive file format of package "{id}" is not yet supported"#);
-
-            return Err(err);
-        };
-
         let pourer_dir_path = match prepared_package {
             PreparedPackage::Formula(_) => self.context.homebrew_dirs.cellar_dir(),
             PreparedPackage::Cask(_) => self.context.homebrew_dirs.caskroom_dir(),
         };
 
         let temp_pourer =
-            pull_operator::TempPourer::create(archive_format, pourer_dir_path, vec![]);
+            pull_operator::TempPourer::create(cache.archive_format, pourer_dir_path, vec![]);
 
         if cache.is_valid {
-            let cache_stream = self.streams.cache(&cache.file_path).await?;
+            let (stream, content_length) = self.streams.cache(&cache.file_path).await?;
 
-            self.fetch_from_cache(id, version, expected_sha256, temp_pourer, cache_stream)
-                .await?;
+            let content_length = Some(content_length);
+
+            self.fetch_from_cache(
+                id,
+                version,
+                expected_sha256,
+                max_id_length,
+                max_version_length,
+                content_length,
+                temp_pourer,
+                stream,
+            )
+            .await?;
         } else {
             let temp_writer =
                 push_operator::TempWriter::create(cache.file_path, vec![cache.symlink_path])
                     .await?;
 
-            let Some(api_stream) = self.streams.api(&prepared_package).await? else {
-                return Ok(());
-            };
+            let (stream, content_length) = self.streams.api(&prepared_package).await?;
 
             self.fetch_from_api(
                 id,
                 version,
                 expected_sha256,
+                max_id_length,
+                max_version_length,
+                content_length,
                 temp_pourer,
                 temp_writer,
-                api_stream,
+                stream,
             )
             .await?;
         }
@@ -208,20 +257,35 @@ impl Installation {
         Ok(())
     }
 
+    #[expect(clippy::too_many_arguments)]
     async fn fetch_from_cache(
         &self,
         id: &str,
         version: &str,
         expected_sha256: &str,
+        max_id_length: Option<usize>,
+        max_version_length: Option<usize>,
+        content_length: Option<u64>,
         temp_pourer: pull_operator::TempPourer,
-        cache_stream: impl stream::Stream<Item = Result<Bytes>> + Send + 'static,
+        stream: impl stream::Stream<Item = Result<Bytes>> + Send + 'static,
     ) -> Result<()> {
         let hasher = push_operator::Hasher::new();
 
-        let hlist_pat![temp_pourer_output, hashed_sha256] =
-            Pipeline::new(cache_stream, Arc::clone(&self.context))
+        let progress = push_operator::Progress::create(
+            &self.multi_pb,
+            Arc::clone(&self.active_pbs),
+            id,
+            version,
+            max_id_length,
+            max_version_length,
+            content_length,
+        )?;
+
+        let hlist_pat![temp_pourer_output, hashed_sha256, _] =
+            Pipeline::new(stream, Arc::clone(&self.context))
                 .fanout(temp_pourer)
                 .fanout(hasher)
+                .fanout(progress)
                 .run_parallel()
                 .await?;
 
@@ -238,22 +302,37 @@ impl Installation {
         Ok(())
     }
 
+    #[expect(clippy::too_many_arguments)]
     async fn fetch_from_api(
         &self,
         id: &str,
         version: &str,
         expected_sha256: &str,
+        max_id_length: Option<usize>,
+        max_version_length: Option<usize>,
+        content_length: Option<u64>,
         temp_pourer: pull_operator::TempPourer,
         temp_writer: push_operator::TempWriter,
-        api_stream: impl stream::Stream<Item = Result<Bytes>> + Send + 'static,
+        stream: impl stream::Stream<Item = Result<Bytes>> + Send + 'static,
     ) -> Result<()> {
         let hasher = push_operator::Hasher::new();
 
-        let hlist_pat![temp_pourer_output, temp_writer_output, hashed_sha256] =
-            Pipeline::new(api_stream, Arc::clone(&self.context))
+        let progress = push_operator::Progress::create(
+            &self.multi_pb,
+            Arc::clone(&self.active_pbs),
+            id,
+            version,
+            max_id_length,
+            max_version_length,
+            content_length,
+        )?;
+
+        let hlist_pat![temp_pourer_output, temp_writer_output, hashed_sha256, _] =
+            Pipeline::new(stream, Arc::clone(&self.context))
                 .fanout(temp_pourer)
                 .fanout(temp_writer)
                 .fanout(hasher)
+                .fanout(progress)
                 .run_parallel()
                 .await?;
 

@@ -24,7 +24,7 @@ impl PathExt for Path {
         let name = self.file_name()?.to_str()?;
 
         if let Some((_, compound_extension)) =
-            regex_captures!(r"\.([a-z0-9_]+\.bottle\.(?:\d+\.)?tar\.gz)$", name)
+            regex_captures!(r"\.[a-z0-9_]+\.bottle\.(?:\d+\.)?(tar\.gz)$", name)
         {
             let compound_extension = OsString::from(compound_extension);
             let compound_extension = Cow::Owned(compound_extension);

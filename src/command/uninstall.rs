@@ -27,7 +27,7 @@ impl Runner for Uninstall {
         let mut set = JoinSet::new();
 
         for _resolved_package in resolved_packages {
-            while set.len() >= *context.concurrency_limit {
+            while set.len() >= context.concurrency_limit {
                 if let Some(res) = set.join_next().await {
                     res??;
                 }

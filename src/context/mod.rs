@@ -31,13 +31,13 @@ pub struct Context {
     pub(crate) homebrew_dirs: HomebrewDirs,
     pub(crate) neobrew_dirs: NeobrewDirs,
 
-    pub(crate) client: LazyLock<reqwest::Client>,
-    pub(crate) oci_client: LazyLock<Client>,
+    pub(crate) client: reqwest::Client,
+    pub(crate) oci_client: Client,
 
-    pub(crate) semaphore: LazyLock<Semaphore>,
+    pub(crate) semaphore: Semaphore,
 
-    pub(crate) concurrency_limit: LazyLock<usize>,
-    pub(crate) channel_capacity: LazyLock<usize>,
+    pub(crate) concurrency_limit: usize,
+    pub(crate) channel_capacity: usize,
 }
 
 impl Context {
@@ -58,13 +58,13 @@ impl Context {
             homebrew_dirs,
             neobrew_dirs,
 
-            client: LazyLock::new(reqwest::Client::new),
-            oci_client: LazyLock::new(|| Client::new(ClientConfig::default())),
+            client: reqwest::Client::new(),
+            oci_client: Client::new(ClientConfig::default()),
 
-            semaphore: LazyLock::new(|| Semaphore::new(*CONCURRENCY_LIMIT)),
+            semaphore: Semaphore::new(*CONCURRENCY_LIMIT),
 
-            concurrency_limit: LazyLock::new(|| *CONCURRENCY_LIMIT),
-            channel_capacity: LazyLock::new(|| CONCURRENCY_LIMIT.saturating_mul(BUFFER_MULTIPLIER)),
+            concurrency_limit: *CONCURRENCY_LIMIT,
+            channel_capacity: CONCURRENCY_LIMIT.saturating_mul(BUFFER_MULTIPLIER),
         };
 
         Ok(this)

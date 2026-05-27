@@ -90,6 +90,10 @@ impl handler::AtomicWriter for TempWriterOutput {
         self.file.persist(&dest_file_path)?;
 
         for symlink_path in self.symlink_paths {
+            let symlink_base_path = symlink_path.base()?;
+
+            fs::create_dir_all(symlink_base_path).await?;
+
             dest_file_path
                 .create_relative_symlink_atomically_at(symlink_path)
                 .await?;

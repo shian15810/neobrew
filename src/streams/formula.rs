@@ -16,7 +16,8 @@ impl FormulaStream {
 
         let repository = format!("https://{registry}/v2/");
         let repository = prepared_formula.oci_url().strip_prefix(&repository)?;
-        let repository = repository.split("/blobs/").next()?;
+
+        let (repository, _) = repository.split_once("/blobs/")?;
 
         let sha256 = prepared_formula.oci_sha256();
 

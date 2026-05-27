@@ -28,39 +28,51 @@ impl Streams {
 
     pub(crate) async fn cache(
         &self,
-        cache_file_path: &Path,
-    ) -> Result<impl stream::Stream<Item = Result<Bytes>> + Send + 'static> {
-        let cache_file = File::open(cache_file_path).await?;
+        file_path: &Path,
+    ) -> Result<(
+        impl stream::Stream<Item = Result<Bytes>> + Send + 'static,
+        u64,
+    )> {
+        let file = File::open(file_path).await?;
 
-        let cache_stream = ReaderStream::new(cache_file);
-        let cache_stream = cache_stream.err_into();
+        let content_length = file.metadata().await?.len();
 
-        Ok(cache_stream)
+        let stream = ReaderStream::new(file);
+        let stream = stream.err_into();
+
+        Ok((stream, content_length))
     }
 
     pub(crate) async fn api(
         &self,
         prepared_package: &PreparedPackage,
-    ) -> Result<Option<impl stream::Stream<Item = Result<Bytes>> + Send + 'static>> {
-        let api_stream = match prepared_package {
+    ) -> Result<(
+        impl stream::Stream<Item = Result<Bytes>> + Send + 'static,
+        Option<u64>,
+    )> {
+        match prepared_package {
             PreparedPackage::Formula(prepared_formula) => {
-                let Some((reference, descriptor)) = FormulaStream::oci(prepared_formula) else {
-                    return Ok(None);
-                };
+                let (reference, descriptor) = FormulaStream::oci(prepared_formula)
+                    .ok_or_else(|| anyhow::anyhow!("No OCI reference for formula"))?;
 
                 self.context
                     .oci_client
                     .store_auth_if_needed(FormulaStream::OCI_REGISTRY, &RegistryAuth::Anonymous)
                     .await;
 
-                let stream = self
+                let sized_stream = self
                     .context
                     .oci_client
                     .pull_blob_stream(&reference, &descriptor)
                     .await?;
-                let stream = stream.err_into();
 
-                stream.left_stream()
+                let content_length = sized_stream.content_length;
+
+                let stream = sized_stream.stream;
+                let stream = stream.err_into();
+                let stream = stream.left_stream();
+
+                Ok((stream, content_length))
             },
             PreparedPackage::Cask(prepared_cask) => {
                 let url = prepared_cask.cache_url();
@@ -68,13 +80,14 @@ impl Streams {
                 let resp = self.context.client.get(url).send().await?;
                 let resp = resp.error_for_status()?;
 
+                let content_length = resp.content_length();
+
                 let stream = resp.bytes_stream();
                 let stream = stream.err_into();
+                let stream = stream.right_stream();
 
-                stream.right_stream()
+                Ok((stream, content_length))
             },
-        };
-
-        Ok(Some(api_stream))
+        }
     }
 }

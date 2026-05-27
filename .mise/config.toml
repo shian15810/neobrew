@@ -39,6 +39,14 @@ CARGO_BUILD_TARGET = "{{ get_env(name='CARGO_BUILD_TARGET', default='host-tuple'
 preinstall = { task = "preinstall:**" }
 postinstall = { task = "postinstall:**" }
 
+# Default Task
+
+[tasks.default]
+env = { MISE_TASK_OUTPUT = "interleave" }
+run = "mise run cargo:run"
+raw_args = true
+interactive = true
+
 # Grouped Tasks
 
 [tasks.format]

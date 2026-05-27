@@ -203,7 +203,8 @@ impl Linker {
 
         let is_opt_linked = keg_dir_path.is_dir_exists_nofollow().await?
             && opt_prefix_symlink_path.is_symlink_exists_nofollow().await?
-            && keg_dir_path.canonicalize()? == opt_prefix_symlink_path.canonicalize()?;
+            && keg_dir_path.realpath_or_none().await?
+                == opt_prefix_symlink_path.realpath_or_none().await?;
 
         Ok(is_opt_linked)
     }
@@ -222,7 +223,8 @@ impl Linker {
             && linked_keg_prefix_symlink_path
                 .is_symlink_exists_nofollow()
                 .await?
-            && keg_dir_path.canonicalize()? == linked_keg_prefix_symlink_path.canonicalize()?;
+            && keg_dir_path.realpath_or_none().await?
+                == linked_keg_prefix_symlink_path.realpath_or_none().await?;
 
         Ok(is_keg_linked)
     }

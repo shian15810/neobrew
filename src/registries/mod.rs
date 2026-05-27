@@ -72,7 +72,7 @@ impl Registries {
 
                 anyhow::Ok(resolved_package)
             })
-            .buffer_unordered(*self.context.concurrency_limit)
+            .buffer_unordered(self.context.concurrency_limit)
             .try_collect::<Vec<_>>();
         let resolved_packages = resolved_packages.await?;
 
@@ -147,7 +147,7 @@ trait Registrable {
 trait RegistrableJson {
     fn json_path(&self, id: &str) -> PathBuf;
 
-    async fn cache_json(&self, id: &str, bytes: Bytes) -> Result<()> {
+    async fn save_json(&self, id: &str, bytes: Bytes) -> Result<()> {
         let file_path = self.json_path(id);
 
         let file_base_path = file_path.base()?;

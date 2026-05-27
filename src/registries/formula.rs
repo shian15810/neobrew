@@ -102,7 +102,7 @@ impl FormulaRegistry {
 
         let raw_formula: RawFormula = serde_json::from_slice(&bytes)?;
 
-        self.cache_json(raw_formula.id(), bytes).await?;
+        self.save_json(raw_formula.id(), bytes).await?;
 
         let raw_formula_dependencies = raw_formula
             .dependencies()
@@ -120,7 +120,7 @@ impl FormulaRegistry {
 
                 anyhow::Ok(resolved_formula_dependency)
             })
-            .buffer_unordered(*self.context.concurrency_limit)
+            .buffer_unordered(self.context.concurrency_limit)
             .try_collect::<Vec<_>>();
         let resolved_formula_dependencies = resolved_formula_dependencies.await?;
 
@@ -135,8 +135,8 @@ impl RegistrableJson for FormulaRegistry {
     fn json_path(&self, id: &str) -> PathBuf {
         let file_name = format!("{id}.json");
 
-        let cache_dir = self.context.homebrew_dirs.cache_dir();
+        let dir = self.context.homebrew_dirs.cache_dir();
 
-        cache_dir.join("api/formula").join(file_name)
+        dir.join("api/formula").join(file_name)
     }
 }

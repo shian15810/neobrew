@@ -1,4 +1,6 @@
-use anyhow::{Result, anyhow};
+use std::result;
+
+use anyhow::{Context as _, Result};
 
 use super::{
     super::{
@@ -21,7 +23,7 @@ pub(crate) struct PreparedFormula {
 impl TryFrom<ResolvedFormula> for PreparedFormula {
     type Error = Option<anyhow::Error>;
 
-    fn try_from(resolved_formula: ResolvedFormula) -> Result<Self, Self::Error> {
+    fn try_from(resolved_formula: ResolvedFormula) -> result::Result<Self, Self::Error> {
         #[cfg(debug_assertions)]
         #[cfg_attr(
             debug_assertions,
@@ -109,11 +111,10 @@ impl BottleStable {
             return Ok(None);
         };
 
-        let Some(entry) = self.files.remove_entry(&tag) else {
-            let err = anyhow!(r#"Computed bottle tag "{tag}" is missing from files"#);
-
-            return Err(err);
-        };
+        let entry = self
+            .files
+            .remove_entry(&tag)
+            .with_context(|| format!(r#"Computed bottle tag "{tag}" is missing from files"#))?;
 
         Ok(Some(entry))
     }

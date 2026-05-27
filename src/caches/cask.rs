@@ -42,17 +42,22 @@ impl Cacheable for CaskCache {
         Ok(Some(archive_format))
     }
 
-    fn symlink_file_paths(
+    async fn symlink_file_paths(
         &self,
         prepared_package: &Self::PreparedPackage,
     ) -> Result<(PathBuf, PathBuf)> {
         let prepared_cask = prepared_package;
 
-        let cache_dir_path = self.context.homebrew_dirs.cache_dir();
+        let dir_path = self.context.homebrew_dirs.cache_dir();
 
         let version = prepared_cask.version();
 
         let url = prepared_cask.cache_url();
+
+        let resp = self.context.client.get(url).send().await?;
+        let resp = resp.error_for_status()?;
+
+        let url = resp.url().as_str();
 
         let url_hash = Sha256::digest(url);
         let url_hash = HexDisplay(&url_hash);
@@ -61,24 +66,28 @@ impl Cacheable for CaskCache {
         let url = Url::parse(url)?;
 
         let mut name = url.path_segments().context("Invalid URL")?;
-        let name = name.next_back().context("Empty URL path segments")?;
+        let name = name.next_back().context("Empty path segments")?;
 
         let path = Path::new(name);
 
-        let compound_extension = path
-            .compound_extension()
-            .context("Invalid file path name")?;
-        let compound_extension = compound_extension
-            .to_str()
-            .context("Invalid file compound extension")?;
+        let compound_extension = path.compound_extension();
 
-        let symlink_name = format!("{name}--{version}.{compound_extension}");
+        let symlink_name = match compound_extension {
+            Some(compound_extension) => {
+                let compound_extension = compound_extension
+                    .to_str()
+                    .context("Invalid compound extension")?;
+
+                format!("{name}--{version}.{compound_extension}")
+            },
+            None => format!("{name}--{version}"),
+        };
 
         let file_name = format!("{url_hash}--{name}");
 
-        let symlink_path = cache_dir_path.join("Cask").join(symlink_name);
+        let symlink_path = dir_path.join("Cask").join(symlink_name);
 
-        let file_path = cache_dir_path.join("Cask/downloads").join(file_name);
+        let file_path = dir_path.join("downloads").join(file_name);
 
         let symlink_file_paths = (symlink_path, file_path);
 

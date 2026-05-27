@@ -162,7 +162,7 @@ struct Resolution {
 }
 
 impl Resolution {
-    fn strategy(self) -> ResolutionStrategy {
+    fn strategy(&self) -> ResolutionStrategy {
         match (self.formula, self.cask) {
             (true, _) => ResolutionStrategy::FormulaOnly,
             (_, true) => ResolutionStrategy::CaskOnly,

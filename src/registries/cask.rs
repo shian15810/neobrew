@@ -67,7 +67,7 @@ impl CaskRegistry {
 
         let raw_cask: RawCask = serde_json::from_slice(&bytes)?;
 
-        self.cache_json(raw_cask.id(), bytes).await?;
+        self.save_json(raw_cask.id(), bytes).await?;
 
         let resolved_cask = ResolvedCask::from(raw_cask);
         let resolved_cask = Arc::new(resolved_cask);
@@ -80,8 +80,8 @@ impl RegistrableJson for CaskRegistry {
     fn json_path(&self, id: &str) -> PathBuf {
         let file_name = format!("{id}.json");
 
-        let cache_dir = self.context.homebrew_dirs.cache_dir();
+        let dir = self.context.homebrew_dirs.cache_dir();
 
-        cache_dir.join("api/cask").join(file_name)
+        dir.join("api/cask").join(file_name)
     }
 }

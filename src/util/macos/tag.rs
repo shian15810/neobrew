@@ -1,4 +1,4 @@
-use std::{cmp::Ordering, str::FromStr};
+use std::{cmp::Ordering, result, str::FromStr};
 
 use anyhow::{Result, anyhow};
 use oci_client::config::Architecture;
@@ -53,7 +53,9 @@ impl Tag {
 impl TryFrom<(Architecture, Semver)> for Tag {
     type Error = Option<anyhow::Error>;
 
-    fn try_from((architecture, semver): (Architecture, Semver)) -> Result<Self, Self::Error> {
+    fn try_from(
+        (architecture, semver): (Architecture, Semver),
+    ) -> result::Result<Self, Self::Error> {
         let codename = Codename::try_from(semver)?;
 
         let this = Self {
@@ -68,7 +70,7 @@ impl TryFrom<(Architecture, Semver)> for Tag {
 impl FromStr for Tag {
     type Err = Option<anyhow::Error>;
 
-    fn from_str(tag: &str) -> Result<Self, Self::Err> {
+    fn from_str(tag: &str) -> result::Result<Self, Self::Err> {
         let (codename, architecture) = match tag.strip_prefix("arm64_") {
             Some(codename) => (codename, Architecture::ARM64),
             None => (tag, Architecture::Amd64),

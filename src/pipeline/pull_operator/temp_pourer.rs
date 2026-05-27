@@ -1,12 +1,15 @@
-use std::path::PathBuf;
+use std::{
+    io::Cursor,
+    path::{Component, Path, PathBuf},
+};
 
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use async_compression::tokio::bufread::GzipDecoder;
 use async_zip::base::read::stream::ZipFileReader;
 use tempfile::TempDir;
 use tokio::{
     fs::{self, File},
-    io::{self, AsyncRead, BufReader},
+    io::{self, AsyncBufRead, AsyncRead, AsyncReadExt as _, BufReader},
 };
 use tokio_tar::Archive;
 use tokio_util::compat::FuturesAsyncReadCompatExt as _;
@@ -18,14 +21,14 @@ use crate::{
 };
 
 pub(crate) struct TempPourer {
-    archive_format: ArchiveFormat,
+    archive_format: Option<ArchiveFormat>,
     dir_path: PathBuf,
     symlink_paths: Vec<PathBuf>,
 }
 
 impl TempPourer {
     pub(crate) fn create(
-        archive_format: ArchiveFormat,
+        archive_format: Option<ArchiveFormat>,
         dir_path: PathBuf,
         symlink_paths: Vec<PathBuf>,
     ) -> Self {
@@ -35,19 +38,13 @@ impl TempPourer {
             symlink_paths,
         }
     }
-}
 
-impl PullOperator for TempPourer {
-    type Output = TempPourerOutput;
-
-    async fn from_reader(self, reader: impl AsyncRead + Unpin + Send) -> Result<Self::Output> {
-        fs::create_dir_all(&self.dir_path).await?;
-
-        let dir = TempDir::new_in(&self.dir_path)?;
-
-        let buf_reader = BufReader::new(reader);
-
-        match self.archive_format {
+    async fn extract(
+        archive_format: ArchiveFormat,
+        dir: &TempDir,
+        buf_reader: impl AsyncBufRead + Unpin + Send,
+    ) -> Result<()> {
+        match archive_format {
             ArchiveFormat::TarGz => {
                 let gz_decoder = GzipDecoder::new(buf_reader);
 
@@ -61,12 +58,24 @@ impl PullOperator for TempPourer {
                 while let Some(mut entry_reader) = zip.next_with_entry().await? {
                     let file_name = entry_reader.reader().entry().filename().as_str()?;
 
+                    let file_path = Path::new(file_name);
+
+                    let is_file_path_safe = file_path
+                        .components()
+                        .all(|component| matches!(component, Component::Normal(_)));
+
+                    if !is_file_path_safe {
+                        let err = anyhow!(r#"Unsafe ZIP entry: "{file_name}""#);
+
+                        return Err(err);
+                    }
+
                     if file_name.ends_with('/') {
                         zip = entry_reader.skip().await?;
                     } else {
                         let dest_dir_path = dir.path();
 
-                        let dest_path = dest_dir_path.join(file_name);
+                        let dest_path = dest_dir_path.join(file_path);
 
                         let dest_base_path = dest_path.base()?;
 
@@ -80,6 +89,34 @@ impl PullOperator for TempPourer {
                     }
                 }
             },
+        }
+
+        Ok(())
+    }
+}
+
+impl PullOperator for TempPourer {
+    type Output = TempPourerOutput;
+
+    async fn from_reader(self, reader: impl AsyncRead + Unpin + Send) -> Result<Self::Output> {
+        fs::create_dir_all(&self.dir_path).await?;
+
+        let dir = TempDir::new_in(&self.dir_path)?;
+
+        let mut buf_reader = BufReader::new(reader);
+
+        if let Some(archive_format) = self.archive_format {
+            Self::extract(archive_format, &dir, buf_reader).await?;
+        } else {
+            let mut peek_buf = [0_u8; ArchiveFormat::PEEK_BUF_SIZE];
+
+            buf_reader.read_exact(&mut peek_buf).await?;
+
+            let archive_format = ArchiveFormat::detect(&peek_buf).await?;
+
+            let chained_buf_reader = Cursor::new(peek_buf).chain(buf_reader);
+
+            Self::extract(archive_format, &dir, chained_buf_reader).await?;
         }
 
         let output = TempPourerOutput {
@@ -133,6 +170,10 @@ impl handler::AtomicWriter for TempPourerOutput {
         self.dir.close()?;
 
         for symlink_path in self.symlink_paths {
+            let symlink_base_path = symlink_path.base()?;
+
+            fs::create_dir_all(symlink_base_path).await?;
+
             dest_dir_path
                 .create_relative_symlink_atomically_at(symlink_path)
                 .await?;

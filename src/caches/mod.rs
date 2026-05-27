@@ -2,17 +2,15 @@ mod cask;
 mod formula;
 
 use std::{
-    io,
     path::{Path, PathBuf},
     sync::Arc,
 };
 
 use anyhow::Result;
 use base16ct::HexDisplay;
-use digest_io::IoWrapper;
 use sha2::{Digest as _, Sha256};
-use tokio::{fs::File, task};
-use tokio_util::task::AbortOnDropHandle;
+use tokio::{fs::File, io};
+use tokio_util::io::InspectWriter;
 
 use self::{cask::CaskCache, formula::FormulaCache};
 use crate::{
@@ -72,32 +70,23 @@ trait Cacheable {
 
     fn archive_format(&self, symlink_path: &Path) -> Result<Option<ArchiveFormat>>;
 
-    fn symlink_file_paths(
+    async fn symlink_file_paths(
         &self,
         prepared_package: &Self::PreparedPackage,
     ) -> Result<(PathBuf, PathBuf)>;
 
     async fn file_sha256(&self, file_path: &Path) -> Result<Option<String>> {
-        let Some(file) = File::open_if_exists(file_path).await? else {
+        let Some(mut file) = File::open_if_exists(file_path).await? else {
             return Ok(None);
         };
 
-        let mut file = file.into_std().await;
+        let mut hasher = Sha256::new();
 
-        let mut hasher = IoWrapper(Sha256::new());
+        let mut sink = InspectWriter::new(io::sink(), |bytes| hasher.update(bytes));
 
-        let handle = task::spawn_blocking(move || {
-            io::copy(&mut file, &mut hasher)?;
+        io::copy(&mut file, &mut sink).await?;
 
-            anyhow::Ok(Some(hasher))
-        });
-        let handle = AbortOnDropHandle::new(handle);
-
-        let Some(hasher) = handle.await?? else {
-            return Ok(None);
-        };
-
-        let file_sha256 = hasher.0.finalize();
+        let file_sha256 = hasher.finalize();
         let file_sha256 = HexDisplay(&file_sha256);
         let file_sha256 = format!("{file_sha256:x}");
 
@@ -111,12 +100,12 @@ trait Cacheable {
         file_sha256: &str,
         expected_sha256: &str,
     ) -> Result<bool> {
-        let is_cache_valid = symlink_path.is_symlink_exists_nofollow().await?
+        let is_valid = symlink_path.is_symlink_exists_nofollow().await?
             && file_path.is_file_exists_nofollow().await?
-            && symlink_path.canonicalize()? == file_path.canonicalize()?
+            && symlink_path.realpath_or_none().await? == file_path.realpath_or_none().await?
             && file_sha256 == expected_sha256;
 
-        Ok(is_cache_valid)
+        Ok(is_valid)
     }
 
     async fn retrieve(
@@ -124,7 +113,7 @@ trait Cacheable {
         prepared_package: &Self::PreparedPackage,
         expected_sha256: &str,
     ) -> Result<Cache> {
-        let (symlink_path, file_path) = self.symlink_file_paths(prepared_package)?;
+        let (symlink_path, file_path) = self.symlink_file_paths(prepared_package).await?;
 
         let archive_format = self.archive_format(&symlink_path)?;
 

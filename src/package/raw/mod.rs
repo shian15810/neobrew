@@ -5,14 +5,11 @@ use std::borrow::Cow;
 
 use enum_dispatch::enum_dispatch;
 
-pub(super) use self::formula::{
-    Bottle,
-    BottleStable,
-    BottleStableFile,
-    BottleStableFileCellar,
-    Versions,
-};
 pub(crate) use self::{cask::RawCask, formula::RawFormula};
+pub(super) use self::{
+    cask::{Artifact, Variation},
+    formula::{Bottle, BottleStable, BottleStableFile, BottleStableFileCellar, Versions},
+};
 use super::Packageable;
 
 #[enum_dispatch]
