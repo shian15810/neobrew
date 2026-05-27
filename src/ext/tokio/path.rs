@@ -1,39 +1,59 @@
 use std::{
     fs::FileType,
-    io::ErrorKind,
+    io::{self, ErrorKind},
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context as _, Result};
 use pathdiff::diff_paths;
 use tokio::fs;
 
 use super::super::std::path::PathExt as _;
 
 pub(crate) trait PathExt {
-    async fn file_type(&self) -> Result<FileType>;
+    async fn realpath(&self) -> io::Result<PathBuf>;
 
-    async fn is_dir_exists_nofollow(&self) -> Result<bool>;
+    async fn realpath_or_none(&self) -> io::Result<Option<PathBuf>>;
 
-    async fn is_file_exists_nofollow(&self) -> Result<bool>;
+    async fn file_type(&self) -> io::Result<FileType>;
 
-    async fn is_symlink_exists_nofollow(&self) -> Result<bool>;
+    async fn is_dir_exists_nofollow(&self) -> io::Result<bool>;
+
+    async fn is_file_exists_nofollow(&self) -> io::Result<bool>;
+
+    async fn is_symlink_exists_nofollow(&self) -> io::Result<bool>;
 
     async fn create_relative_symlink_atomically_at(
         &self,
         symlink_path: impl AsRef<Self>,
-    ) -> Result<PathBuf>;
+    ) -> io::Result<PathBuf>;
 }
 
 impl PathExt for Path {
-    async fn file_type(&self) -> Result<FileType> {
+    async fn realpath(&self) -> io::Result<PathBuf> {
+        let path = fs::canonicalize(self).await?;
+
+        Ok(path)
+    }
+
+    async fn realpath_or_none(&self) -> io::Result<Option<PathBuf>> {
+        let path = match fs::canonicalize(self).await {
+            Ok(path) => path,
+            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(err) => return Err(err)?,
+        };
+
+        Ok(Some(path))
+    }
+
+    async fn file_type(&self) -> io::Result<FileType> {
         let metadata = fs::symlink_metadata(self).await?;
 
         let file_type = metadata.file_type();
 
         Ok(file_type)
     }
-    async fn is_dir_exists_nofollow(&self) -> Result<bool> {
+
+    async fn is_dir_exists_nofollow(&self) -> io::Result<bool> {
         let metadata = match fs::symlink_metadata(self).await {
             Ok(metadata) => metadata,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(false),
@@ -47,7 +67,7 @@ impl PathExt for Path {
         Ok(is_dir)
     }
 
-    async fn is_file_exists_nofollow(&self) -> Result<bool> {
+    async fn is_file_exists_nofollow(&self) -> io::Result<bool> {
         let metadata = match fs::symlink_metadata(self).await {
             Ok(metadata) => metadata,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(false),
@@ -61,7 +81,7 @@ impl PathExt for Path {
         Ok(is_file)
     }
 
-    async fn is_symlink_exists_nofollow(&self) -> Result<bool> {
+    async fn is_symlink_exists_nofollow(&self) -> io::Result<bool> {
         let metadata = match fs::symlink_metadata(self).await {
             Ok(metadata) => metadata,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(false),
@@ -78,13 +98,13 @@ impl PathExt for Path {
     async fn create_relative_symlink_atomically_at(
         &self,
         symlink_path: impl AsRef<Self>,
-    ) -> Result<PathBuf> {
+    ) -> io::Result<PathBuf> {
         let symlink_path = symlink_path.as_ref();
 
-        let symlink_base_path = symlink_path.base()?;
+        let symlink_base_path = symlink_path.base().map_err(io::Error::other)?;
 
-        let symlink_diff_path =
-            diff_paths(self, symlink_base_path).context("Failed to diff paths")?;
+        let symlink_diff_path = diff_paths(self, symlink_base_path)
+            .ok_or_else(|| io::Error::other("Failed to diff paths"))?;
 
         let symlink_tmp_path = symlink_path.with_added_extension("tmp");
 

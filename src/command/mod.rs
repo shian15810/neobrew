@@ -21,7 +21,7 @@ use proc_exit::prelude::*;
 use tokio::process::Command;
 
 use self::{install::Install, uninstall::Uninstall};
-use crate::{context::Context, registry::ResolutionStrategy};
+use crate::{context::Context, registries::ResolutionStrategy};
 
 #[derive(Parser)]
 #[command(
@@ -162,7 +162,7 @@ struct Resolution {
 }
 
 impl Resolution {
-    fn strategy(self) -> ResolutionStrategy {
+    fn strategy(&self) -> ResolutionStrategy {
         match (self.formula, self.cask) {
             (true, _) => ResolutionStrategy::FormulaOnly,
             (_, true) => ResolutionStrategy::CaskOnly,

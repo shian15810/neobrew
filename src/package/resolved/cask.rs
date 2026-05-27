@@ -1,7 +1,10 @@
-use std::{borrow::Cow, iter, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, iter, sync::Arc};
 
 use super::{
-    super::{Packageable, raw::RawCask},
+    super::{
+        Packageable,
+        raw::{Artifact, RawCask, Variation},
+    },
     ResolvedPackageable,
     ResolvedPackageableIter,
 };
@@ -11,6 +14,8 @@ pub(crate) struct ResolvedCask {
     version: String,
     pub(in super::super) url: String,
     pub(in super::super) sha256: String,
+    artifacts: Vec<Artifact>,
+    variations: HashMap<String, Variation>,
 }
 
 impl From<RawCask> for ResolvedCask {
@@ -20,6 +25,8 @@ impl From<RawCask> for ResolvedCask {
             version: raw_cask.version,
             url: raw_cask.url,
             sha256: raw_cask.sha256,
+            artifacts: raw_cask.artifacts,
+            variations: raw_cask.variations,
         }
     }
 }

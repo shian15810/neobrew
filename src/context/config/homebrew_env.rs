@@ -1,3 +1,5 @@
+use std::result;
+
 use anyhow::{Result, anyhow};
 use clap::ColorChoice;
 use clap_verbosity_flag::VerbosityFilter;
@@ -114,14 +116,16 @@ impl ProviderConfig for HomebrewEnvConfig {
 struct HomebrewBoolFromStr;
 
 impl<'de> DeserializeAs<'de, bool> for HomebrewBoolFromStr {
-    fn deserialize_as<D: Deserializer<'de>>(deserializer: D) -> Result<bool, D::Error> {
+    fn deserialize_as<D: Deserializer<'de>>(deserializer: D) -> result::Result<bool, D::Error> {
         let value = homebrew_bool_from_str(deserializer)?;
 
         Ok(value)
     }
 }
 
-fn homebrew_bool_from_str<'de, D: Deserializer<'de>>(deserializer: D) -> Result<bool, D::Error> {
+fn homebrew_bool_from_str<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> result::Result<bool, D::Error> {
     const FALSY_VALUES: &[&str] = &["false", "no", "off", "nil", "0"];
 
     let value = String::deserialize(deserializer)?;

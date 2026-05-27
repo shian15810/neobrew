@@ -32,7 +32,7 @@
 
 use clap::CommandFactory as _;
 use clap_verbosity_flag::VerbosityFilter;
-use neobrew::{commands::Cli, context::Context};
+use neobrew::{command::Cli, context::Context};
 use proc_exit::prelude::*;
 use tokio::{signal, task};
 use tracing_subscriber::{
@@ -63,7 +63,7 @@ async fn main() -> proc_exit::ExitResult {
         result = handle => {
             result
                 .with_code(proc_exit::sysexits::SOFTWARE_ERR)?
-                .with_code(proc_exit::sysexits::SOFTWARE_ERR)?;
+                .with_code(proc_exit::sysexits::OS_ERR)?;
 
             proc_exit::bash::SIGINT.ok()
         },

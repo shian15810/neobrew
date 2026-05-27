@@ -1,12 +1,4 @@
-use std::sync::Arc;
-
-use anyhow::Result;
-
 use super::super::{Packageable, prepared::PreparedFormula, raw::BottleStableFileCellar};
-use crate::{
-    context::Context,
-    utils::{Linker, Relocation},
-};
 
 pub(crate) struct FetchedFormula {
     name: String,
@@ -37,27 +29,11 @@ impl Packageable for FetchedFormula {
 }
 
 impl FetchedFormula {
-    pub(crate) async fn relocate(
-        &self,
-        relocation: Arc<Relocation>,
-        context: &Context,
-    ) -> Result<()> {
-        if self.bottle_file_cellar == BottleStableFileCellar::AnySkipRelocation {
-            return Ok(());
-        }
-
-        let keg_dir_path = context.homebrew_dirs.keg_dir(self.id(), self.version());
-
-        relocation.patch_keg(&keg_dir_path).await?;
-
-        Ok(())
+    pub(crate) fn should_relocate(&self) -> bool {
+        self.bottle_file_cellar != BottleStableFileCellar::AnySkipRelocation
     }
 
-    pub(crate) async fn link(&self, linker: &Linker) -> Result<()> {
-        linker.link_opt(self).await?;
-
-        linker.link_keg(self).await?;
-
-        Ok(())
+    pub(crate) fn should_link_keg(&self) -> bool {
+        !self.keg_only
     }
 }

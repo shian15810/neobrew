@@ -1,4 +1,5 @@
 pub(crate) mod fetched;
+pub(crate) mod installed;
 pub(crate) mod prepared;
 pub(crate) mod raw;
 pub(crate) mod resolved;
@@ -9,6 +10,7 @@ use enum_dispatch::enum_dispatch;
 
 use self::{
     fetched::FetchedPackage,
+    installed::InstalledPackage,
     prepared::PreparedPackage,
     raw::RawPackage,
     resolved::ResolvedPackage,
@@ -20,9 +22,17 @@ enum Package {
     Resolved(ResolvedPackage),
     Prepared(PreparedPackage),
     Fetched(FetchedPackage),
+    Installed(InstalledPackage),
 }
 
-#[enum_dispatch(Package, RawPackage, ResolvedPackage, PreparedPackage, FetchedPackage)]
+#[enum_dispatch(
+    Package,
+    RawPackage,
+    ResolvedPackage,
+    PreparedPackage,
+    FetchedPackage,
+    InstalledPackage
+)]
 pub(crate) trait Packageable {
     fn id(&self) -> &str;
 

@@ -4,6 +4,7 @@ bufread
 cfgs
 clicolor
 CLIPPYFLAGS
+cpio
 doctest
 fanout
 Fanout

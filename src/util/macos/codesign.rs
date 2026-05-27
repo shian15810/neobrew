@@ -18,7 +18,6 @@ impl Codesign {
 
             anyhow::Ok(())
         });
-
         let handle = AbortOnDropHandle::new(handle);
 
         handle.await??;

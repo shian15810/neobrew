@@ -10,7 +10,7 @@ use tokio::fs;
 use crate::{
     context::Context,
     ext::tokio::path::PathExt as _,
-    package::{Packageable as _, fetched::FetchedFormula},
+    package::{Packageable as _, fetched::FetchedFormula, prepared::PreparedFormula},
 };
 
 const KEG_LINK_DIR_NAMES: &[&str] = &["bin", "etc", "include", "lib", "sbin", "share", "var"];
@@ -60,9 +60,9 @@ impl Linker {
 
         let version = fetched_formula.version();
 
-        let opt_prefix_symlink_path = self.context.homebrew_dirs.opt_prefix_symlink(id);
-
         let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version);
+
+        let opt_prefix_symlink_path = self.context.homebrew_dirs.opt_prefix_symlink(id);
 
         keg_dir_path
             .create_relative_symlink_atomically_at(opt_prefix_symlink_path)
@@ -76,9 +76,9 @@ impl Linker {
 
         let version = fetched_formula.version();
 
-        let prefix_dir_path = self.context.homebrew_dirs.prefix_dir();
-
         let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version);
+
+        let prefix_dir_path = self.context.homebrew_dirs.prefix_dir();
 
         let linked_keg_prefix_symlink_path =
             self.context.homebrew_dirs.linked_keg_prefix_symlink(id);
@@ -113,12 +113,12 @@ impl Linker {
     async fn link_dir(src_dir_path: &Path, dest_dir_path: &Path, should_skip: bool) -> Result<()> {
         fs::create_dir_all(dest_dir_path).await?;
 
-        let mut entries = fs::read_dir(src_dir_path).await?;
+        let mut src_dir_entries = fs::read_dir(src_dir_path).await?;
 
-        while let Some(entry) = entries.next_entry().await? {
-            let src_path = entry.path();
+        while let Some(src_dir_entry) = src_dir_entries.next_entry().await? {
+            let src_path = src_dir_entry.path();
 
-            let dest_path = dest_dir_path.join(entry.file_name());
+            let dest_path = dest_dir_path.join(src_dir_entry.file_name());
 
             if src_path.is_dir_exists_nofollow().await? {
                 if should_skip {
@@ -136,5 +136,96 @@ impl Linker {
         }
 
         Ok(())
+    }
+
+    async fn is_up_to_date(&self, prepared_formula: &PreparedFormula) -> Result<bool> {
+        let id = prepared_formula.id();
+
+        let version = prepared_formula.version();
+
+        let keg_dir = self.context.homebrew_dirs.keg_dir(id, version);
+
+        if keg_dir.is_dir_exists_nofollow().await? {
+            return Ok(true);
+        }
+
+        Ok(false)
+    }
+
+    async fn is_installed(&self, prepared_formula: &PreparedFormula) -> Result<bool> {
+        let id = prepared_formula.id();
+
+        let rack_dir = self.context.homebrew_dirs.rack_dir(id);
+
+        if !rack_dir.is_dir_exists_nofollow().await? {
+            return Ok(false);
+        }
+
+        let mut rack_dir_entries = fs::read_dir(rack_dir).await?;
+
+        while let Some(rack_dir_entry) = rack_dir_entries.next_entry().await? {
+            if rack_dir_entry.path().is_dir_exists_nofollow().await? {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    async fn is_linked(&self, prepared_formula: &PreparedFormula) -> Result<bool> {
+        let is_opt_linked = self.is_opt_linked(prepared_formula).await?;
+
+        if !is_opt_linked {
+            return Ok(false);
+        }
+
+        let should_link_keg = prepared_formula.should_link_keg();
+
+        if should_link_keg {
+            let is_keg_linked = self.is_keg_linked(prepared_formula).await?;
+
+            if !is_keg_linked {
+                return Ok(false);
+            }
+        }
+
+        Ok(true)
+    }
+
+    async fn is_opt_linked(&self, prepared_formula: &PreparedFormula) -> Result<bool> {
+        let id = prepared_formula.id();
+
+        let version = prepared_formula.version();
+
+        let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version);
+
+        let opt_prefix_symlink_path = self.context.homebrew_dirs.opt_prefix_symlink(id);
+
+        let is_opt_linked = keg_dir_path.is_dir_exists_nofollow().await?
+            && opt_prefix_symlink_path.is_symlink_exists_nofollow().await?
+            && keg_dir_path.realpath_or_none().await?
+                == opt_prefix_symlink_path.realpath_or_none().await?;
+
+        Ok(is_opt_linked)
+    }
+
+    async fn is_keg_linked(&self, prepared_formula: &PreparedFormula) -> Result<bool> {
+        let id = prepared_formula.id();
+
+        let version = prepared_formula.version();
+
+        let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version);
+
+        let linked_keg_prefix_symlink_path =
+            self.context.homebrew_dirs.linked_keg_prefix_symlink(id);
+
+        let is_keg_linked = keg_dir_path.is_dir_exists_nofollow().await?
+            && linked_keg_prefix_symlink_path
+                .is_symlink_exists_nofollow()
+                .await?
+            && keg_dir_path.realpath_or_none().await?
+                == linked_keg_prefix_symlink_path.realpath_or_none().await?;
+
+        Ok(is_keg_linked)
     }
 }

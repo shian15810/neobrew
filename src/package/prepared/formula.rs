@@ -1,7 +1,6 @@
-use anyhow::{Result, anyhow};
-use base16ct::HexDisplay;
-use oci_client::{Reference, manifest::OciDescriptor};
-use sha2::{Digest as _, Sha256};
+use std::result;
+
+use anyhow::{Context as _, Result};
 
 use super::{
     super::{
@@ -10,10 +9,6 @@ use super::{
         resolved::ResolvedFormula,
     },
     PreparedPackageable,
-};
-use crate::{
-    context::{Context, dirs::ProjectDirs as _},
-    pipeline::push_operator::TempWriterInput,
 };
 
 pub(crate) struct PreparedFormula {
@@ -28,7 +23,7 @@ pub(crate) struct PreparedFormula {
 impl TryFrom<ResolvedFormula> for PreparedFormula {
     type Error = Option<anyhow::Error>;
 
-    fn try_from(resolved_formula: ResolvedFormula) -> Result<Self, Self::Error> {
+    fn try_from(resolved_formula: ResolvedFormula) -> result::Result<Self, Self::Error> {
         #[cfg(debug_assertions)]
         #[cfg_attr(
             debug_assertions,
@@ -78,34 +73,36 @@ impl Packageable for PreparedFormula {
     }
 }
 
-impl PreparedPackageable for PreparedFormula {
-    fn expected_sha256(&self) -> &str {
+impl PreparedFormula {
+    pub(crate) fn bottle_rebuild(&self) -> u64 {
+        self.bottle_rebuild
+    }
+
+    pub(crate) fn bottle_tag(&self) -> &str {
+        &self.bottle_tag
+    }
+
+    pub(crate) fn oci_url(&self) -> &str {
+        &self.bottle_file.url
+    }
+
+    pub(crate) fn oci_sha256(&self) -> &str {
         &self.bottle_file.sha256
     }
 
-    async fn temp_writer_input(&self, context: &Context) -> Result<TempWriterInput> {
-        let temp_writer_input = self.bottle_file.temp_writer_input(self, context);
-
-        Ok(temp_writer_input)
+    pub(crate) fn should_link_keg(&self) -> bool {
+        !self.keg_only
     }
 }
 
-impl PreparedFormula {
-    pub(super) fn oci(&self) -> Option<PreparedFormulaOci> {
-        let oci = self.bottle_file.oci()?;
-
-        Some(oci)
+impl PreparedPackageable for PreparedFormula {
+    fn cache_url(&self) -> &str {
+        &self.bottle_file.url
     }
-}
 
-pub(super) struct PreparedFormulaOci {
-    pub(super) registry: &'static str,
-    pub(super) reference: Reference,
-    pub(super) descriptor: OciDescriptor,
-}
-
-impl PreparedFormulaOci {
-    const REGISTRY: &str = "ghcr.io";
+    fn expected_sha256(&self) -> &str {
+        &self.bottle_file.sha256
+    }
 }
 
 impl BottleStable {
@@ -114,18 +111,17 @@ impl BottleStable {
             return Ok(None);
         };
 
-        let Some(entry) = self.files.remove_entry(&tag) else {
-            let err = anyhow!(r#"Computed bottle tag "{tag}" is missing from files"#);
-
-            return Err(err);
-        };
+        let entry = self
+            .files
+            .remove_entry(&tag)
+            .with_context(|| format!(r#"Computed bottle tag "{tag}" is missing from files"#))?;
 
         Ok(Some(entry))
     }
 
     #[cfg(target_os = "macos")]
     fn tag(&self) -> Result<Option<String>> {
-        use crate::{ext::core::result::ResultExt as _, utils::macos};
+        use crate::{ext::core::result::ResultExt as _, util::macos};
 
         let current_macos_tag = macos::Tag::try_default()?;
 
@@ -186,69 +182,5 @@ impl BottleStable {
         let tag = self.files.contains_key(&tag).then_some(tag)?;
 
         Some(tag)
-    }
-}
-
-impl BottleStableFile {
-    fn temp_writer_input(
-        &self,
-        prepared_formula: &PreparedFormula,
-        context: &Context,
-    ) -> TempWriterInput {
-        let id = prepared_formula.id();
-
-        let version = prepared_formula.version();
-
-        let bottle_tag = &prepared_formula.bottle_tag;
-
-        let url_hash = Sha256::digest(&self.url);
-        let url_hash = HexDisplay(&url_hash);
-        let url_hash = format!("{url_hash:x}");
-
-        let symlink_name = format!("{id}--{version}");
-
-        let file_name = match prepared_formula.bottle_rebuild {
-            0 => format!("{url_hash}--{symlink_name}.{bottle_tag}.bottle.tar.gz"),
-            bottle_rebuild => {
-                format!("{url_hash}--{symlink_name}.{bottle_tag}.bottle.{bottle_rebuild}.tar.gz")
-            },
-        };
-
-        let cache_dir_path = context.homebrew_dirs.cache_dir();
-
-        let file_path = cache_dir_path.join("downloads").join(file_name);
-
-        let symlink_path = cache_dir_path.join(symlink_name);
-
-        TempWriterInput::new(file_path, Some(symlink_path))
-    }
-
-    fn oci(&self) -> Option<PreparedFormulaOci> {
-        let registry = PreparedFormulaOci::REGISTRY;
-
-        let repository = format!("https://{registry}/v2/");
-        let repository = self.url.strip_prefix(&repository)?;
-        let repository = repository.split("/blobs/").next()?;
-
-        let sha256 = &self.sha256;
-
-        let digest = format!("sha256:{sha256}");
-
-        let reference =
-            Reference::with_digest(registry.to_owned(), repository.to_owned(), digest.clone());
-
-        let descriptor = OciDescriptor {
-            digest,
-
-            ..OciDescriptor::default()
-        };
-
-        let oci = PreparedFormulaOci {
-            registry,
-            reference,
-            descriptor,
-        };
-
-        Some(oci)
     }
 }

@@ -10,18 +10,22 @@ use async_walkdir::WalkDir;
 use futures::stream::StreamExt as _;
 use tempfile::NamedTempFile;
 use tokio::{
-    fs::{self, OpenOptions},
+    fs::{self, File},
     io::AsyncWriteExt as _,
     task,
 };
 use tokio_util::task::AbortOnDropHandle;
 
-use super::{codesign::Codesign, mach_o::MachO};
 use crate::{
     context::dirs::HomebrewDirs,
-    ext::{std::path::PathExt as _, tokio::path::PathExt as _},
+    ext::{
+        std::path::PathExt as _,
+        tokio::{fs::FileExt as _, path::PathExt as _},
+    },
+    util::macos::{Codesign, MachO},
 };
 
+#[derive(Clone)]
 pub(crate) struct Relocation {
     replacement_pairs: [(&'static str, String); 4],
 }
@@ -57,7 +61,7 @@ impl From<&HomebrewDirs> for Relocation {
 }
 
 impl Relocation {
-    pub(crate) async fn patch_keg(self: Arc<Self>, keg_dir_path: &Path) -> Result<()> {
+    pub(crate) async fn patch_keg(&self, keg_dir_path: &Path) -> Result<()> {
         let mut entries = WalkDir::new(keg_dir_path);
 
         while let Some(entry) = entries.next().await {
@@ -67,16 +71,15 @@ impl Relocation {
                 continue;
             }
 
-            let this = Arc::clone(&self);
-
-            this.patch_file(path).await?;
+            self.patch_file(path).await?;
         }
 
         Ok(())
     }
 
-    async fn patch_file(self: Arc<Self>, path: PathBuf) -> Result<()> {
+    async fn patch_file(&self, path: PathBuf) -> Result<()> {
         let bytes = fs::read(&path).await?;
+        let bytes = Arc::from(bytes);
 
         let has_magic_number = MachO::has_magic_number(&bytes)?;
 
@@ -84,21 +87,22 @@ impl Relocation {
             return Ok(());
         }
 
+        let self_clone = self.clone();
+
+        let bytes_clone = Arc::clone(&bytes);
+
         let handle = task::spawn_blocking(move || {
-            let replaced_bytes = self.replace_bytes(&bytes)?;
+            let replaced_bytes = self_clone.replace_bytes(&bytes_clone)?;
 
-            if replaced_bytes == bytes {
-                return Ok(None);
-            }
-
-            anyhow::Ok(Some(replaced_bytes))
+            anyhow::Ok(replaced_bytes)
         });
-
         let handle = AbortOnDropHandle::new(handle);
 
-        let Some(replaced_bytes) = handle.await?? else {
+        let replaced_bytes = handle.await??;
+
+        if replaced_bytes == *bytes {
             return Ok(());
-        };
+        }
 
         let metadata = fs::symlink_metadata(&path).await?;
 
@@ -108,7 +112,7 @@ impl Relocation {
 
         let file = NamedTempFile::new_in(base_path)?;
 
-        let mut async_file = OpenOptions::new().write(true).open(file.path()).await?;
+        let mut async_file = File::open_write(file.path()).await?;
 
         async_file.write_all(&replaced_bytes).await?;
 

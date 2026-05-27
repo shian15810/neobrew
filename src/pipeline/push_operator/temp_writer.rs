@@ -4,49 +4,42 @@ use anyhow::Result;
 use bytes::Bytes;
 use tempfile::NamedTempFile;
 use tokio::{
-    fs::{self, File, OpenOptions},
+    fs::{self, File},
     io::{AsyncWriteExt as _, BufWriter},
 };
 
 use super::{super::handler, PushOperator};
-use crate::ext::{std::path::PathExt as _, tokio::path::PathExt as _};
-
-pub(crate) struct TempWriterInput {
-    pub(crate) file_path: PathBuf,
-    pub(crate) symlink_path: Option<PathBuf>,
-}
-
-impl TempWriterInput {
-    pub(crate) fn new(file_path: PathBuf, symlink_path: Option<PathBuf>) -> Self {
-        Self {
-            file_path,
-            symlink_path,
-        }
-    }
-}
+use crate::ext::{
+    std::path::PathExt as _,
+    tokio::{fs::FileExt as _, path::PathExt as _},
+};
 
 pub(crate) struct TempWriter {
-    input: TempWriterInput,
     file: NamedTempFile,
     buf_file: BufWriter<File>,
+
+    file_path: PathBuf,
+    symlink_paths: Vec<PathBuf>,
 }
 
 impl TempWriter {
-    pub(crate) async fn create(input: TempWriterInput) -> Result<Self> {
-        let file_base_path = input.file_path.base()?;
+    pub(crate) async fn create(file_path: PathBuf, symlink_paths: Vec<PathBuf>) -> Result<Self> {
+        let file_base_path = file_path.base()?;
 
         fs::create_dir_all(file_base_path).await?;
 
         let file = NamedTempFile::new_in(file_base_path)?;
 
-        let async_file = OpenOptions::new().write(true).open(file.path()).await?;
+        let async_file = File::open_write(file.path()).await?;
 
         let buf_file = BufWriter::new(async_file);
 
         let this = Self {
-            input,
             file,
             buf_file,
+
+            file_path,
+            symlink_paths,
         };
 
         Ok(this)
@@ -67,8 +60,10 @@ impl PushOperator for TempWriter {
         self.buf_file.shutdown().await?;
 
         let output = TempWriterOutput {
-            input: self.input,
             file: self.file,
+
+            file_path: self.file_path,
+            symlink_paths: self.symlink_paths,
         };
 
         Ok(output)
@@ -76,8 +71,10 @@ impl PushOperator for TempWriter {
 }
 
 pub(crate) struct TempWriterOutput {
-    input: TempWriterInput,
     file: NamedTempFile,
+
+    file_path: PathBuf,
+    symlink_paths: Vec<PathBuf>,
 }
 
 impl handler::AtomicWriter for TempWriterOutput {
@@ -88,11 +85,16 @@ impl handler::AtomicWriter for TempWriterOutput {
     }
 
     async fn persist(self) -> Result<()> {
-        self.file.persist(&self.input.file_path)?;
+        let dest_file_path = self.file_path;
 
-        if let Some(symlink_path) = self.input.symlink_path {
-            self.input
-                .file_path
+        self.file.persist(&dest_file_path)?;
+
+        for symlink_path in self.symlink_paths {
+            let symlink_base_path = symlink_path.base()?;
+
+            fs::create_dir_all(symlink_base_path).await?;
+
+            dest_file_path
                 .create_relative_symlink_atomically_at(symlink_path)
                 .await?;
         }

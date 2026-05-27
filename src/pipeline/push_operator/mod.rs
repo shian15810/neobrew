@@ -1,14 +1,12 @@
 mod hasher;
+mod progress;
 mod temp_writer;
 
 use anyhow::Result;
 use tokio::{sync::mpsc, task};
 use tokio_util::{sync::PollSender, task::AbortOnDropHandle};
 
-pub(crate) use self::{
-    hasher::Hasher,
-    temp_writer::{TempWriter, TempWriterInput},
-};
+pub(crate) use self::{hasher::Hasher, progress::Progress, temp_writer::TempWriter};
 use super::Operator;
 use crate::context::Context;
 
@@ -34,7 +32,7 @@ impl<
         mut self,
         context: &Context,
     ) -> (PollSender<Item>, AbortOnDropHandle<Result<Self::Output>>) {
-        let (tx, mut rx) = mpsc::channel(*context.channel_capacity);
+        let (tx, mut rx) = mpsc::channel(context.channel_capacity);
 
         let sink = PollSender::new(tx);
 

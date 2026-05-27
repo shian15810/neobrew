@@ -1,42 +1,43 @@
 mod cask;
 mod formula;
 
-use std::sync::{Arc, OnceLock};
+use std::{path::PathBuf, sync::Arc};
 
 use anyhow::{Result, anyhow};
 use bytes::Bytes;
-use enum_dispatch::enum_dispatch;
 use futures::stream::{self, StreamExt as _, TryStreamExt as _};
 use itertools::Itertools as _;
 use tempfile::NamedTempFile;
 use tokio::{
-    fs::{self, OpenOptions},
+    fs::{self, File},
     io::AsyncWriteExt as _,
 };
 
 use self::{cask::CaskRegistry, formula::FormulaRegistry};
 use crate::{
     context::Context,
-    ext::std::path::PathExt as _,
-    package::{
-        Packageable as _,
-        raw::{RawPackage, RawPackageable as _},
-        resolved::ResolvedPackage,
-    },
+    ext::{std::path::PathExt as _, tokio::fs::FileExt as _},
+    package::{Packageable as _, resolved::ResolvedPackage},
 };
 
-pub(crate) struct Registry {
-    formula: OnceLock<Arc<FormulaRegistry>>,
-    cask: OnceLock<Arc<CaskRegistry>>,
+pub(crate) struct Registries {
+    formula_registry: Arc<FormulaRegistry>,
+    cask_registry: Arc<CaskRegistry>,
 
     context: Arc<Context>,
 }
 
-impl Registry {
+impl Registries {
     pub(crate) fn new(context: Arc<Context>) -> Self {
+        let formula_registry = FormulaRegistry::new(Arc::clone(&context));
+        let formula_registry = Arc::new(formula_registry);
+
+        let cask_registry = CaskRegistry::new(Arc::clone(&context));
+        let cask_registry = Arc::new(cask_registry);
+
         Self {
-            formula: OnceLock::new(),
-            cask: OnceLock::new(),
+            formula_registry,
+            cask_registry,
 
             context,
         }
@@ -71,7 +72,7 @@ impl Registry {
 
                 anyhow::Ok(resolved_package)
             })
-            .buffer_unordered(*self.context.concurrency_limit)
+            .buffer_unordered(self.context.concurrency_limit)
             .try_collect::<Vec<_>>();
         let resolved_packages = resolved_packages.await?;
 
@@ -87,7 +88,7 @@ impl Registry {
             strategy,
             ResolutionStrategy::FormulaOnly | ResolutionStrategy::Both,
         ) {
-            let formula_registry = Arc::clone(self.formula());
+            let formula_registry = Arc::clone(&self.formula_registry);
 
             if let Ok(resolved_formula) = formula_registry.resolve(Arc::clone(&package)).await {
                 let resolved_package = ResolvedPackage::Formula(resolved_formula);
@@ -100,7 +101,7 @@ impl Registry {
             strategy,
             ResolutionStrategy::CaskOnly | ResolutionStrategy::Both,
         ) {
-            let cask_registry = Arc::clone(self.cask());
+            let cask_registry = Arc::clone(&self.cask_registry);
 
             if let Ok(resolved_cask) = cask_registry.resolve(Arc::clone(&package)).await {
                 let resolved_package = ResolvedPackage::Cask(resolved_cask);
@@ -113,22 +114,6 @@ impl Registry {
 
         Err(err)
     }
-
-    fn formula(&self) -> &Arc<FormulaRegistry> {
-        self.formula.get_or_init(|| {
-            let formula_registry = FormulaRegistry::new(Arc::clone(&self.context));
-
-            Arc::new(formula_registry)
-        })
-    }
-
-    fn cask(&self) -> &Arc<CaskRegistry> {
-        self.cask.get_or_init(|| {
-            let cask_registry = CaskRegistry::new(Arc::clone(&self.context));
-
-            Arc::new(cask_registry)
-        })
-    }
 }
 
 #[derive(Copy, Clone)]
@@ -138,13 +123,11 @@ pub(crate) enum ResolutionStrategy {
     Both,
 }
 
-#[enum_dispatch]
-enum RegistryKind {
+enum Registry {
     Formula(Arc<FormulaRegistry>),
     Cask(Arc<CaskRegistry>),
 }
 
-#[enum_dispatch(Arc<RegistryKind>)]
 trait Registrable {
     type ResolvedPackage;
 
@@ -159,28 +142,27 @@ trait Registrable {
     fn new(context: Arc<Context>) -> Self;
 
     async fn resolve(self: Arc<Self>, package: Arc<str>) -> Result<Arc<Self::ResolvedPackage>>;
+}
 
-    async fn cache_raw_package_json(
-        &self,
-        raw_package: &RawPackage,
-        bytes: Bytes,
-        context: &Context,
-    ) -> Result<()> {
-        let cache_path = raw_package.cache_path(context);
+trait RegistrableJson {
+    fn json_path(&self, id: &str) -> PathBuf;
 
-        let cache_base_path = cache_path.base()?;
+    async fn save_json(&self, id: &str, bytes: Bytes) -> Result<()> {
+        let file_path = self.json_path(id);
 
-        fs::create_dir_all(cache_base_path).await?;
+        let file_base_path = file_path.base()?;
 
-        let file = NamedTempFile::new_in(cache_base_path)?;
+        fs::create_dir_all(file_base_path).await?;
 
-        let mut async_file = OpenOptions::new().write(true).open(file.path()).await?;
+        let file = NamedTempFile::new_in(file_base_path)?;
+
+        let mut async_file = File::open_write(file.path()).await?;
 
         async_file.write_all(&bytes).await?;
 
         async_file.shutdown().await?;
 
-        file.persist(cache_path)?;
+        file.persist(file_path)?;
 
         Ok(())
     }

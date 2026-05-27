@@ -1,9 +1,9 @@
-use std::{borrow::Cow, path::PathBuf};
+use std::{borrow::Cow, collections::HashMap};
 
 use serde::Deserialize;
+use serde_json::{Map, Value};
 
 use super::{super::Packageable, RawPackageable};
-use crate::context::{Context, dirs::ProjectDirs as _};
 
 #[derive(Deserialize)]
 pub(crate) struct RawCask {
@@ -11,6 +11,8 @@ pub(crate) struct RawCask {
     pub(in super::super) version: String,
     pub(in super::super) url: String,
     pub(in super::super) sha256: String,
+    pub(in super::super) artifacts: Vec<Artifact>,
+    pub(in super::super) variations: HashMap<String, Variation>,
 }
 
 impl Packageable for RawCask {
@@ -29,14 +31,13 @@ impl RawPackageable for RawCask {
 
         Cow::Borrowed(version)
     }
+}
 
-    fn cache_path(&self, context: &Context) -> PathBuf {
-        let id = self.id();
+pub(in super::super) type Artifact = Map<String, Value>;
 
-        let file_name = format!("{id}.json");
-
-        let cache_dir = context.homebrew_dirs.cache_dir();
-
-        cache_dir.join("api/cask").join(file_name)
-    }
+#[derive(Deserialize)]
+pub(in super::super) struct Variation {
+    url: String,
+    sha256: String,
+    artifacts: Option<Vec<Artifact>>,
 }
