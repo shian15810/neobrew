@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use anyhow::Result;
 use clap::Args;
 use tokio::task::JoinSet;
 
@@ -17,7 +16,7 @@ pub(super) struct Uninstall {
 }
 
 impl Runner for Uninstall {
-    async fn run_concurrent(self, context: Arc<Context>) -> Result<()> {
+    async fn run_concurrent(self, context: Arc<Context>) -> anyhow::Result<()> {
         if self.packages.is_empty() {
             return Ok(());
         }
@@ -35,7 +34,7 @@ impl Runner for Uninstall {
 
             let _context = Arc::clone(&context);
 
-            set.spawn(async move { anyhow::Ok(()) });
+            set.spawn(async { anyhow::Ok(()) });
         }
 
         while let Some(res) = set.join_next().await {
@@ -47,8 +46,8 @@ impl Runner for Uninstall {
 }
 
 impl Uninstall {
-    async fn resolve_packages(self, context: Arc<Context>) -> Result<Vec<ResolvedPackage>> {
-        let registries = Registries::new(context);
+    async fn resolve_packages(self, context: Arc<Context>) -> anyhow::Result<Vec<ResolvedPackage>> {
+        let registries = Registries::init(context);
 
         let strategy = self.resolution.strategy();
 

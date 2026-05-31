@@ -1,9 +1,6 @@
-use std::{cmp::Reverse, collections::HashMap, path::Path, sync::Arc};
+use std::{collections::HashMap, path::Path, sync::Arc};
 
-use anyhow::Result;
 use arwen::elf::rewriter::Writer;
-use async_walkdir::WalkDir;
-use futures::stream::StreamExt as _;
 use itertools::Itertools as _;
 use tempfile::NamedTempFile;
 use tokio::{
@@ -13,83 +10,51 @@ use tokio::{
 };
 use tokio_util::task::AbortOnDropHandle;
 
+use super::{Relocator, RelocatorInner};
 use crate::{
-    context::dirs::HomebrewDirs,
-    ext::{
-        std::path::PathExt as _,
-        tokio::{fs::FileExt as _, path::PathExt as _},
-    },
-    util::linux::Elf,
+    context::Context,
+    ext::{std::path::PathExt as _, tokio::fs::FileExt as _},
+    util::linux,
 };
 
 #[derive(Clone)]
 pub(crate) struct Relocation {
     replacement_pairs: [(&'static str, String); 4],
+
+    context: Arc<Context>,
 }
 
-impl Relocation {
-    const PREFIX_PLACEHOLDER: &str = "@@HOMEBREW_PREFIX@@";
-    const CELLAR_PLACEHOLDER: &str = "@@HOMEBREW_CELLAR@@";
-    const REPOSITORY_PLACEHOLDER: &str = "@@HOMEBREW_REPOSITORY@@";
-    const LIBRARY_PLACEHOLDER: &str = "@@HOMEBREW_LIBRARY@@";
-}
-
-impl From<&HomebrewDirs> for Relocation {
-    fn from(homebrew_dirs: &HomebrewDirs) -> Self {
-        let replacement_pairs = [
-            (Self::PREFIX_PLACEHOLDER, homebrew_dirs.prefix_dir()),
-            (Self::CELLAR_PLACEHOLDER, homebrew_dirs.cellar_dir()),
-            (Self::REPOSITORY_PLACEHOLDER, homebrew_dirs.repository_dir()),
-            (Self::LIBRARY_PLACEHOLDER, homebrew_dirs.library_dir()),
-        ];
-        let mut replacement_pairs = replacement_pairs.map(|(placeholder, replacement)| {
-            let replacement = replacement.to_string_lossy();
-            let replacement = replacement.into_owned();
-
-            (placeholder, replacement)
-        });
-
-        replacement_pairs.sort_by_key(|(placeholder, _)| Reverse(placeholder.len()));
-
+impl Relocator for Relocation {
+    fn new(replacement_pairs: [(&'static str, String); 4], context: Arc<Context>) -> Self {
         Self {
             replacement_pairs,
+
+            context,
         }
     }
 }
 
-impl Relocation {
-    pub(crate) async fn patch_keg(&self, keg_dir_path: &Path) -> Result<()> {
-        let mut entries = WalkDir::new(keg_dir_path);
-
-        while let Some(entry) = entries.next().await {
-            let path = entry?.path();
-
-            if !path.is_file_exists_nofollow().await? {
-                continue;
-            }
-
-            self.patch_file(&path).await?;
-        }
-
-        Ok(())
+impl RelocatorInner for Relocation {
+    fn replacement_pairs(&self) -> &[(&'static str, String); 4] {
+        &self.replacement_pairs
     }
 
-    async fn patch_file(&self, path: &Path) -> Result<()> {
+    async fn patch_file(&self, path: &Path) -> anyhow::Result<()> {
         let bytes = fs::read(path).await?;
         let bytes = Arc::from(bytes);
 
-        let has_magic_number = Elf::has_magic_number(&bytes)?;
+        let has_magic_number = linux::Elf::has_magic_number(&bytes);
 
         if !has_magic_number {
             return Ok(());
         }
 
-        let self_clone = self.clone();
+        let cloned_self = self.clone();
 
-        let bytes_clone = Arc::clone(&bytes);
+        let cloned_bytes = Arc::clone(&bytes);
 
         let handle = task::spawn_blocking(move || {
-            let replaced_bytes = self_clone.replace_bytes(&bytes_clone)?;
+            let replaced_bytes = cloned_self.replace_bytes(&cloned_bytes)?;
 
             anyhow::Ok(replaced_bytes)
         });
@@ -122,7 +87,7 @@ impl Relocation {
         Ok(())
     }
 
-    fn replace_bytes(&self, bytes: &[u8]) -> Result<Vec<u8>> {
+    fn replace_bytes(&self, bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
         let mut rewriter = Writer::read(bytes)?;
 
         if let Some(runpath) = rewriter.elf_runpath() {

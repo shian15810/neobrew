@@ -17,6 +17,10 @@ dictionaryDefinitions:
     path: .cspell/companies.txt
     addWords: true
     supportNonStrictSearches: false
+  - name: custom-software-terms
+    path: .cspell/software-terms.txt
+    addWords: true
+    supportNonStrictSearches: false
   - name: custom-software-tools
     path: .cspell/software-tools.txt
     addWords: true
@@ -47,6 +51,7 @@ dictionaries:
   - rust-crates
   - shellscript
   - custom-companies
+  - custom-software-terms
   - custom-software-tools
   - custom-rust
   - custom-rust-crates

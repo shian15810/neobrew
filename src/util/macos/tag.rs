@@ -1,10 +1,11 @@
-use std::{cmp::Ordering, result, str::FromStr};
+use std::{cmp::Ordering, str::FromStr};
 
-use anyhow::{Result, anyhow};
 use oci_client::config::Architecture;
-use os_info::Version;
 
-use super::{codename::Codename, semver::Semver};
+use super::{
+    codename::{Codename, CodenameError},
+    semver::Semver,
+};
 
 #[derive(PartialEq, Eq)]
 pub(crate) struct Tag {
@@ -17,46 +18,32 @@ impl Tag {
         &self.architecture
     }
 
-    pub(crate) fn try_default() -> Result<Self> {
+    pub(crate) fn try_default() -> anyhow::Result<Self> {
         let architecture = Architecture::default();
 
-        let info = os_info::get();
+        let codename = Codename::try_default()?;
 
-        let version = info.version();
-
-        let &Version::Semantic(major, minor, patch) = version else {
-            let err = anyhow!(r#"Unsupported macOS version detected: "{version}""#);
-
-            return Err(err);
-        };
-
-        let semver = Semver {
-            major,
-            minor: Some(minor),
-            patch: Some(patch),
-        };
-
-        let this = match Self::try_from((architecture, semver)) {
-            Ok(this) => this,
-            Err(Some(err)) => return Err(err),
-            Err(None) => {
-                let err = anyhow!(r#"Unsupported macOS semver detected: "{version}""#);
-
-                return Err(err);
-            },
-        };
+        let this = Self::from((architecture, codename));
 
         Ok(this)
+    }
+}
+
+impl From<(Architecture, Codename)> for Tag {
+    fn from((architecture, codename): (Architecture, Codename)) -> Self {
+        Self {
+            architecture,
+            codename,
+        }
     }
 }
 
 impl TryFrom<(Architecture, Semver)> for Tag {
     type Error = Option<anyhow::Error>;
 
-    fn try_from(
-        (architecture, semver): (Architecture, Semver),
-    ) -> result::Result<Self, Self::Error> {
-        let codename = Codename::try_from(semver)?;
+    fn try_from((architecture, semver): (Architecture, Semver)) -> Result<Self, Self::Error> {
+        let codename = Codename::try_from(semver);
+        let codename = codename.map_err(CodenameError::unsupported_into_none)?;
 
         let this = Self {
             architecture,
@@ -70,13 +57,14 @@ impl TryFrom<(Architecture, Semver)> for Tag {
 impl FromStr for Tag {
     type Err = Option<anyhow::Error>;
 
-    fn from_str(tag: &str) -> result::Result<Self, Self::Err> {
+    fn from_str(tag: &str) -> Result<Self, Self::Err> {
         let (codename, architecture) = match tag.strip_prefix("arm64_") {
-            Some(codename) => (codename, Architecture::ARM64),
             None => (tag, Architecture::Amd64),
+            Some(codename) => (codename, Architecture::ARM64),
         };
 
-        let codename = codename.parse::<Codename>()?;
+        let codename = codename.parse::<Codename>();
+        let codename = codename.map_err(CodenameError::unsupported_into_none)?;
 
         let this = Self {
             architecture,

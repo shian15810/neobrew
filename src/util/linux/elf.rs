@@ -1,5 +1,3 @@
-use anyhow::{Result, anyhow};
-
 pub(crate) struct Elf;
 
 impl Elf {
@@ -7,17 +5,13 @@ impl Elf {
 }
 
 impl Elf {
-    pub(crate) fn has_magic_number(bytes: &[u8]) -> Result<bool> {
+    pub(crate) fn has_magic_number(bytes: &[u8]) -> bool {
         let &[b0, b1, b2, b3, ..] = bytes else {
-            let err = anyhow!("Not enough header bytes");
-
-            return Err(err);
+            return false;
         };
 
         let header_bytes = &[b0, b1, b2, b3];
 
-        let has_magic_number = header_bytes == Self::MAGIC_NUMBER;
-
-        Ok(has_magic_number)
+        header_bytes == Self::MAGIC_NUMBER
     }
 }

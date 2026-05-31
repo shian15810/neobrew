@@ -1,11 +1,11 @@
 use super::super::{Packageable, prepared::PreparedCask};
 
-pub(crate) struct FetchedCask {
+pub(crate) struct StreamedCask {
     token: String,
     version: String,
 }
 
-impl From<PreparedCask> for FetchedCask {
+impl From<PreparedCask> for StreamedCask {
     fn from(prepared_cask: PreparedCask) -> Self {
         Self {
             token: prepared_cask.token,
@@ -14,7 +14,7 @@ impl From<PreparedCask> for FetchedCask {
     }
 }
 
-impl Packageable for FetchedCask {
+impl Packageable for StreamedCask {
     fn id(&self) -> &str {
         &self.token
     }

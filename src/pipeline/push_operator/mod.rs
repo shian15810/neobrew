@@ -1,12 +1,15 @@
-mod hasher;
-mod progress;
+mod pb_updater;
+mod sha256_hasher;
 mod temp_writer;
 
-use anyhow::Result;
 use tokio::{sync::mpsc, task};
 use tokio_util::{sync::PollSender, task::AbortOnDropHandle};
 
-pub(crate) use self::{hasher::Hasher, progress::Progress, temp_writer::TempWriter};
+pub(crate) use self::{
+    pb_updater::PbUpdater,
+    sha256_hasher::Sha256Hasher,
+    temp_writer::TempWriter,
+};
 use super::Operator;
 use crate::context::Context;
 
@@ -15,9 +18,9 @@ pub(crate) trait PushOperator {
     type Item;
     type Output;
 
-    async fn feed(&mut self, chunk: Self::Item) -> Result<()>;
+    async fn feed(&mut self, chunk: Self::Item) -> anyhow::Result<()>;
 
-    async fn flush(self) -> Result<Self::Output>;
+    async fn flush(self) -> anyhow::Result<Self::Output>;
 }
 
 impl<
@@ -31,7 +34,10 @@ impl<
     fn launch(
         mut self,
         context: &Context,
-    ) -> (PollSender<Item>, AbortOnDropHandle<Result<Self::Output>>) {
+    ) -> (
+        PollSender<Item>,
+        AbortOnDropHandle<anyhow::Result<Self::Output>>,
+    ) {
         let (tx, mut rx) = mpsc::channel(context.channel_capacity);
 
         let sink = PollSender::new(tx);

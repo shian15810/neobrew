@@ -1,6 +1,12 @@
 #![cfg_attr(
     debug_assertions,
-    feature(const_precise_live_drops, const_trait_impl, iterator_try_collect)
+    feature(
+        const_precise_live_drops,
+        const_trait_impl,
+        iterator_try_collect,
+        never_type,
+        type_changing_struct_update,
+    )
 )]
 #![cfg_attr(debug_assertions, feature(doc_cfg))]
 #![cfg_attr(
@@ -32,9 +38,10 @@
 #![doc(test(attr(warn(unused), deny(warnings))))]
 #![expect(rustdoc::missing_crate_level_docs)]
 
-mod caches;
 pub mod command;
+mod compatibility;
 pub mod context;
+mod downloads;
 mod ext;
 mod linker;
 mod macros;

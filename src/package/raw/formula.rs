@@ -1,6 +1,7 @@
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow, collections::HashMap, path::PathBuf, str::FromStr};
 
 use serde::Deserialize;
+use serde_with::DeserializeFromStr;
 
 use super::{super::Packageable, RawPackageable};
 
@@ -68,10 +69,34 @@ pub(in super::super) struct BottleStableFile {
     pub(in super::super) sha256: String,
 }
 
-#[derive(PartialEq, Deserialize)]
+#[derive(DeserializeFromStr)]
 pub(in super::super) enum BottleStableFileCellar {
-    #[serde(rename = ":any")]
     Any,
-    #[serde(rename = ":any_skip_relocation")]
     AnySkipRelocation,
+    Path(PathBuf),
+}
+
+#[cfg(not(debug_assertions))]
+use std::convert::Infallible;
+
+impl FromStr for BottleStableFileCellar {
+    #[cfg(debug_assertions)]
+    type Err = !;
+
+    #[cfg(not(debug_assertions))]
+    type Err = Infallible;
+
+    fn from_str(bottle_cellar: &str) -> Result<Self, Self::Err> {
+        let bottle_cellar = match bottle_cellar {
+            "any" => Self::Any,
+            "any_skip_relocation" => Self::AnySkipRelocation,
+            path => {
+                let path = PathBuf::from(path);
+
+                Self::Path(path)
+            },
+        };
+
+        Ok(bottle_cellar)
+    }
 }

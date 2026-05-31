@@ -3,7 +3,7 @@ mod formula;
 
 use std::{borrow::Cow, sync::Arc};
 
-use either::Either::{Left, Right};
+use either::{Left, Right};
 use enum_dispatch::enum_dispatch;
 
 pub(crate) use self::{cask::ResolvedCask, formula::ResolvedFormula};

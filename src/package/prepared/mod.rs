@@ -32,7 +32,7 @@ impl TryFrom<ResolvedPackage> for PreparedPackage {
                 let resolved_cask = Arc::into_inner(resolved_cask)
                     .context("`Arc<ResolvedCask>` still has multiple strong references")?;
 
-                let prepared_cask = PreparedCask::from(resolved_cask);
+                let prepared_cask = PreparedCask::try_from(resolved_cask)?;
 
                 Self::Cask(prepared_cask)
             },
@@ -44,7 +44,7 @@ impl TryFrom<ResolvedPackage> for PreparedPackage {
 
 #[enum_dispatch(PreparedPackage)]
 pub(crate) trait PreparedPackageable: Packageable {
-    fn cache_url(&self) -> &str;
+    fn download_url(&self) -> &str;
 
     fn expected_sha256(&self) -> &str;
 }

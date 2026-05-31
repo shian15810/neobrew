@@ -101,7 +101,8 @@ impl PathExt for Path {
     ) -> io::Result<PathBuf> {
         let symlink_path = symlink_path.as_ref();
 
-        let symlink_base_path = symlink_path.base().map_err(io::Error::other)?;
+        let symlink_base_path = symlink_path.base();
+        let symlink_base_path = symlink_base_path.map_err(io::Error::other)?;
 
         let symlink_diff_path = diff_paths(self, symlink_base_path)
             .ok_or_else(|| io::Error::other("Failed to diff paths"))?;

@@ -1,11 +1,9 @@
-use std::result;
-
-use anyhow::{Context as _, Result};
+use anyhow::Context as _;
 
 use super::{
     super::{
         Packageable,
-        raw::{BottleStable, BottleStableFile},
+        raw::{BottleStable, BottleStableFile, BottleStableFileCellar},
         resolved::ResolvedFormula,
     },
     PreparedPackageable,
@@ -16,14 +14,16 @@ pub(crate) struct PreparedFormula {
     pub(in super::super) version_revision: String,
     bottle_rebuild: u64,
     bottle_tag: String,
-    pub(in super::super) bottle_file: BottleStableFile,
+    pub(in super::super) bottle_cellar: BottleStableFileCellar,
+    bottle_url: String,
+    bottle_sha256: String,
     pub(in super::super) keg_only: bool,
 }
 
 impl TryFrom<ResolvedFormula> for PreparedFormula {
     type Error = Option<anyhow::Error>;
 
-    fn try_from(resolved_formula: ResolvedFormula) -> result::Result<Self, Self::Error> {
+    fn try_from(resolved_formula: ResolvedFormula) -> Result<Self, Self::Error> {
         #[cfg(debug_assertions)]
         #[cfg_attr(
             debug_assertions,
@@ -46,7 +46,7 @@ impl TryFrom<ResolvedFormula> for PreparedFormula {
 
         let bottle_rebuild = resolved_formula.bottle.stable.rebuild;
 
-        let Some((bottle_tag, bottle_file)) = resolved_formula.bottle.stable.entry()? else {
+        let Some((bottle_tag, bottle)) = resolved_formula.bottle.stable.entry()? else {
             return Err(None);
         };
 
@@ -55,7 +55,9 @@ impl TryFrom<ResolvedFormula> for PreparedFormula {
             version_revision,
             bottle_rebuild,
             bottle_tag,
-            bottle_file,
+            bottle_cellar: bottle.cellar,
+            bottle_url: bottle.url,
+            bottle_sha256: bottle.sha256,
             keg_only: resolved_formula.keg_only,
         };
 
@@ -83,11 +85,11 @@ impl PreparedFormula {
     }
 
     pub(crate) fn oci_url(&self) -> &str {
-        &self.bottle_file.url
+        &self.bottle_url
     }
 
     pub(crate) fn oci_sha256(&self) -> &str {
-        &self.bottle_file.sha256
+        &self.bottle_sha256
     }
 
     pub(crate) fn should_link_keg(&self) -> bool {
@@ -96,17 +98,17 @@ impl PreparedFormula {
 }
 
 impl PreparedPackageable for PreparedFormula {
-    fn cache_url(&self) -> &str {
-        &self.bottle_file.url
+    fn download_url(&self) -> &str {
+        &self.bottle_url
     }
 
     fn expected_sha256(&self) -> &str {
-        &self.bottle_file.sha256
+        &self.bottle_sha256
     }
 }
 
 impl BottleStable {
-    fn entry(mut self) -> Result<Option<(String, BottleStableFile)>> {
+    fn entry(mut self) -> anyhow::Result<Option<(String, BottleStableFile)>> {
         let Some(tag) = self.tag()? else {
             return Ok(None);
         };
@@ -120,39 +122,37 @@ impl BottleStable {
     }
 
     #[cfg(target_os = "macos")]
-    fn tag(&self) -> Result<Option<String>> {
+    fn tag(&self) -> anyhow::Result<Option<String>> {
         use crate::{ext::core::result::ResultExt as _, util::macos};
 
         let current_macos_tag = macos::Tag::try_default()?;
 
         #[cfg(debug_assertions)]
-        #[expect(clippy::redundant_iter_cloned)]
         let tagged_candidate_macos_tags = self
             .files
             .keys()
-            .cloned()
             .map(|tag| tag.parse::<macos::Tag>().map(|macos_tag| (tag, macos_tag)))
             .filter_map(Result::transpose_err)
             .try_collect::<Vec<_>>()?;
 
         #[cfg(not(debug_assertions))]
-        #[expect(clippy::redundant_iter_cloned)]
         let tagged_candidate_macos_tags = self
             .files
             .keys()
-            .cloned()
             .map(|tag| tag.parse::<macos::Tag>().map(|macos_tag| (tag, macos_tag)))
             .filter_map(Result::transpose_err)
-            .collect::<Result<Vec<_>>>()?;
+            .collect::<anyhow::Result<Vec<_>>>()?;
 
         let tag = tagged_candidate_macos_tags
             .into_iter()
             .filter(|(_, candidate_macos_tag)| {
-                candidate_macos_tag.architecture() == current_macos_tag.architecture()
-                    && candidate_macos_tag <= &current_macos_tag
+                let is_macos_architecture_equal =
+                    candidate_macos_tag.architecture() == current_macos_tag.architecture();
+
+                is_macos_architecture_equal && candidate_macos_tag <= &current_macos_tag
             })
             .max_by(|(_, left), (_, right)| left.cmp(right))
-            .map(|(tag, _)| tag);
+            .map(|(tag, _)| tag.to_owned());
 
         let Some(tag) = tag.or_else(|| self.tag_or_else()) else {
             return Ok(None);
@@ -163,7 +163,7 @@ impl BottleStable {
 
     #[cfg(target_os = "linux")]
     #[expect(clippy::unnecessary_wraps)]
-    fn tag(&self) -> Result<Option<String>> {
+    fn tag(&self) -> anyhow::Result<Option<String>> {
         let tag = cfg_select! {
             target_arch = "aarch64" => "arm64_linux",
             target_arch = "x86_64" => "x86_64_linux",

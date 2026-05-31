@@ -4,17 +4,17 @@ use std::{
     path::Path,
 };
 
-use anyhow::{Context as _, Result};
+use anyhow::Context as _;
 use lazy_regex::{regex, regex_captures};
 
 pub(crate) trait PathExt {
-    fn base(&self) -> Result<&Self>;
+    fn base(&self) -> anyhow::Result<&Self>;
 
     fn compound_extension(&self) -> Option<Cow<'_, OsStr>>;
 }
 
 impl PathExt for Path {
-    fn base(&self) -> Result<&Self> {
+    fn base(&self) -> anyhow::Result<&Self> {
         let base = self.parent().context("No parent directory found")?;
 
         Ok(base)
@@ -41,7 +41,11 @@ impl PathExt for Path {
             return Some(compound_extension);
         }
 
-        if regex!(r"\b\d+\.\d+[^.]*$").is_match(name) && self.extension()? != OsStr::new("7z") {
+        let has_version_suffix = regex!(r"\b\d+\.\d+[^.]*$").is_match(name);
+
+        let has_7z_extension = self.extension()? == OsStr::new("7z");
+
+        if has_version_suffix && !has_7z_extension {
             return None;
         }
 

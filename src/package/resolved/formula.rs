@@ -56,6 +56,12 @@ impl ResolvedPackageable for ResolvedFormula {
     }
 }
 
+impl ResolvedFormula {
+    pub(crate) fn dependencies_mut(&mut self) -> &mut Vec<Arc<Self>> {
+        &mut self.dependencies
+    }
+}
+
 impl ResolvedPackageableIter for ResolvedFormula {
     fn iter(self: &Arc<Self>) -> impl Iterator<Item = Arc<Self>> + use<> {
         let this = Arc::clone(self);

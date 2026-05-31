@@ -2,7 +2,6 @@ mod formula;
 
 use std::{path::Path, sync::Arc};
 
-use anyhow::Result;
 use bytes::Bytes;
 use futures::stream::{self, StreamExt as _, TryStreamExt as _};
 use oci_client::secrets::RegistryAuth;
@@ -26,11 +25,11 @@ impl Streams {
         }
     }
 
-    pub(crate) async fn cache(
+    pub(crate) async fn download(
         &self,
         file_path: &Path,
-    ) -> Result<(
-        impl stream::Stream<Item = Result<Bytes>> + Send + 'static,
+    ) -> anyhow::Result<(
+        impl stream::Stream<Item = anyhow::Result<Bytes>> + Send + 'static,
         u64,
     )> {
         let file = File::open(file_path).await?;
@@ -43,11 +42,11 @@ impl Streams {
         Ok((stream, content_length))
     }
 
-    pub(crate) async fn api(
+    pub(crate) async fn oci_or_url(
         &self,
         prepared_package: &PreparedPackage,
-    ) -> Result<(
-        impl stream::Stream<Item = Result<Bytes>> + Send + 'static,
+    ) -> anyhow::Result<(
+        impl stream::Stream<Item = anyhow::Result<Bytes>> + Send + 'static,
         Option<u64>,
     )> {
         match prepared_package {
@@ -75,7 +74,7 @@ impl Streams {
                 Ok((stream, content_length))
             },
             PreparedPackage::Cask(prepared_cask) => {
-                let url = prepared_cask.cache_url();
+                let url = prepared_cask.download_url();
 
                 let resp = self.context.client.get(url).send().await?;
                 let resp = resp.error_for_status()?;

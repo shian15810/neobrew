@@ -1,11 +1,12 @@
-use std::{path::Path, result};
+use std::path::Path;
 
-use anyhow::{Context as _, Result, anyhow};
+use anyhow::{Context as _, anyhow};
 use async_compression::tokio::bufread::GzipDecoder;
 use tokio::io::{AsyncReadExt as _, BufReader};
 
 use crate::ext::std::path::PathExt as _;
 
+#[derive(Clone)]
 pub(crate) enum ArchiveFormat {
     TarGz,
     Zip,
@@ -14,12 +15,15 @@ pub(crate) enum ArchiveFormat {
 impl TryFrom<&Path> for ArchiveFormat {
     type Error = Option<anyhow::Error>;
 
-    fn try_from(path: &Path) -> result::Result<Self, Self::Error> {
+    fn try_from(path: &Path) -> Result<Self, Self::Error> {
         let Some(compound_extension) = path.compound_extension() else {
             return Err(None);
         };
 
-        let archive_format = match compound_extension.to_string_lossy().as_ref() {
+        let compound_extension = compound_extension.to_string_lossy();
+        let compound_extension = compound_extension.as_ref();
+
+        let archive_format = match compound_extension {
             "tar.gz" | "tgz" => Self::TarGz,
             "zip" => Self::Zip,
             _ => return Err(None),
@@ -32,7 +36,7 @@ impl TryFrom<&Path> for ArchiveFormat {
 impl ArchiveFormat {
     pub(crate) const PEEK_BUF_SIZE: usize = 262;
 
-    pub(crate) async fn detect(bytes: &[u8]) -> Result<Self> {
+    pub(crate) async fn detect(bytes: &[u8]) -> anyhow::Result<Self> {
         let kind = infer::get(bytes).context("Failed to detect archive format from magic bytes")?;
 
         let archive_format = match kind.extension() {

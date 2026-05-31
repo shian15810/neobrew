@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 
-use anyhow::Result;
 use etcetera::{BaseStrategy, base_strategy};
 
 use super::{ProjectDirs, ProjectDirsInner};
@@ -28,7 +27,7 @@ pub(crate) struct HomebrewDirs {
 }
 
 impl HomebrewDirs {
-    pub(in super::super) fn new() -> Result<Self> {
+    pub(in super::super) fn new() -> anyhow::Result<Self> {
         #[cfg(debug_assertions)]
         let strategy = base_strategy::choose_base_strategy()?;
 

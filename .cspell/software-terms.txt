@@ -1,0 +1,8 @@
+# Custom Dictionary Words
+archs
+Bitness
+CIGAM
+codenames
+cpio
+sysexits
+untap

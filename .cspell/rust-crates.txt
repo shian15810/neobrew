@@ -1,5 +1,4 @@
 # Custom Dictionary Words
-archs
 arwen
 codesign
 Codesign

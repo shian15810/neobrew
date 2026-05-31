@@ -3,12 +3,12 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{Context as _, Result};
+use anyhow::Context as _;
 use base16ct::HexDisplay;
 use sha2::{Digest as _, Sha256};
 use url::Url;
 
-use super::Cacheable;
+use super::Downloadable;
 use crate::{
     context::{Context, dirs::ProjectDirs as _},
     ext::std::path::PathExt as _,
@@ -19,11 +19,11 @@ use crate::{
     util::ArchiveFormat,
 };
 
-pub(super) struct CaskCache {
+pub(super) struct CaskDownload {
     context: Arc<Context>,
 }
 
-impl Cacheable for CaskCache {
+impl Downloadable for CaskDownload {
     type PreparedPackage = PreparedCask;
 
     fn new(context: Arc<Context>) -> Self {
@@ -32,7 +32,7 @@ impl Cacheable for CaskCache {
         }
     }
 
-    fn archive_format(&self, symlink_path: &Path) -> Result<Option<ArchiveFormat>> {
+    fn archive_format(&self, symlink_path: &Path) -> anyhow::Result<Option<ArchiveFormat>> {
         let archive_format = match ArchiveFormat::try_from(symlink_path) {
             Ok(archive_format) => archive_format,
             Err(Some(err)) => return Err(err),
@@ -45,14 +45,14 @@ impl Cacheable for CaskCache {
     async fn symlink_file_paths(
         &self,
         prepared_package: &Self::PreparedPackage,
-    ) -> Result<(PathBuf, PathBuf)> {
+    ) -> anyhow::Result<(PathBuf, PathBuf)> {
         let prepared_cask = prepared_package;
 
         let dir_path = self.context.homebrew_dirs.cache_dir();
 
         let version = prepared_cask.version();
 
-        let url = prepared_cask.cache_url();
+        let url = prepared_cask.download_url();
 
         let resp = self.context.client.get(url).send().await?;
         let resp = resp.error_for_status()?;
@@ -73,6 +73,7 @@ impl Cacheable for CaskCache {
         let compound_extension = path.compound_extension();
 
         let symlink_name = match compound_extension {
+            None => format!("{name}--{version}"),
             Some(compound_extension) => {
                 let compound_extension = compound_extension
                     .to_str()
@@ -80,7 +81,6 @@ impl Cacheable for CaskCache {
 
                 format!("{name}--{version}.{compound_extension}")
             },
-            None => format!("{name}--{version}"),
         };
 
         let file_name = format!("{url_hash}--{name}");

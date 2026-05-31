@@ -1,6 +1,5 @@
-use std::path::PathBuf;
+use std::path::Path;
 
-use anyhow::Result;
 use apple_codesign::{SigningSettings, UnifiedSigner};
 use tokio::task;
 use tokio_util::task::AbortOnDropHandle;
@@ -8,8 +7,10 @@ use tokio_util::task::AbortOnDropHandle;
 pub(crate) struct Codesign;
 
 impl Codesign {
-    pub(crate) async fn in_place(path: PathBuf) -> Result<()> {
-        let handle = task::spawn_blocking(move || {
+    pub(crate) async fn in_place(path: &Path) -> anyhow::Result<()> {
+        let path = path.to_owned();
+
+        let handle = task::spawn_blocking(|| {
             let settings = SigningSettings::default();
 
             let signer = UnifiedSigner::new(settings);

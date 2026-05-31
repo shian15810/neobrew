@@ -1,5 +1,3 @@
-use anyhow::{Result, anyhow};
-
 pub(crate) struct MachO;
 
 impl MachO {
@@ -29,11 +27,9 @@ impl MachO {
 }
 
 impl MachO {
-    pub(crate) fn has_magic_number(bytes: &[u8]) -> Result<bool> {
+    pub(crate) fn has_magic_number(bytes: &[u8]) -> bool {
         let &[b0, b1, b2, b3, ..] = bytes else {
-            let err = anyhow!("Not enough header bytes");
-
-            return Err(err);
+            return false;
         };
 
         let header_bytes = &[b0, b1, b2, b3];
@@ -41,15 +37,15 @@ impl MachO {
         let be_magic_number = u32::from_be_bytes(*header_bytes);
 
         if Self::BE_MAGIC_NUMBERS.contains(&be_magic_number) {
-            return Ok(true);
+            return true;
         }
 
         let le_magic_number = u32::from_le_bytes(*header_bytes);
 
         if Self::LE_MAGIC_NUMBERS.contains(&le_magic_number) {
-            return Ok(true);
+            return true;
         }
 
-        Ok(false)
+        false
     }
 }

@@ -1,6 +1,5 @@
 mod temp_pourer;
 
-use anyhow::Result;
 use bytes::Buf;
 use futures::stream::StreamExt as _;
 use tokio::{
@@ -20,7 +19,10 @@ pub(crate) trait PullOperator {
     type Output;
 
     #[expect(clippy::wrong_self_convention)]
-    async fn from_reader(self, reader: impl AsyncRead + Unpin + Send) -> Result<Self::Output>;
+    async fn from_reader(
+        self,
+        reader: impl AsyncRead + Unpin + Send,
+    ) -> anyhow::Result<Self::Output>;
 }
 
 impl<
@@ -34,7 +36,10 @@ impl<
     fn launch(
         self,
         context: &Context,
-    ) -> (PollSender<Item>, AbortOnDropHandle<Result<Self::Output>>) {
+    ) -> (
+        PollSender<Item>,
+        AbortOnDropHandle<anyhow::Result<Self::Output>>,
+    ) {
         let (tx, rx) = mpsc::channel(context.channel_capacity);
 
         let sink = PollSender::new(tx);
@@ -44,7 +49,7 @@ impl<
 
         let reader = StreamReader::new(stream);
 
-        let handle = task::spawn(async move {
+        let handle = task::spawn(async {
             let output = self.from_reader(reader).await?;
 
             anyhow::Ok(output)

@@ -3,7 +3,7 @@ use std::{
     path::{Component, Path, PathBuf},
 };
 
-use anyhow::{Result, anyhow};
+use anyhow::anyhow;
 use async_compression::tokio::bufread::GzipDecoder;
 use async_zip::base::read::stream::ZipFileReader;
 use tempfile::TempDir;
@@ -27,7 +27,7 @@ pub(crate) struct TempPourer {
 }
 
 impl TempPourer {
-    pub(crate) fn create(
+    pub(crate) fn init(
         archive_format: Option<ArchiveFormat>,
         dir_path: PathBuf,
         symlink_paths: Vec<PathBuf>,
@@ -43,7 +43,7 @@ impl TempPourer {
         archive_format: ArchiveFormat,
         dir: &TempDir,
         buf_reader: impl AsyncBufRead + Unpin + Send,
-    ) -> Result<()> {
+    ) -> anyhow::Result<()> {
         match archive_format {
             ArchiveFormat::TarGz => {
                 let gz_decoder = GzipDecoder::new(buf_reader);
@@ -98,7 +98,10 @@ impl TempPourer {
 impl PullOperator for TempPourer {
     type Output = TempPourerOutput;
 
-    async fn from_reader(self, reader: impl AsyncRead + Unpin + Send) -> Result<Self::Output> {
+    async fn from_reader(
+        self,
+        reader: impl AsyncRead + Unpin + Send,
+    ) -> anyhow::Result<Self::Output> {
         fs::create_dir_all(&self.dir_path).await?;
 
         let dir = TempDir::new_in(&self.dir_path)?;
@@ -138,13 +141,13 @@ pub(crate) struct TempPourerOutput {
 }
 
 impl handler::AtomicWriter for TempPourerOutput {
-    async fn cleanup(self) -> Result<()> {
+    async fn cleanup(self) -> anyhow::Result<()> {
         self.dir.close()?;
 
         Ok(())
     }
 
-    async fn persist(self) -> Result<()> {
+    async fn persist(self) -> anyhow::Result<()> {
         let src_dir_path = self.dir.path();
 
         let dest_dir_path = self.dir_path;

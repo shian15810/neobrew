@@ -1,6 +1,6 @@
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
-use anyhow::{Result, anyhow};
+use anyhow::anyhow;
 use bytes::Bytes;
 use clap::Args;
 use frunk::hlist_pat;
@@ -11,18 +11,20 @@ use tokio::task::JoinSet;
 
 use super::{Resolution, Runner};
 use crate::{
-    caches::Caches,
+    compatibility::{Compatibility, Compatibilizer as _},
     context::Context,
+    downloads::Downloads,
     ext::{core::result::ResultExt as _, tokio::path::PathExt as _},
     linker::Linker,
     package::{
         Packageable as _,
-        fetched::FetchedPackage,
         prepared::{PreparedPackage, PreparedPackageable as _},
+        resolved::ResolvedPackage,
+        streamed::StreamedPackage,
     },
     pipeline::{Pipeline, handler::AtomicWriter as _, pull_operator, push_operator},
     registries::{Registries, ResolutionStrategy},
-    relocation::Relocation,
+    relocation::{Relocation, Relocator as _},
     streams::Streams,
 };
 
@@ -36,10 +38,10 @@ pub(super) struct Install {
 }
 
 impl Runner for Install {
-    async fn run_concurrent(self, context: Arc<Context>) -> Result<()> {
-        let installation = Installation::init(self.packages, self.resolution, context).await?;
+    async fn run_concurrent(self, context: Arc<Context>) -> anyhow::Result<()> {
+        let installation = Installation::prepare(self.packages, self.resolution, context).await?;
 
-        installation.run().await?;
+        installation.start().await?;
 
         Ok(())
     }
@@ -49,48 +51,38 @@ struct Installation {
     packages: Vec<String>,
     resolution: Resolution,
 
-    caches: Caches,
+    multi_pb: MultiProgress,
+
+    compatibility: Compatibility,
+
+    downloads: Downloads,
     streams: Streams,
+
     relocation: Relocation,
     linker: Linker,
-
-    multi_pb: MultiProgress,
-    active_pbs: Arc<Mutex<Vec<(String, ProgressBar)>>>,
 
     context: Arc<Context>,
 }
 
 impl Installation {
-    async fn init(
+    async fn prepare(
         packages: Vec<String>,
         resolution: Resolution,
         context: Arc<Context>,
-    ) -> Result<Arc<Self>> {
-        let caches = Caches::new(Arc::clone(&context));
-
-        let streams = Streams::new(Arc::clone(&context));
-
-        let relocation = Relocation::from(&context.homebrew_dirs);
-
-        let linker = Linker::create(Arc::clone(&context)).await?;
-
-        let multi_pb = MultiProgress::new();
-
-        let active_pbs = Vec::new();
-        let active_pbs = Mutex::new(active_pbs);
-        let active_pbs = Arc::new(active_pbs);
-
+    ) -> anyhow::Result<Arc<Self>> {
         let this = Self {
             packages,
             resolution,
 
-            caches,
-            streams,
-            relocation,
-            linker,
+            multi_pb: MultiProgress::new(),
 
-            multi_pb,
-            active_pbs,
+            compatibility: Compatibility::current()?,
+
+            downloads: Downloads::new(Arc::clone(&context)),
+            streams: Streams::new(Arc::clone(&context)),
+
+            relocation: Relocation::init(Arc::clone(&context)),
+            linker: Linker::init(Arc::clone(&context)).await?,
 
             context,
         };
@@ -99,7 +91,7 @@ impl Installation {
         Ok(this)
     }
 
-    async fn run(self: Arc<Self>) -> Result<()> {
+    async fn start(self: Arc<Self>) -> anyhow::Result<()> {
         if self.packages.is_empty() {
             return Ok(());
         }
@@ -117,12 +109,82 @@ impl Installation {
         self: Arc<Self>,
         packages: &[String],
         strategy: ResolutionStrategy,
-    ) -> Result<()> {
-        let registries = Registries::new(Arc::clone(&self.context));
+    ) -> anyhow::Result<()> {
+        let registries = Registries::init(Arc::clone(&self.context));
 
         let resolved_packages = registries
             .resolve(packages.iter().cloned(), strategy)
             .await?;
+
+        let max_id_length = resolved_packages
+            .iter()
+            .map(|resolved_package| resolved_package.id().len())
+            .max();
+
+        let max_version_length = resolved_packages
+            .iter()
+            .map(|resolved_package| resolved_package.version().len())
+            .max();
+
+        #[cfg(debug_assertions)]
+        let pbs = resolved_packages
+            .iter()
+            .map(|resolved_package| {
+                let pb = push_operator::PbUpdater::create(
+                    &self.multi_pb,
+                    resolved_package.id(),
+                    resolved_package.version(),
+                    max_id_length,
+                    max_version_length,
+                )?;
+
+                pb.set_prefix("Resolving");
+
+                anyhow::Ok(pb)
+            })
+            .try_collect::<Vec<_>>()?;
+
+        #[cfg(not(debug_assertions))]
+        let pbs = resolved_packages
+            .iter()
+            .map(|resolved_package| {
+                let pb = push_operator::PbUpdater::create(
+                    &self.multi_pb,
+                    resolved_package.id(),
+                    resolved_package.version(),
+                    max_id_length,
+                    max_version_length,
+                )?;
+
+                pb.set_prefix("Resolving");
+
+                anyhow::Ok(pb)
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        let (resolved_packages_pbs, incompatible_resolved_packages_pbs) = resolved_packages
+            .into_iter()
+            .zip(pbs)
+            .partition::<Vec<_>, _>(|(resolved_package, _)| match resolved_package {
+                ResolvedPackage::Formula(_) => true,
+                ResolvedPackage::Cask(resolved_cask) => {
+                    self.compatibility.check(&resolved_cask.depends_on)
+                },
+            });
+
+        let (_, incompatible_pbs) = incompatible_resolved_packages_pbs
+            .into_iter()
+            .unzip::<_, _, Vec<_>, Vec<_>>();
+
+        for incompatible_pb in incompatible_pbs {
+            incompatible_pb.set_prefix("Incompatible");
+
+            incompatible_pb.finish();
+        }
+
+        let (resolved_packages, pbs) = resolved_packages_pbs
+            .into_iter()
+            .unzip::<_, _, Vec<_>, Vec<_>>();
 
         #[cfg(debug_assertions)]
         let prepared_packages = resolved_packages
@@ -136,21 +198,11 @@ impl Installation {
             .into_iter()
             .map(PreparedPackage::try_from)
             .filter_map(Result::transpose_err)
-            .collect::<Result<Vec<_>>>()?;
-
-        let max_id_length = prepared_packages
-            .iter()
-            .map(|prepared_package| prepared_package.id().len())
-            .max();
-
-        let max_version_length = prepared_packages
-            .iter()
-            .map(|prepared_package| prepared_package.version().len())
-            .max();
+            .collect::<anyhow::Result<Vec<_>>>()?;
 
         let mut set = JoinSet::new();
 
-        for prepared_package in prepared_packages {
+        for (prepared_package, pb) in prepared_packages.into_iter().zip(pbs) {
             while set.len() >= self.context.concurrency_limit {
                 if let Some(res) = set.join_next().await {
                     res??;
@@ -160,8 +212,7 @@ impl Installation {
             let this = Arc::clone(&self);
 
             set.spawn(async move {
-                this.run_one(prepared_package, max_id_length, max_version_length)
-                    .await?;
+                this.run_one(prepared_package, pb).await?;
 
                 anyhow::Ok(())
             });
@@ -177,9 +228,10 @@ impl Installation {
     async fn run_one(
         &self,
         prepared_package: PreparedPackage,
-        max_id_length: Option<usize>,
-        max_version_length: Option<usize>,
-    ) -> Result<()> {
+        pb: ProgressBar,
+    ) -> anyhow::Result<()> {
+        pb.set_prefix("Preparing");
+
         let id = prepared_package.id();
 
         let version = prepared_package.version();
@@ -189,17 +241,21 @@ impl Installation {
         let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version);
 
         if keg_dir_path.is_dir_exists_nofollow().await? {
-            let fetched_package = FetchedPackage::from(prepared_package);
+            let streamed_package = StreamedPackage::from(prepared_package);
 
-            self.relocate(&fetched_package).await?;
+            self.relocate(&streamed_package, &pb).await?;
 
-            self.link(&fetched_package).await?;
+            self.link(&streamed_package, &pb).await?;
+
+            pb.set_prefix("Installed");
+
+            pb.finish();
 
             return Ok(());
         }
 
-        let cache = self
-            .caches
+        let download = self
+            .downloads
             .retrieve(&prepared_package, expected_sha256)
             .await?;
 
@@ -209,130 +265,103 @@ impl Installation {
         };
 
         let temp_pourer =
-            pull_operator::TempPourer::create(cache.archive_format, pourer_dir_path, vec![]);
+            pull_operator::TempPourer::init(download.archive_format, pourer_dir_path, vec![]);
 
-        if cache.is_valid {
-            let (stream, content_length) = self.streams.cache(&cache.file_path).await?;
+        let sha256_hasher = push_operator::Sha256Hasher::new();
+
+        let pb = if download.is_valid {
+            let (stream, content_length) = self.streams.download(&download.file_path).await?;
 
             let content_length = Some(content_length);
 
-            self.fetch_from_cache(
-                id,
-                version,
-                expected_sha256,
-                max_id_length,
-                max_version_length,
-                content_length,
+            let pb_updater = push_operator::PbUpdater::init(pb, content_length)?;
+
+            let operators = Operators {
                 temp_pourer,
-                stream,
-            )
-            .await?;
+                temp_writer: (),
+                sha256_hasher,
+                pb_updater,
+            };
+
+            self.stream_from_download(id, version, expected_sha256, operators, stream)
+                .await?
         } else {
             let temp_writer =
-                push_operator::TempWriter::create(cache.file_path, vec![cache.symlink_path])
+                push_operator::TempWriter::init(download.file_path, vec![download.symlink_path])
                     .await?;
 
-            let (stream, content_length) = self.streams.api(&prepared_package).await?;
+            let (stream, content_length) = self.streams.oci_or_url(&prepared_package).await?;
 
-            self.fetch_from_api(
-                id,
-                version,
-                expected_sha256,
-                max_id_length,
-                max_version_length,
-                content_length,
-                temp_pourer,
+            let pb_updater = push_operator::PbUpdater::init(pb, content_length)?;
+
+            let operators = Operators {
+                pb_updater,
+                sha256_hasher,
                 temp_writer,
-                stream,
-            )
-            .await?;
-        }
+                temp_pourer,
+            };
 
-        let fetched_package = FetchedPackage::from(prepared_package);
+            self.stream_from_api(id, version, expected_sha256, operators, stream)
+                .await?
+        };
 
-        self.relocate(&fetched_package).await?;
+        let streamed_package = StreamedPackage::from(prepared_package);
 
-        self.link(&fetched_package).await?;
+        self.relocate(&streamed_package, &pb).await?;
+
+        self.link(&streamed_package, &pb).await?;
+
+        pb.set_prefix("Installed");
+
+        pb.finish();
 
         Ok(())
     }
 
-    #[expect(clippy::too_many_arguments)]
-    async fn fetch_from_cache(
+    async fn stream_from_download(
         &self,
         id: &str,
         version: &str,
         expected_sha256: &str,
-        max_id_length: Option<usize>,
-        max_version_length: Option<usize>,
-        content_length: Option<u64>,
-        temp_pourer: pull_operator::TempPourer,
-        stream: impl stream::Stream<Item = Result<Bytes>> + Send + 'static,
-    ) -> Result<()> {
-        let hasher = push_operator::Hasher::new();
-
-        let progress = push_operator::Progress::create(
-            &self.multi_pb,
-            Arc::clone(&self.active_pbs),
-            id,
-            version,
-            max_id_length,
-            max_version_length,
-            content_length,
-        )?;
-
-        let hlist_pat![temp_pourer_output, hashed_sha256, _] =
-            Pipeline::new(stream, Arc::clone(&self.context))
-                .fanout(temp_pourer)
-                .fanout(hasher)
-                .fanout(progress)
+        operators: Operators<()>,
+        stream: impl stream::Stream<Item = anyhow::Result<Bytes>> + Send + 'static,
+    ) -> anyhow::Result<ProgressBar> {
+        let hlist_pat![pb, hashed_sha256, temp_pourer_output] =
+            Pipeline::build(stream, Arc::clone(&self.context))
+                .fanout(operators.pb_updater)
+                .fanout(operators.sha256_hasher)
+                .fanout(operators.temp_pourer)
                 .run_parallel()
                 .await?;
 
         if hashed_sha256 != expected_sha256 {
             temp_pourer_output.cleanup().await?;
 
-            let err = Self::fetch_sha256_mismatch_err(id, version, &hashed_sha256, expected_sha256);
+            let err =
+                Self::streamed_sha256_mismatch_err(id, version, &hashed_sha256, expected_sha256);
 
             return Err(err);
         }
 
         temp_pourer_output.persist().await?;
 
-        Ok(())
+        Ok(pb)
     }
 
-    #[expect(clippy::too_many_arguments)]
-    async fn fetch_from_api(
+    async fn stream_from_api(
         &self,
         id: &str,
         version: &str,
         expected_sha256: &str,
-        max_id_length: Option<usize>,
-        max_version_length: Option<usize>,
-        content_length: Option<u64>,
-        temp_pourer: pull_operator::TempPourer,
-        temp_writer: push_operator::TempWriter,
-        stream: impl stream::Stream<Item = Result<Bytes>> + Send + 'static,
-    ) -> Result<()> {
-        let hasher = push_operator::Hasher::new();
-
-        let progress = push_operator::Progress::create(
-            &self.multi_pb,
-            Arc::clone(&self.active_pbs),
-            id,
-            version,
-            max_id_length,
-            max_version_length,
-            content_length,
-        )?;
-
-        let hlist_pat![temp_pourer_output, temp_writer_output, hashed_sha256, _] =
-            Pipeline::new(stream, Arc::clone(&self.context))
-                .fanout(temp_pourer)
-                .fanout(temp_writer)
-                .fanout(hasher)
-                .fanout(progress)
+        operators: Operators,
+        stream: impl stream::Stream<Item = anyhow::Result<Bytes>> + Send + 'static,
+    ) -> anyhow::Result<ProgressBar> {
+        let hlist_pat![pb, hashed_sha256, temp_writer_output, temp_pourer_output] =
+            Pipeline::build(stream, Arc::clone(&self.context))
+                .fanout(operators.pb_updater)
+                .fanout(operators.sha256_hasher)
+                .fanout(operators.temp_writer)
+                .fanout(operators.temp_pourer)
                 .run_parallel()
                 .await?;
 
@@ -341,7 +370,8 @@ impl Installation {
 
             temp_pourer_output.cleanup().await?;
 
-            let err = Self::fetch_sha256_mismatch_err(id, version, &hashed_sha256, expected_sha256);
+            let err =
+                Self::streamed_sha256_mismatch_err(id, version, &hashed_sha256, expected_sha256);
 
             return Err(err);
         }
@@ -350,10 +380,10 @@ impl Installation {
 
         temp_pourer_output.persist().await?;
 
-        Ok(())
+        Ok(pb)
     }
 
-    fn fetch_sha256_mismatch_err(
+    fn streamed_sha256_mismatch_err(
         id: &str,
         version: &str,
         actual: &str,
@@ -367,36 +397,57 @@ impl Installation {
         })
     }
 
-    async fn relocate(&self, fetched_package: &FetchedPackage) -> Result<()> {
-        match fetched_package {
-            FetchedPackage::Formula(fetched_formula) => {
-                if fetched_formula.should_relocate() {
+    async fn relocate(
+        &self,
+        streamed_package: &StreamedPackage,
+        pb: &ProgressBar,
+    ) -> anyhow::Result<()> {
+        pb.set_prefix("Relocating");
+
+        match streamed_package {
+            StreamedPackage::Formula(streamed_formula) => {
+                let cellar_dir_path = self.context.homebrew_dirs.cellar_dir();
+
+                if streamed_formula.should_relocate(&cellar_dir_path) {
                     let keg_dir_path = self
                         .context
                         .homebrew_dirs
-                        .keg_dir(fetched_formula.id(), fetched_formula.version());
+                        .keg_dir(streamed_formula.id(), streamed_formula.version());
 
                     self.relocation.patch_keg(&keg_dir_path).await?;
                 }
             },
-            FetchedPackage::Cask(_fetched_cask) => {},
+            StreamedPackage::Cask(_streamed_cask) => {},
         }
 
         Ok(())
     }
 
-    async fn link(&self, fetched_package: &FetchedPackage) -> Result<()> {
-        match fetched_package {
-            FetchedPackage::Formula(fetched_formula) => {
-                self.linker.link_opt(fetched_formula).await?;
+    async fn link(
+        &self,
+        streamed_package: &StreamedPackage,
+        pb: &ProgressBar,
+    ) -> anyhow::Result<()> {
+        pb.set_prefix("Linking");
 
-                if fetched_formula.should_link_keg() {
-                    self.linker.link_keg(fetched_formula).await?;
+        match streamed_package {
+            StreamedPackage::Formula(streamed_formula) => {
+                self.linker.link_opt(streamed_formula).await?;
+
+                if streamed_formula.should_link_keg() {
+                    self.linker.link_keg(streamed_formula).await?;
                 }
             },
-            FetchedPackage::Cask(_fetched_cask) => {},
+            StreamedPackage::Cask(_streamed_cask) => {},
         }
 
         Ok(())
     }
+}
+
+struct Operators<TempWriter = push_operator::TempWriter> {
+    pb_updater: push_operator::PbUpdater,
+    sha256_hasher: push_operator::Sha256Hasher,
+    temp_writer: TempWriter,
+    temp_pourer: pull_operator::TempPourer,
 }

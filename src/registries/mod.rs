@@ -1,12 +1,11 @@
 mod cask;
 mod formula;
 
-use std::{path::PathBuf, sync::Arc};
+use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
-use anyhow::{Result, anyhow};
+use anyhow::anyhow;
 use bytes::Bytes;
 use futures::stream::{self, StreamExt as _, TryStreamExt as _};
-use itertools::Itertools as _;
 use tempfile::NamedTempFile;
 use tokio::{
     fs::{self, File},
@@ -28,11 +27,11 @@ pub(crate) struct Registries {
 }
 
 impl Registries {
-    pub(crate) fn new(context: Arc<Context>) -> Self {
-        let formula_registry = FormulaRegistry::new(Arc::clone(&context));
+    pub(crate) fn init(context: Arc<Context>) -> Self {
+        let formula_registry = FormulaRegistry::init(Arc::clone(&context));
         let formula_registry = Arc::new(formula_registry);
 
-        let cask_registry = CaskRegistry::new(Arc::clone(&context));
+        let cask_registry = CaskRegistry::init(Arc::clone(&context));
         let cask_registry = Arc::new(cask_registry);
 
         Self {
@@ -47,14 +46,30 @@ impl Registries {
         self,
         packages: impl IntoIterator<Item = String>,
         strategy: ResolutionStrategy,
-    ) -> Result<Vec<ResolvedPackage>> {
+    ) -> anyhow::Result<Vec<ResolvedPackage>> {
+        let mut resolved_package_ids = HashSet::new();
+
         let resolved_packages = self.resolve_many(packages, strategy).await?;
-        let resolved_packages = resolved_packages
+        let mut resolved_packages = resolved_packages
             .into_iter()
             .flat_map(|resolved_package| resolved_package.iter())
-            .sorted_by(|left, right| left.id().cmp(right.id()))
-            .dedup_by(|left, right| left.id() == right.id())
+            .filter(|resolved_package| {
+                let id = resolved_package.id().to_owned();
+
+                resolved_package_ids.insert(id)
+            })
             .collect::<Vec<_>>();
+
+        for resolved_package in &mut resolved_packages {
+            #[expect(clippy::collapsible_if)]
+            if let ResolvedPackage::Formula(resolved_formula) = resolved_package {
+                if let Some(resolved_formula) = Arc::get_mut(resolved_formula) {
+                    resolved_formula.dependencies_mut().clear();
+                }
+            }
+        }
+
+        resolved_packages.sort_by(|left, right| left.id().cmp(right.id()));
 
         Ok(resolved_packages)
     }
@@ -63,12 +78,12 @@ impl Registries {
         self,
         packages: impl IntoIterator<Item = String>,
         strategy: ResolutionStrategy,
-    ) -> Result<Vec<ResolvedPackage>> {
+    ) -> anyhow::Result<Vec<ResolvedPackage>> {
         let resolved_packages = stream::iter(packages)
             .map(async |package| {
                 let package = Arc::from(package);
 
-                let resolved_package = self.resolve_one(package, strategy).await?;
+                let resolved_package = self.resolve_one(package, strategy.clone()).await?;
 
                 anyhow::Ok(resolved_package)
             })
@@ -83,7 +98,7 @@ impl Registries {
         &self,
         package: Arc<str>,
         strategy: ResolutionStrategy,
-    ) -> Result<ResolvedPackage> {
+    ) -> anyhow::Result<ResolvedPackage> {
         if matches!(
             strategy,
             ResolutionStrategy::FormulaOnly | ResolutionStrategy::Both,
@@ -116,7 +131,7 @@ impl Registries {
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Clone)]
 pub(crate) enum ResolutionStrategy {
     FormulaOnly,
     CaskOnly,
@@ -139,15 +154,18 @@ trait Registrable {
     const TAP_MIGRATIONS_URL: &str;
     const TAP_MIGRATIONS_JWS_URL: &str;
 
-    fn new(context: Arc<Context>) -> Self;
+    fn init(context: Arc<Context>) -> Self;
 
-    async fn resolve(self: Arc<Self>, package: Arc<str>) -> Result<Arc<Self::ResolvedPackage>>;
+    async fn resolve(
+        self: Arc<Self>,
+        package: Arc<str>,
+    ) -> anyhow::Result<Arc<Self::ResolvedPackage>>;
 }
 
 trait RegistrableJson {
     fn json_path(&self, id: &str) -> PathBuf;
 
-    async fn save_json(&self, id: &str, bytes: Bytes) -> Result<()> {
+    async fn save_json(&self, id: &str, bytes: Bytes) -> anyhow::Result<()> {
         let file_path = self.json_path(id);
 
         let file_base_path = file_path.base()?;

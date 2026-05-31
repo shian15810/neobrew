@@ -3,7 +3,6 @@ mod uninstall;
 
 use std::{ffi::OsString, sync::Arc};
 
-use anyhow::Result;
 use clap::{
     Args,
     ColorChoice,
@@ -149,7 +148,7 @@ enum Internal {
 
 #[enum_dispatch(Internal)]
 trait Runner {
-    async fn run_concurrent(self, context: Arc<Context>) -> Result<()>;
+    async fn run_concurrent(self, context: Arc<Context>) -> anyhow::Result<()>;
 }
 
 #[derive(Args)]

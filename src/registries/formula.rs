@@ -1,6 +1,6 @@
 use std::{path::PathBuf, sync::Arc};
 
-use anyhow::{Result, anyhow};
+use anyhow::anyhow;
 use async_recursion::async_recursion;
 use foyer::{Cache, CacheBuilder};
 use futures::stream::{self, StreamExt as _, TryStreamExt as _};
@@ -30,7 +30,7 @@ impl Registrable for FormulaRegistry {
     const TAP_MIGRATIONS_JWS_URL: &str =
         "https://formulae.brew.sh/api/formula_tap_migrations.jws.json";
 
-    fn new(context: Arc<Context>) -> Self {
+    fn init(context: Arc<Context>) -> Self {
         Self {
             store: CacheBuilder::new(usize::MAX).build(),
 
@@ -38,7 +38,10 @@ impl Registrable for FormulaRegistry {
         }
     }
 
-    async fn resolve(self: Arc<Self>, package: Arc<str>) -> Result<Arc<Self::ResolvedPackage>> {
+    async fn resolve(
+        self: Arc<Self>,
+        package: Arc<str>,
+    ) -> anyhow::Result<Arc<Self::ResolvedPackage>> {
         let stack = Vec::new();
 
         let resolved_formula = self.resolve_with_stack(package, stack).await?;
@@ -52,7 +55,7 @@ impl FormulaRegistry {
         self: Arc<Self>,
         package: Arc<str>,
         mut stack: Vec<Arc<str>>,
-    ) -> Result<Arc<ResolvedFormula>> {
+    ) -> anyhow::Result<Arc<ResolvedFormula>> {
         if stack.contains(&package) {
             let formula = package;
 
@@ -70,7 +73,7 @@ impl FormulaRegistry {
 
         stack.push(Arc::clone(&package));
 
-        let resolved_formula = self
+        let entry = self
             .store
             .get_or_fetch(&package, || {
                 let this = Arc::clone(&self);
@@ -78,7 +81,8 @@ impl FormulaRegistry {
                 this.fetch_with_stack(Arc::clone(&package), stack)
             })
             .await?;
-        let resolved_formula = Arc::clone(resolved_formula.value());
+
+        let resolved_formula = Arc::clone(entry.value());
 
         Ok(resolved_formula)
     }
@@ -88,7 +92,7 @@ impl FormulaRegistry {
         self: Arc<Self>,
         package: Arc<str>,
         stack: Vec<Arc<str>>,
-    ) -> Result<Arc<ResolvedFormula>> {
+    ) -> anyhow::Result<Arc<ResolvedFormula>> {
         let api_url = Self::API_URL.replace("{}", &package);
 
         let bytes = {

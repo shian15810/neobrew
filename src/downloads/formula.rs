@@ -3,11 +3,10 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::Result;
 use base16ct::HexDisplay;
 use sha2::{Digest as _, Sha256};
 
-use super::Cacheable;
+use super::Downloadable;
 use crate::{
     context::{Context, dirs::ProjectDirs as _},
     package::{
@@ -17,11 +16,11 @@ use crate::{
     util::ArchiveFormat,
 };
 
-pub(super) struct FormulaCache {
+pub(super) struct FormulaDownload {
     context: Arc<Context>,
 }
 
-impl Cacheable for FormulaCache {
+impl Downloadable for FormulaDownload {
     type PreparedPackage = PreparedFormula;
 
     fn new(context: Arc<Context>) -> Self {
@@ -30,7 +29,7 @@ impl Cacheable for FormulaCache {
         }
     }
 
-    fn archive_format(&self, _: &Path) -> Result<Option<ArchiveFormat>> {
+    fn archive_format(&self, _: &Path) -> anyhow::Result<Option<ArchiveFormat>> {
         let archive_format = ArchiveFormat::TarGz;
 
         Ok(Some(archive_format))
@@ -39,7 +38,7 @@ impl Cacheable for FormulaCache {
     async fn symlink_file_paths(
         &self,
         prepared_package: &Self::PreparedPackage,
-    ) -> Result<(PathBuf, PathBuf)> {
+    ) -> anyhow::Result<(PathBuf, PathBuf)> {
         let prepared_formula = prepared_package;
 
         let dir_path = self.context.homebrew_dirs.cache_dir();
@@ -52,7 +51,7 @@ impl Cacheable for FormulaCache {
 
         let bottle_tag = prepared_formula.bottle_tag();
 
-        let url = prepared_formula.cache_url();
+        let url = prepared_formula.download_url();
 
         let url_hash = Sha256::digest(url);
         let url_hash = HexDisplay(&url_hash);

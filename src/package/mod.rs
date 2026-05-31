@@ -1,19 +1,19 @@
-pub(crate) mod fetched;
 pub(crate) mod installed;
 pub(crate) mod prepared;
 pub(crate) mod raw;
 pub(crate) mod resolved;
+pub(crate) mod streamed;
 
 use std::sync::Arc;
 
 use enum_dispatch::enum_dispatch;
 
 use self::{
-    fetched::FetchedPackage,
     installed::InstalledPackage,
     prepared::PreparedPackage,
     raw::RawPackage,
     resolved::ResolvedPackage,
+    streamed::StreamedPackage,
 };
 
 #[enum_dispatch]
@@ -21,7 +21,7 @@ enum Package {
     Raw(RawPackage),
     Resolved(ResolvedPackage),
     Prepared(PreparedPackage),
-    Fetched(FetchedPackage),
+    Streamed(StreamedPackage),
     Installed(InstalledPackage),
 }
 
@@ -30,7 +30,7 @@ enum Package {
     RawPackage,
     ResolvedPackage,
     PreparedPackage,
-    FetchedPackage,
+    StreamedPackage,
     InstalledPackage
 )]
 pub(crate) trait Packageable {

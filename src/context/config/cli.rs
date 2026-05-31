@@ -17,7 +17,9 @@ impl CliConfig {
     pub(super) fn from_arg_matches(matches: &ArgMatches) -> Self {
         let is_from_cli = |id| matches.value_source(id) == Some(ValueSource::CommandLine);
 
-        let verbosity = (is_from_cli("verbose") || is_from_cli("quiet")).then(|| {
+        let is_verbosity_from_cli = is_from_cli("verbose") || is_from_cli("quiet");
+
+        let verbosity = is_verbosity_from_cli.then(|| {
             let verbose = matches.get_count("verbose");
 
             let quiet = matches.get_count("quiet");
@@ -25,7 +27,9 @@ impl CliConfig {
             Verbosity::new(verbose, quiet)
         });
 
-        let color = is_from_cli("color")
+        let is_color_from_cli = is_from_cli("color");
+
+        let color = is_color_from_cli
             .then(|| matches.get_one::<ColorChoice>("color"))
             .flatten()
             .copied();

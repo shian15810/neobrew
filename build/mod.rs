@@ -31,11 +31,9 @@
 
 mod neobrew_metadata;
 
-use anyhow::Result;
-
 use self::neobrew_metadata::NeobrewMetadata;
 
-fn main() -> Result<()> {
+fn main() -> anyhow::Result<()> {
     rustc_tools_util::setup_version_info!();
 
     NeobrewMetadata::setup()?;

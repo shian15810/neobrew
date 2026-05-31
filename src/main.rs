@@ -50,7 +50,7 @@ async fn main() -> proc_exit::ExitResult {
 
     init_tracing(*context.config().verbosity_filter());
 
-    let handle = task::spawn(async move {
+    let handle = task::spawn(async {
         signal::ctrl_c().await?;
 
         anyhow::Ok(())

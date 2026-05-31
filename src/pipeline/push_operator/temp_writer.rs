@@ -1,6 +1,5 @@
 use std::path::PathBuf;
 
-use anyhow::Result;
 use bytes::Bytes;
 use tempfile::NamedTempFile;
 use tokio::{
@@ -23,7 +22,10 @@ pub(crate) struct TempWriter {
 }
 
 impl TempWriter {
-    pub(crate) async fn create(file_path: PathBuf, symlink_paths: Vec<PathBuf>) -> Result<Self> {
+    pub(crate) async fn init(
+        file_path: PathBuf,
+        symlink_paths: Vec<PathBuf>,
+    ) -> anyhow::Result<Self> {
         let file_base_path = file_path.base()?;
 
         fs::create_dir_all(file_base_path).await?;
@@ -50,13 +52,13 @@ impl PushOperator for TempWriter {
     type Item = Bytes;
     type Output = TempWriterOutput;
 
-    async fn feed(&mut self, chunk: Self::Item) -> Result<()> {
+    async fn feed(&mut self, chunk: Self::Item) -> anyhow::Result<()> {
         self.buf_file.write_all(&chunk).await?;
 
         Ok(())
     }
 
-    async fn flush(mut self) -> Result<Self::Output> {
+    async fn flush(mut self) -> anyhow::Result<Self::Output> {
         self.buf_file.shutdown().await?;
 
         let output = TempWriterOutput {
@@ -78,13 +80,13 @@ pub(crate) struct TempWriterOutput {
 }
 
 impl handler::AtomicWriter for TempWriterOutput {
-    async fn cleanup(self) -> Result<()> {
+    async fn cleanup(self) -> anyhow::Result<()> {
         self.file.close()?;
 
         Ok(())
     }
 
-    async fn persist(self) -> Result<()> {
+    async fn persist(self) -> anyhow::Result<()> {
         let dest_file_path = self.file_path;
 
         self.file.persist(&dest_file_path)?;

@@ -1,24 +1,26 @@
+use std::path::Path;
+
 use super::super::{Packageable, prepared::PreparedFormula, raw::BottleStableFileCellar};
 
-pub(crate) struct FetchedFormula {
+pub(crate) struct StreamedFormula {
     name: String,
     version_revision: String,
-    bottle_file_cellar: BottleStableFileCellar,
+    bottle_cellar: BottleStableFileCellar,
     keg_only: bool,
 }
 
-impl From<PreparedFormula> for FetchedFormula {
+impl From<PreparedFormula> for StreamedFormula {
     fn from(prepared_formula: PreparedFormula) -> Self {
         Self {
             name: prepared_formula.name,
             version_revision: prepared_formula.version_revision,
-            bottle_file_cellar: prepared_formula.bottle_file.cellar,
+            bottle_cellar: prepared_formula.bottle_cellar,
             keg_only: prepared_formula.keg_only,
         }
     }
 }
 
-impl Packageable for FetchedFormula {
+impl Packageable for StreamedFormula {
     fn id(&self) -> &str {
         &self.name
     }
@@ -28,9 +30,13 @@ impl Packageable for FetchedFormula {
     }
 }
 
-impl FetchedFormula {
-    pub(crate) fn should_relocate(&self) -> bool {
-        self.bottle_file_cellar != BottleStableFileCellar::AnySkipRelocation
+impl StreamedFormula {
+    pub(crate) fn should_relocate(&self, cellar_dir_path: &Path) -> bool {
+        match &self.bottle_cellar {
+            BottleStableFileCellar::Any => true,
+            BottleStableFileCellar::AnySkipRelocation => false,
+            BottleStableFileCellar::Path(path) => path == cellar_dir_path,
+        }
     }
 
     pub(crate) fn should_link_keg(&self) -> bool {

@@ -1,4 +1,3 @@
-use anyhow::Result;
 use etcetera::{BaseStrategy, base_strategy};
 
 use super::{ProjectDirs, ProjectDirsInner};
@@ -14,7 +13,7 @@ pub(crate) struct NeobrewDirs {
 }
 
 impl NeobrewDirs {
-    pub(in super::super) fn new() -> Result<Self> {
+    pub(in super::super) fn new() -> anyhow::Result<Self> {
         let strategy = base_strategy::choose_base_strategy()?;
 
         let this = Self {

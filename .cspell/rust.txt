@@ -2,9 +2,8 @@
 ascii
 bufread
 cfgs
-clicolor
 CLIPPYFLAGS
-cpio
+Compatibilizer
 doctest
 fanout
 Fanout
@@ -20,13 +19,13 @@ OBJCXX
 overcaptures
 Packageable
 recv
+Relocator
 rescope
 rustdocflags
 RUSTDOCFLAGS
 rustflags
 RUSTFLAGS
 supertrait
-sysexits
 uninlined
 unseparated
 upcastable

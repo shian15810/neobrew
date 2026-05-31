@@ -4,7 +4,6 @@ pub(crate) mod push_operator;
 
 use std::{fmt::Debug, marker::PhantomData, sync::Arc};
 
-use anyhow::Result;
 use frunk::{
     hlist::{HCons, HNil},
     traits::IntoReverse,
@@ -30,7 +29,7 @@ pub(crate) struct Pipeline<Item, St, Si, Handles> {
 }
 
 impl<Item, St> Pipeline<Item, St, sink::SinkErrInto<sink::Drain<Item>, Item, anyhow::Error>, HNil> {
-    pub(crate) fn new(stream: St, context: Arc<Context>) -> Self {
+    pub(crate) fn build(stream: St, context: Arc<Context>) -> Self {
         let sink = sink::drain();
         let sink = sink.sink_err_into();
 
@@ -61,7 +60,7 @@ impl<
         Item,
         St,
         sink::Fanout<Si, sink::SinkErrInto<PollSender<Item>, Item, anyhow::Error>>,
-        HCons<AbortOnDropHandle<Result<Op::Output>>, Handles>,
+        HCons<AbortOnDropHandle<anyhow::Result<Op::Output>>, Handles>,
     > {
         let (sink, handle) = operator.launch(&self.context);
 
@@ -82,8 +81,10 @@ impl<
         }
     }
 
-    pub(crate) async fn run_parallel(self) -> Result<<Handles::Output as Collect>::Outputs> {
-        let handle = task::spawn(async move {
+    pub(crate) async fn run_parallel(
+        self,
+    ) -> anyhow::Result<<Handles::Output as Collect>::Outputs> {
+        let handle = task::spawn(async {
             let stream = self.stream.err_into();
 
             let forward = stream.forward(self.sink);
@@ -109,23 +110,23 @@ impl<
 pub(crate) trait Collect {
     type Outputs;
 
-    async fn collect(self) -> Result<Self::Outputs>;
+    async fn collect(self) -> anyhow::Result<Self::Outputs>;
 }
 
 impl Collect for HNil {
     type Outputs = Self;
 
-    async fn collect(self) -> Result<Self::Outputs> {
+    async fn collect(self) -> anyhow::Result<Self::Outputs> {
         let outputs = Self;
 
         Ok(outputs)
     }
 }
 
-impl<Item, Handles: Collect> Collect for HCons<AbortOnDropHandle<Result<Item>>, Handles> {
+impl<Item, Handles: Collect> Collect for HCons<AbortOnDropHandle<anyhow::Result<Item>>, Handles> {
     type Outputs = HCons<Item, Handles::Outputs>;
 
-    async fn collect(self) -> Result<Self::Outputs> {
+    async fn collect(self) -> anyhow::Result<Self::Outputs> {
         let head = self.head.err_into();
 
         let tail = self.tail.collect();
@@ -147,5 +148,8 @@ pub(crate) trait Operator<Item, _Marker> {
     fn launch(
         self,
         context: &Context,
-    ) -> (PollSender<Item>, AbortOnDropHandle<Result<Self::Output>>);
+    ) -> (
+        PollSender<Item>,
+        AbortOnDropHandle<anyhow::Result<Self::Output>>,
+    );
 }
