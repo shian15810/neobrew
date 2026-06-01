@@ -4,7 +4,7 @@ use crate::package::raw::{DependsOnLinux, DependsOnMaximumMacos, DependsOnMinimu
 pub(crate) struct Compatibility;
 
 impl Compatibilizer for Compatibility {
-    fn current() -> anyhow::Result<Self> {
+    fn try_new() -> anyhow::Result<Self> {
         let this = Self;
 
         Ok(this)

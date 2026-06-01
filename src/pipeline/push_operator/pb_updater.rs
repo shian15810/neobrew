@@ -36,15 +36,15 @@ impl PbUpdater {
         let mut message = String::new();
 
         match max_id_length {
-            None => message.push_str(id),
             Some(max_id_length) => write!(message, "{id:<max_id_length$}")?,
+            None => message.push_str(id),
         }
 
         message.push(' ');
 
         match max_version_length {
-            None => message.push_str(version),
             Some(max_version_length) => write!(message, "{version:<max_version_length$}")?,
+            None => message.push_str(version),
         }
 
         pb.set_style(style);
@@ -56,7 +56,7 @@ impl PbUpdater {
         Ok(pb)
     }
 
-    pub(crate) fn init(pb: ProgressBar, content_length: Option<u64>) -> anyhow::Result<Self> {
+    pub(crate) fn try_new(pb: ProgressBar, content_length: Option<u64>) -> anyhow::Result<Self> {
         let mut template = Self::TEMPLATE.to_owned();
 
         template.push(' ');

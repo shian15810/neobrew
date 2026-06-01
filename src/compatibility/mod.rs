@@ -19,8 +19,8 @@ use crate::package::raw::{
 };
 
 #[expect(private_bounds)]
-pub(crate) trait Compatibilizer: CompatibilizerInner + Sized {
-    fn current() -> anyhow::Result<Self>;
+pub(crate) trait Compatibilizer: CompatibilizerInner {
+    fn try_new() -> anyhow::Result<Self>;
 
     fn check(&self, depends_on: &DependsOn) -> bool {
         let minimum_macos = depends_on.minimum_macos.as_ref();
@@ -41,7 +41,7 @@ pub(crate) trait Compatibilizer: CompatibilizerInner + Sized {
     }
 }
 
-trait CompatibilizerInner {
+trait CompatibilizerInner: Sized {
     fn check_os(
         &self,
         minimum_macos: Option<&DependsOnMinimumMacos>,

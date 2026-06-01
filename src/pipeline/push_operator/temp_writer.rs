@@ -22,7 +22,7 @@ pub(crate) struct TempWriter {
 }
 
 impl TempWriter {
-    pub(crate) async fn init(
+    pub(crate) async fn new(
         file_path: PathBuf,
         symlink_paths: Vec<PathBuf>,
     ) -> anyhow::Result<Self> {

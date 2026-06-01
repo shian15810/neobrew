@@ -4,8 +4,6 @@ mod codesign;
 #[cfg(target_os = "macos")]
 mod mach_o;
 #[cfg(target_os = "macos")]
-mod semver;
-#[cfg(target_os = "macos")]
 mod tag;
 
 pub(crate) use self::codename::Codename;

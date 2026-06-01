@@ -23,8 +23,8 @@ pub(crate) struct Relocation {
     context: Arc<Context>,
 }
 
-impl Relocator for Relocation {
-    fn new(replacement_pairs: [(&'static str, String); 4], context: Arc<Context>) -> Self {
+impl From<([(&'static str, String); 4], Arc<Context>)> for Relocation {
+    fn from((replacement_pairs, context): ([(&'static str, String); 4], Arc<Context>)) -> Self {
         Self {
             replacement_pairs,
 
@@ -33,9 +33,15 @@ impl Relocator for Relocation {
     }
 }
 
+impl Relocator for Relocation {}
+
 impl RelocatorInner for Relocation {
     fn replacement_pairs(&self) -> &[(&'static str, String); 4] {
         &self.replacement_pairs
+    }
+
+    fn context(&self) -> &Context {
+        &self.context
     }
 
     async fn patch_file(&self, path: &Path) -> anyhow::Result<()> {

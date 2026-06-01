@@ -16,7 +16,7 @@ use clap::{
 };
 use clap_verbosity_flag::{Verbosity, VerbosityFilter};
 use enum_dispatch::enum_dispatch;
-use proc_exit::prelude::*;
+use proc_exit::{WithCodeResultExt as _, sysexits::ToSysexitsResultExt as _};
 use tokio::process::Command;
 
 use self::{install::Install, uninstall::Uninstall};

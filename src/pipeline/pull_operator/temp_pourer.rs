@@ -27,7 +27,7 @@ pub(crate) struct TempPourer {
 }
 
 impl TempPourer {
-    pub(crate) fn init(
+    pub(crate) fn new(
         archive_format: Option<ArchiveFormat>,
         dir_path: PathBuf,
         symlink_paths: Vec<PathBuf>,

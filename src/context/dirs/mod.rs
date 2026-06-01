@@ -16,6 +16,16 @@ trait ProjectDirsInner {
 
 #[expect(private_bounds)]
 pub(crate) trait ProjectDirs: ProjectDirsInner {
+    fn home_dir(&self) -> PathBuf {
+        self.strategy().home_dir().to_owned()
+    }
+
+    fn data_dir(&self) -> PathBuf {
+        let data_dir = self.strategy().data_dir();
+
+        data_dir.join(Self::APP_NAME)
+    }
+
     fn cache_dir(&self) -> PathBuf {
         let cache_dir = self.strategy().cache_dir();
 

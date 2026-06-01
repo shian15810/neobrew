@@ -33,20 +33,21 @@
 use clap::CommandFactory as _;
 use clap_verbosity_flag::VerbosityFilter;
 use neobrew::{command::Cli, context::Context};
-use proc_exit::prelude::*;
+use proc_exit::WithCodeResultExt as _;
 use tokio::{signal, task};
 use tracing_subscriber::{
     EnvFilter,
     filter::{Directive, LevelFilter},
     fmt,
-    prelude::*,
+    layer::{Layer as _, SubscriberExt as _},
+    util::SubscriberInitExt as _,
 };
 
 #[tokio::main]
 async fn main() -> proc_exit::ExitResult {
     let matches = Cli::command().get_matches();
 
-    let context = Context::new(&matches)?;
+    let context = Context::load(&matches)?;
 
     init_tracing(*context.config().verbosity_filter());
 

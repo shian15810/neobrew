@@ -9,7 +9,7 @@ pub(crate) struct Compatibility {
 }
 
 impl Compatibilizer for Compatibility {
-    fn current() -> anyhow::Result<Self> {
+    fn try_new() -> anyhow::Result<Self> {
         let this = Self {
             codename: macos::Codename::try_default()?,
         };

@@ -42,164 +42,164 @@ impl RawPackageable for RawCask {
 #[serde(untagged)]
 pub(in super::super) enum Artifact {
     App {
-        app: ArtifactSource,
+        app: ArtifactCommonSource,
         target: String,
     },
     Suite {
-        suite: ArtifactSource,
+        suite: ArtifactCommonSource,
         target: String,
     },
     Pkg {
-        pkg: PkgSource,
+        pkg: ArtifactPkgSource,
     },
     Installer {
-        installer: Vec<InstallerSource>,
+        installer: Vec<ArtifactInstallerSource>,
     },
     Binary {
-        binary: ArtifactSource,
+        binary: ArtifactCommonSource,
         target: String,
     },
     Manpage {
-        manpage: ArtifactSource,
+        manpage: ArtifactCommonSource,
         target: String,
     },
     BashCompletion {
-        bash_completion: ArtifactSource,
+        bash_completion: ArtifactCommonSource,
         target: String,
     },
     FishCompletion {
-        fish_completion: ArtifactSource,
+        fish_completion: ArtifactCommonSource,
         target: String,
     },
     ZshCompletion {
-        zsh_completion: ArtifactSource,
+        zsh_completion: ArtifactCommonSource,
         target: String,
     },
     GenerateCompletionsFromExecutable {
-        generate_completions_from_executable: GenerateCompletionsFromExecutableSource,
+        generate_completions_from_executable: ArtifactGenerateCompletionsFromExecutableSource,
     },
     Colorpicker {
-        colorpicker: ArtifactSource,
+        colorpicker: ArtifactCommonSource,
         target: String,
     },
     Dictionary {
-        dictionary: ArtifactSource,
+        dictionary: ArtifactCommonSource,
         target: String,
     },
     Font {
-        font: ArtifactSource,
+        font: ArtifactCommonSource,
         target: String,
     },
     InputMethod {
-        input_method: ArtifactSource,
+        input_method: ArtifactCommonSource,
         target: String,
     },
     InternetPlugin {
-        internet_plugin: ArtifactSource,
+        internet_plugin: ArtifactCommonSource,
         target: String,
     },
     KeyboardLayout {
-        keyboard_layout: ArtifactSource,
+        keyboard_layout: ArtifactCommonSource,
         target: String,
     },
     Prefpane {
-        prefpane: ArtifactSource,
+        prefpane: ArtifactCommonSource,
         target: String,
     },
     Mdimporter {
-        mdimporter: ArtifactSource,
+        mdimporter: ArtifactCommonSource,
         target: String,
     },
     ScreenSaver {
-        screen_saver: ArtifactSource,
+        screen_saver: ArtifactCommonSource,
         target: String,
     },
     Service {
-        service: ArtifactSource,
+        service: ArtifactCommonSource,
         target: String,
     },
     AudioUnitPlugin {
-        audio_unit_plugin: ArtifactSource,
+        audio_unit_plugin: ArtifactCommonSource,
         target: String,
     },
     VstPlugin {
-        vst_plugin: ArtifactSource,
+        vst_plugin: ArtifactCommonSource,
         target: String,
     },
     Vst3Plugin {
-        vst3_plugin: ArtifactSource,
+        vst3_plugin: ArtifactCommonSource,
         target: String,
     },
     #[expect(clippy::enum_variant_names)]
     Artifact {
-        artifact: ArtifactSource,
+        artifact: ArtifactCommonSource,
         target: String,
     },
     StageOnly {
-        stage_only: (bool,),
+        stage_only: ArtifactStageOnlySource,
     },
     Unsupported(HashMap<String, Value>),
 }
 
 #[derive(Deserialize)]
 #[serde(untagged)]
-pub(in super::super) enum ArtifactSource {
-    WithOptions(String, ArtifactSourceOptions),
+pub(in super::super) enum ArtifactCommonSource {
+    WithOptions(String, ArtifactCommonSourceOptions),
     WithoutOptions((String,)),
 }
 
 #[derive(Deserialize)]
-pub(in super::super) struct ArtifactSourceOptions {
-    target: String,
+pub(in super::super) struct ArtifactCommonSourceOptions {
+    pub(in super::super) target: String,
 }
 
 #[derive(Deserialize)]
 #[serde(untagged)]
-pub(in super::super) enum PkgSource {
-    WithOptions(String, PkgSourceOptions),
+pub(in super::super) enum ArtifactPkgSource {
+    WithOptions(String, ArtifactPkgSourceOptions),
     WithoutOptions((String,)),
 }
 
 #[derive(Deserialize)]
-pub(in super::super) struct PkgSourceOptions {
+pub(in super::super) struct ArtifactPkgSourceOptions {
     #[serde(default)]
-    allow_untrusted: bool,
+    pub(in super::super) allow_untrusted: bool,
     #[serde(default)]
-    choices: Vec<PkgSourceOptionsChoice>,
+    pub(in super::super) choices: Vec<ArtifactPkgSourceOptionsChoice>,
 }
 
 #[serde_as]
 #[derive(Deserialize)]
-struct PkgSourceOptionsChoice {
+pub(in super::super) struct ArtifactPkgSourceOptionsChoice {
     #[serde(rename = "choiceIdentifier")]
     identifier: String,
     #[serde(rename = "choiceAttribute")]
-    attribute: PkgSourceOptionsChoiceAttribute,
+    attribute: ArtifactPkgSourceOptionsChoiceAttribute,
     #[serde(rename = "attributeSetting")]
     #[serde_as(as = "BoolFromInt")]
     attribute_setting: bool,
 }
 
 #[derive(Deserialize)]
-enum PkgSourceOptionsChoiceAttribute {
+enum ArtifactPkgSourceOptionsChoiceAttribute {
     #[serde(rename = "selected")]
     Selected,
 }
 
 #[derive(Deserialize)]
 #[serde(untagged)]
-pub(in super::super) enum InstallerSource {
+pub(in super::super) enum ArtifactInstallerSource {
     Manual {
         manual: String,
     },
     Script {
-        script: InstallerSourceScript,
+        script: ArtifactInstallerSourceScript,
     },
 }
 
 #[allow(clippy::struct_excessive_bools)]
 #[derive(Deserialize)]
-pub(in super::super) struct InstallerSourceScript {
+pub(in super::super) struct ArtifactInstallerSourceScript {
     executable: String,
     #[serde(default)]
     args: Vec<String>,
@@ -216,18 +216,21 @@ pub(in super::super) struct InstallerSourceScript {
 }
 
 #[derive(Deserialize)]
-pub(in super::super) struct GenerateCompletionsFromExecutableSource(
-    String,
-    String,
-    GenerateCompletionsFromExecutableSourceOptions,
+pub(in super::super) struct ArtifactGenerateCompletionsFromExecutableSource(
+    pub(in super::super) String,
+    pub(in super::super) String,
+    pub(in super::super) ArtifactGenerateCompletionsFromExecutableSourceOptions,
 );
 
 #[derive(Deserialize)]
-struct GenerateCompletionsFromExecutableSourceOptions {
-    base_name: Option<String>,
-    shell_parameter_format: Option<String>,
-    shells: Vec<String>,
+pub(in super::super) struct ArtifactGenerateCompletionsFromExecutableSourceOptions {
+    pub(in super::super) base_name: Option<String>,
+    pub(in super::super) shell_parameter_format: Option<String>,
+    pub(in super::super) shells: Vec<String>,
 }
+
+#[derive(Deserialize)]
+pub(in super::super) struct ArtifactStageOnlySource(pub(in super::super) (bool,));
 
 #[derive(Deserialize)]
 pub(crate) struct DependsOn {

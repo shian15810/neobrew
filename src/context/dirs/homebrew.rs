@@ -27,7 +27,7 @@ pub(crate) struct HomebrewDirs {
 }
 
 impl HomebrewDirs {
-    pub(in super::super) fn new() -> anyhow::Result<Self> {
+    pub(in super::super) fn load() -> anyhow::Result<Self> {
         #[cfg(debug_assertions)]
         let strategy = base_strategy::choose_base_strategy()?;
 
@@ -51,31 +51,29 @@ impl ProjectDirsInner for HomebrewDirs {
 }
 
 impl ProjectDirs for HomebrewDirs {
-    #[cfg(all(debug_assertions, target_os = "linux"))]
-    fn cache_dir(&self) -> PathBuf {
-        let cache_dir = self.strategy().data_dir();
+    #[cfg(debug_assertions)]
+    fn home_dir(&self) -> PathBuf {
+        let data_dir = self.data_dir();
 
-        cache_dir.join(Self::APP_NAME).join("cache")
+        data_dir.join("home/brew")
     }
 
-    #[cfg(not(all(debug_assertions, target_os = "linux")))]
+    #[cfg(all(debug_assertions, target_os = "linux"))]
     fn cache_dir(&self) -> PathBuf {
-        let cache_dir = self.strategy().cache_dir();
+        let home_dir = self.home_dir();
 
-        cache_dir.join(Self::APP_NAME)
+        home_dir.join(".cache")
     }
 }
 
 impl HomebrewDirs {
     #[cfg(debug_assertions)]
     pub(crate) fn prefix_dir(&self) -> PathBuf {
-        let app_name = Self::APP_NAME.to_lowercase();
-
-        let dot_app_name = format!(".{app_name}");
-
         let home_dir = self.strategy.home_dir();
 
-        home_dir.join(dot_app_name)
+        let app_name = Self::APP_NAME.to_lowercase();
+
+        home_dir.join(format!(".{app_name}"))
     }
 
     #[cfg(not(debug_assertions))]
@@ -133,6 +131,18 @@ impl HomebrewDirs {
         prefix_dir.join("Caskroom")
     }
 
+    pub(crate) fn cask_dir(&self, id: &str) -> PathBuf {
+        let caskroom_dir = self.caskroom_dir();
+
+        caskroom_dir.join(id)
+    }
+
+    pub(crate) fn staged_dir(&self, id: &str, version: &str) -> PathBuf {
+        let cask_dir = self.cask_dir(id);
+
+        cask_dir.join(version)
+    }
+
     pub(crate) fn repository_dir(&self) -> PathBuf {
         let prefix_dir = self.prefix_dir();
 
@@ -144,8 +154,134 @@ impl HomebrewDirs {
     }
 
     pub(crate) fn library_dir(&self) -> PathBuf {
+        let repository_dir = self.repository_dir();
+
+        repository_dir.join("Library")
+    }
+
+    pub(crate) fn bin_dir(&self) -> PathBuf {
         let prefix_dir = self.prefix_dir();
 
-        prefix_dir.join("Library")
+        prefix_dir.join("bin")
+    }
+
+    pub(crate) fn man_dir(&self) -> PathBuf {
+        let prefix_dir = self.prefix_dir();
+
+        prefix_dir.join("share/man")
+    }
+
+    pub(crate) fn bash_completion_dir(&self) -> PathBuf {
+        let prefix_dir = self.prefix_dir();
+
+        prefix_dir.join("etc/bash_completion.d")
+    }
+
+    pub(crate) fn fish_completion_dir(&self) -> PathBuf {
+        let prefix_dir = self.prefix_dir();
+
+        prefix_dir.join("share/fish/vendor_completions.d")
+    }
+
+    pub(crate) fn zsh_completion_dir(&self) -> PathBuf {
+        let prefix_dir = self.prefix_dir();
+
+        prefix_dir.join("share/zsh/site-functions")
+    }
+
+    #[cfg(debug_assertions)]
+    pub(crate) fn app_dir(&self) -> PathBuf {
+        let data_dir = self.data_dir();
+
+        data_dir.join("Applications")
+    }
+
+    #[cfg(not(debug_assertions))]
+    pub(crate) fn app_dir(&self) -> PathBuf {
+        PathBuf::from("/Applications")
+    }
+
+    pub(crate) fn lib_dir(&self) -> PathBuf {
+        let home_dir = self.home_dir();
+
+        home_dir.join("Library")
+    }
+
+    pub(crate) fn colorpicker_dir(&self) -> PathBuf {
+        let lib_dir = self.lib_dir();
+
+        lib_dir.join("ColorPickers")
+    }
+
+    pub(crate) fn dictionary_dir(&self) -> PathBuf {
+        let lib_dir = self.lib_dir();
+
+        lib_dir.join("Dictionaries")
+    }
+
+    pub(crate) fn font_dir(&self) -> PathBuf {
+        let lib_dir = self.lib_dir();
+
+        lib_dir.join("Fonts")
+    }
+
+    pub(crate) fn input_method_dir(&self) -> PathBuf {
+        let lib_dir = self.lib_dir();
+
+        lib_dir.join("Input Methods")
+    }
+
+    pub(crate) fn internet_plugin_dir(&self) -> PathBuf {
+        let lib_dir = self.lib_dir();
+
+        lib_dir.join("Internet Plug-Ins")
+    }
+
+    pub(crate) fn keyboard_layout_dir(&self) -> PathBuf {
+        let lib_dir = self.lib_dir();
+
+        lib_dir.join("Keyboard Layouts")
+    }
+
+    pub(crate) fn prefpane_dir(&self) -> PathBuf {
+        let lib_dir = self.lib_dir();
+
+        lib_dir.join("PreferencePanes")
+    }
+
+    pub(crate) fn mdimporter_dir(&self) -> PathBuf {
+        let lib_dir = self.lib_dir();
+
+        lib_dir.join("Spotlight")
+    }
+
+    pub(crate) fn screen_saver_dir(&self) -> PathBuf {
+        let lib_dir = self.lib_dir();
+
+        lib_dir.join("Screen Savers")
+    }
+
+    pub(crate) fn service_dir(&self) -> PathBuf {
+        let lib_dir = self.lib_dir();
+
+        lib_dir.join("Services")
+    }
+
+    pub(crate) fn audio_unit_plugin_dir(&self) -> PathBuf {
+        let lib_dir = self.lib_dir();
+
+        lib_dir.join("Audio/Plug-Ins/Components")
+    }
+
+    pub(crate) fn vst_plugin_dir(&self) -> PathBuf {
+        let lib_dir = self.lib_dir();
+
+        lib_dir.join("Audio/Plug-Ins/VST")
+    }
+
+    pub(crate) fn vst3_plugin_dir(&self) -> PathBuf {
+        let lib_dir = self.lib_dir();
+
+        lib_dir.join("Audio/Plug-Ins/VST3")
     }
 }

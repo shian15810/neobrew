@@ -47,10 +47,12 @@ impl<
         let stream = ReceiverStream::new(rx);
         let stream = stream.map(io::Result::Ok);
 
-        let reader = StreamReader::new(stream);
+        let mut reader = StreamReader::new(stream);
 
-        let handle = task::spawn(async {
-            let output = self.from_reader(reader).await?;
+        let handle = task::spawn(async move {
+            let output = self.from_reader(&mut reader).await?;
+
+            io::copy(&mut reader, &mut io::sink()).await?;
 
             anyhow::Ok(output)
         });

@@ -13,7 +13,7 @@ pub(crate) struct NeobrewDirs {
 }
 
 impl NeobrewDirs {
-    pub(in super::super) fn new() -> anyhow::Result<Self> {
+    pub(in super::super) fn load() -> anyhow::Result<Self> {
         let strategy = base_strategy::choose_base_strategy()?;
 
         let this = Self {

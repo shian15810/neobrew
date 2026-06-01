@@ -1,8 +1,12 @@
-use super::super::{Packageable, prepared::PreparedCask};
+use super::super::{
+    Packageable,
+    prepared::{PreparedCask, Stanzas},
+};
 
 pub(crate) struct StreamedCask {
     token: String,
     version: String,
+    pub(crate) variation_stanzas: Stanzas,
 }
 
 impl From<PreparedCask> for StreamedCask {
@@ -10,6 +14,7 @@ impl From<PreparedCask> for StreamedCask {
         Self {
             token: prepared_cask.token,
             version: prepared_cask.version,
+            variation_stanzas: prepared_cask.variation_stanzas,
         }
     }
 }

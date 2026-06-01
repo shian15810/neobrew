@@ -21,7 +21,8 @@ impl PathExt for Path {
     }
 
     fn compound_extension(&self) -> Option<Cow<'_, OsStr>> {
-        let name = self.file_name()?.to_str()?;
+        let name = self.file_name()?;
+        let name = name.to_str()?;
 
         if let Some((_, compound_extension)) =
             regex_captures!(r"\.[a-z0-9_]+\.bottle\.(?:\d+\.)?(tar\.gz)$", name)

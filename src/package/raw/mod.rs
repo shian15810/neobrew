@@ -6,7 +6,15 @@ use std::borrow::Cow;
 use enum_dispatch::enum_dispatch;
 
 pub(super) use self::{
-    cask::{Artifact, Variation},
+    cask::{
+        Artifact,
+        ArtifactCommonSource,
+        ArtifactGenerateCompletionsFromExecutableSource,
+        ArtifactInstallerSource,
+        ArtifactPkgSource,
+        ArtifactPkgSourceOptionsChoice,
+        Variation,
+    },
     formula::{Bottle, BottleStable, BottleStableFile, BottleStableFileCellar, Versions},
 };
 pub(crate) use self::{

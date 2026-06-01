@@ -4,7 +4,7 @@ use anyhow::anyhow;
 use os_info::Version;
 use serde_with::DeserializeFromStr;
 
-use super::semver::Semver;
+use super::super::semver::Semver;
 use crate::context::INFO;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, DeserializeFromStr)]

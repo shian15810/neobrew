@@ -11,11 +11,12 @@ use tokio::task::JoinSet;
 
 use super::{Resolution, Runner};
 use crate::{
+    artifact::Artifact,
     compatibility::{Compatibility, Compatibilizer as _},
     context::Context,
     downloads::Downloads,
     ext::{core::result::ResultExt as _, tokio::path::PathExt as _},
-    linker::Linker,
+    linkers::Linkers,
     package::{
         Packageable as _,
         prepared::{PreparedPackage, PreparedPackageable as _},
@@ -23,6 +24,7 @@ use crate::{
         streamed::StreamedPackage,
     },
     pipeline::{Pipeline, handler::AtomicWriter as _, pull_operator, push_operator},
+    placeholder::Placeholder,
     registries::{Registries, ResolutionStrategy},
     relocation::{Relocation, Relocator as _},
     streams::Streams,
@@ -59,7 +61,10 @@ struct Installation {
     streams: Streams,
 
     relocation: Relocation,
-    linker: Linker,
+    artifact: Artifact,
+    linkers: Linkers,
+
+    placeholder: Arc<Placeholder>,
 
     context: Arc<Context>,
 }
@@ -70,19 +75,25 @@ impl Installation {
         resolution: Resolution,
         context: Arc<Context>,
     ) -> anyhow::Result<Arc<Self>> {
+        let placeholder = Placeholder::new(Arc::clone(&context));
+        let placeholder = Arc::new(placeholder);
+
         let this = Self {
             packages,
             resolution,
 
             multi_pb: MultiProgress::new(),
 
-            compatibility: Compatibility::current()?,
+            compatibility: Compatibility::try_new()?,
 
             downloads: Downloads::new(Arc::clone(&context)),
             streams: Streams::new(Arc::clone(&context)),
 
-            relocation: Relocation::init(Arc::clone(&context)),
-            linker: Linker::init(Arc::clone(&context)).await?,
+            relocation: Relocation::new(Arc::clone(&context)),
+            artifact: Artifact::new(Arc::clone(&placeholder), Arc::clone(&context)),
+            linkers: Linkers::try_init(Arc::clone(&placeholder), Arc::clone(&context)).await?,
+
+            placeholder,
 
             context,
         };
@@ -110,7 +121,7 @@ impl Installation {
         packages: &[String],
         strategy: ResolutionStrategy,
     ) -> anyhow::Result<()> {
-        let registries = Registries::init(Arc::clone(&self.context));
+        let registries = Registries::new(Arc::clone(&self.context));
 
         let resolved_packages = registries
             .resolve(packages.iter().cloned(), strategy)
@@ -261,11 +272,11 @@ impl Installation {
 
         let pourer_dir_path = match prepared_package {
             PreparedPackage::Formula(_) => self.context.homebrew_dirs.cellar_dir(),
-            PreparedPackage::Cask(_) => self.context.homebrew_dirs.caskroom_dir(),
+            PreparedPackage::Cask(_) => self.context.homebrew_dirs.staged_dir(id, version),
         };
 
         let temp_pourer =
-            pull_operator::TempPourer::init(download.archive_format, pourer_dir_path, vec![]);
+            pull_operator::TempPourer::new(download.archive_format, pourer_dir_path, vec![]);
 
         let sha256_hasher = push_operator::Sha256Hasher::new();
 
@@ -274,7 +285,7 @@ impl Installation {
 
             let content_length = Some(content_length);
 
-            let pb_updater = push_operator::PbUpdater::init(pb, content_length)?;
+            let pb_updater = push_operator::PbUpdater::try_new(pb, content_length)?;
 
             let operators = Operators {
                 temp_pourer,
@@ -287,12 +298,12 @@ impl Installation {
                 .await?
         } else {
             let temp_writer =
-                push_operator::TempWriter::init(download.file_path, vec![download.symlink_path])
+                push_operator::TempWriter::new(download.file_path, vec![download.symlink_path])
                     .await?;
 
             let (stream, content_length) = self.streams.oci_or_url(&prepared_package).await?;
 
-            let pb_updater = push_operator::PbUpdater::init(pb, content_length)?;
+            let pb_updater = push_operator::PbUpdater::try_new(pb, content_length)?;
 
             let operators = Operators {
                 pb_updater,
@@ -301,7 +312,7 @@ impl Installation {
                 temp_pourer,
             };
 
-            self.stream_from_api(id, version, expected_sha256, operators, stream)
+            self.stream_from_oci_or_url(id, version, expected_sha256, operators, stream)
                 .await?
         };
 
@@ -348,7 +359,7 @@ impl Installation {
         Ok(pb)
     }
 
-    async fn stream_from_api(
+    async fn stream_from_oci_or_url(
         &self,
         id: &str,
         version: &str,
@@ -406,18 +417,11 @@ impl Installation {
 
         match streamed_package {
             StreamedPackage::Formula(streamed_formula) => {
-                let cellar_dir_path = self.context.homebrew_dirs.cellar_dir();
-
-                if streamed_formula.should_relocate(&cellar_dir_path) {
-                    let keg_dir_path = self
-                        .context
-                        .homebrew_dirs
-                        .keg_dir(streamed_formula.id(), streamed_formula.version());
-
-                    self.relocation.patch_keg(&keg_dir_path).await?;
-                }
+                self.relocation.patch(streamed_formula).await?;
             },
-            StreamedPackage::Cask(_streamed_cask) => {},
+            StreamedPackage::Cask(streamed_cask) => {
+                self.artifact.relocate(streamed_cask).await?;
+            },
         }
 
         Ok(())
@@ -430,16 +434,7 @@ impl Installation {
     ) -> anyhow::Result<()> {
         pb.set_prefix("Linking");
 
-        match streamed_package {
-            StreamedPackage::Formula(streamed_formula) => {
-                self.linker.link_opt(streamed_formula).await?;
-
-                if streamed_formula.should_link_keg() {
-                    self.linker.link_keg(streamed_formula).await?;
-                }
-            },
-            StreamedPackage::Cask(_streamed_cask) => {},
-        }
+        self.linkers.link(streamed_package).await?;
 
         Ok(())
     }

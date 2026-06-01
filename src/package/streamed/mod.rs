@@ -6,6 +6,7 @@ use enum_dispatch::enum_dispatch;
 pub(crate) use self::{cask::StreamedCask, formula::StreamedFormula};
 use super::{Packageable, prepared::PreparedPackage};
 
+#[expect(clippy::large_enum_variant)]
 #[enum_dispatch]
 pub(crate) enum StreamedPackage {
     Formula(StreamedFormula),

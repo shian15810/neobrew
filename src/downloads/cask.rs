@@ -73,7 +73,6 @@ impl Downloadable for CaskDownload {
         let compound_extension = path.compound_extension();
 
         let symlink_name = match compound_extension {
-            None => format!("{name}--{version}"),
             Some(compound_extension) => {
                 let compound_extension = compound_extension
                     .to_str()
@@ -81,6 +80,7 @@ impl Downloadable for CaskDownload {
 
                 format!("{name}--{version}.{compound_extension}")
             },
+            None => format!("{name}--{version}"),
         };
 
         let file_name = format!("{url_hash}--{name}");

@@ -27,11 +27,11 @@ pub(crate) struct Registries {
 }
 
 impl Registries {
-    pub(crate) fn init(context: Arc<Context>) -> Self {
-        let formula_registry = FormulaRegistry::init(Arc::clone(&context));
+    pub(crate) fn new(context: Arc<Context>) -> Self {
+        let formula_registry = FormulaRegistry::new(Arc::clone(&context));
         let formula_registry = Arc::new(formula_registry);
 
-        let cask_registry = CaskRegistry::init(Arc::clone(&context));
+        let cask_registry = CaskRegistry::new(Arc::clone(&context));
         let cask_registry = Arc::new(cask_registry);
 
         Self {
@@ -154,7 +154,7 @@ trait Registrable {
     const TAP_MIGRATIONS_URL: &str;
     const TAP_MIGRATIONS_JWS_URL: &str;
 
-    fn init(context: Arc<Context>) -> Self;
+    fn new(context: Arc<Context>) -> Self;
 
     async fn resolve(
         self: Arc<Self>,

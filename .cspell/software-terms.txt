@@ -1,8 +1,10 @@
 # Custom Dictionary Words
+APPDIR
 archs
 Bitness
 CIGAM
 codenames
 cpio
 sysexits
+Sysexits
 untap

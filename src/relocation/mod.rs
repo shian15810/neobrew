@@ -12,13 +12,15 @@ use futures::stream::StreamExt as _;
 pub(crate) use self::linux::Relocation;
 #[cfg(target_os = "macos")]
 pub(crate) use self::macos::Relocation;
-use crate::{context::Context, ext::tokio::path::PathExt as _};
+use crate::{
+    context::Context,
+    ext::tokio::path::PathExt as _,
+    package::{Packageable as _, streamed::StreamedFormula},
+};
 
 #[expect(private_bounds)]
-pub(crate) trait Relocator: RelocatorInner + Sized {
-    fn new(replacement_pairs: [(&'static str, String); 4], context: Arc<Context>) -> Self;
-
-    fn init(context: Arc<Context>) -> Self {
+pub(crate) trait Relocator: RelocatorInner {
+    fn new(context: Arc<Context>) -> Self {
         let homebrew_dirs = &context.homebrew_dirs;
 
         let replacement_pairs = [
@@ -27,17 +29,43 @@ pub(crate) trait Relocator: RelocatorInner + Sized {
             (Self::REPOSITORY_PLACEHOLDER, homebrew_dirs.repository_dir()),
             (Self::LIBRARY_PLACEHOLDER, homebrew_dirs.library_dir()),
         ];
-        let mut replacement_pairs = replacement_pairs.map(|(placeholder, replacement)| {
-            let replacement = replacement.to_string_lossy();
-            let replacement = replacement.into_owned();
+        let mut replacement_pairs = replacement_pairs.map(|(placeholder, replacement_path)| {
+            let replacement_pstr = replacement_path.to_string_lossy();
+            let replacement_pstr = replacement_pstr.into_owned();
 
-            (placeholder, replacement)
+            (placeholder, replacement_pstr)
         });
 
         replacement_pairs.sort_by_key(|(placeholder, _)| Reverse(placeholder.len()));
 
-        Self::new(replacement_pairs, context)
+        Self::from((replacement_pairs, context))
     }
+
+    async fn patch(&self, streamed_formula: &StreamedFormula) -> anyhow::Result<()> {
+        let cellar_dir_path = self.context().homebrew_dirs.cellar_dir();
+
+        if streamed_formula.should_relocate(&cellar_dir_path) {
+            let keg_dir_path = self
+                .context()
+                .homebrew_dirs
+                .keg_dir(streamed_formula.id(), streamed_formula.version());
+
+            self.patch_keg(&keg_dir_path).await?;
+        }
+
+        Ok(())
+    }
+}
+
+trait RelocatorInner: From<([(&'static str, String); 4], Arc<Context>)> {
+    const PREFIX_PLACEHOLDER: &str = "@@HOMEBREW_PREFIX@@";
+    const CELLAR_PLACEHOLDER: &str = "@@HOMEBREW_CELLAR@@";
+    const REPOSITORY_PLACEHOLDER: &str = "@@HOMEBREW_REPOSITORY@@";
+    const LIBRARY_PLACEHOLDER: &str = "@@HOMEBREW_LIBRARY@@";
+
+    fn replacement_pairs(&self) -> &[(&'static str, String); 4];
+
+    fn context(&self) -> &Context;
 
     async fn patch_keg(&self, keg_dir_path: &Path) -> anyhow::Result<()> {
         let mut entries = WalkDir::new(keg_dir_path);
@@ -54,15 +82,6 @@ pub(crate) trait Relocator: RelocatorInner + Sized {
 
         Ok(())
     }
-}
-
-trait RelocatorInner {
-    const PREFIX_PLACEHOLDER: &str = "@@HOMEBREW_PREFIX@@";
-    const CELLAR_PLACEHOLDER: &str = "@@HOMEBREW_CELLAR@@";
-    const REPOSITORY_PLACEHOLDER: &str = "@@HOMEBREW_REPOSITORY@@";
-    const LIBRARY_PLACEHOLDER: &str = "@@HOMEBREW_LIBRARY@@";
-
-    fn replacement_pairs(&self) -> &[(&'static str, String); 4];
 
     async fn patch_file(&self, path: &Path) -> anyhow::Result<()>;
 

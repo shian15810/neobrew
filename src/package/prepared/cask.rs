@@ -5,6 +5,7 @@ use super::{
         resolved::ResolvedCask,
     },
     PreparedPackageable,
+    cask_stanza::Stanzas,
 };
 
 pub(crate) struct PreparedCask {
@@ -13,7 +14,7 @@ pub(crate) struct PreparedCask {
     variation_tag: Option<String>,
     variation_url: String,
     variation_sha256: String,
-    variation_artifacts: Vec<Artifact>,
+    pub(in super::super) variation_stanzas: Stanzas,
 }
 
 impl TryFrom<ResolvedCask> for PreparedCask {
@@ -50,7 +51,7 @@ impl TryFrom<ResolvedCask> for PreparedCask {
             variation_tag,
             variation_url: variation.url,
             variation_sha256: variation.sha256,
-            variation_artifacts: variation.artifacts,
+            variation_stanzas: Stanzas::from(variation.artifacts),
         };
 
         Ok(this)

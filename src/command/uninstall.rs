@@ -47,7 +47,7 @@ impl Runner for Uninstall {
 
 impl Uninstall {
     async fn resolve_packages(self, context: Arc<Context>) -> anyhow::Result<Vec<ResolvedPackage>> {
-        let registries = Registries::init(context);
+        let registries = Registries::new(context);
 
         let strategy = self.resolution.strategy();
 

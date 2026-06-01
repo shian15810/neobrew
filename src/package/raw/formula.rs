@@ -90,8 +90,8 @@ impl FromStr for BottleStableFileCellar {
         let bottle_cellar = match bottle_cellar {
             "any" => Self::Any,
             "any_skip_relocation" => Self::AnySkipRelocation,
-            path => {
-                let path = PathBuf::from(path);
+            pstr => {
+                let path = PathBuf::from(pstr);
 
                 Self::Path(path)
             },

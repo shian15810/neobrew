@@ -3,8 +3,8 @@ use std::{cmp::Ordering, str::FromStr};
 use oci_client::config::Architecture;
 
 use super::{
+    super::semver::Semver,
     codename::{Codename, CodenameError},
-    semver::Semver,
 };
 
 #[derive(PartialEq, Eq)]
@@ -59,8 +59,8 @@ impl FromStr for Tag {
 
     fn from_str(tag: &str) -> Result<Self, Self::Err> {
         let (codename, architecture) = match tag.strip_prefix("arm64_") {
-            None => (tag, Architecture::Amd64),
             Some(codename) => (codename, Architecture::ARM64),
+            None => (tag, Architecture::Amd64),
         };
 
         let codename = codename.parse::<Codename>();

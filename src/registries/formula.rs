@@ -30,7 +30,7 @@ impl Registrable for FormulaRegistry {
     const TAP_MIGRATIONS_JWS_URL: &str =
         "https://formulae.brew.sh/api/formula_tap_migrations.jws.json";
 
-    fn init(context: Arc<Context>) -> Self {
+    fn new(context: Arc<Context>) -> Self {
         Self {
             store: CacheBuilder::new(usize::MAX).build(),
 

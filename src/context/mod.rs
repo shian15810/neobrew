@@ -6,7 +6,7 @@ use std::{num::NonZeroUsize, sync::LazyLock, thread};
 use clap::ArgMatches;
 use oci_client::{Client, client::ClientConfig};
 use os_info::Info;
-use proc_exit::prelude::*;
+use proc_exit::WithCodeResultExt as _;
 use tokio::sync::Semaphore;
 
 use self::{
@@ -47,14 +47,14 @@ pub struct Context {
 
 impl Context {
     #[expect(clippy::missing_errors_doc)]
-    pub fn new(matches: &ArgMatches) -> Result<Self, proc_exit::Exit> {
+    pub fn load(matches: &ArgMatches) -> Result<Self, proc_exit::Exit> {
         let config = Config::load(matches);
         let config = config.with_code(proc_exit::sysexits::CONFIG_ERR)?;
 
-        let homebrew_dirs = HomebrewDirs::new();
+        let homebrew_dirs = HomebrewDirs::load();
         let homebrew_dirs = homebrew_dirs.with_code(proc_exit::sysexits::OS_ERR)?;
 
-        let neobrew_dirs = NeobrewDirs::new();
+        let neobrew_dirs = NeobrewDirs::load();
         let neobrew_dirs = neobrew_dirs.with_code(proc_exit::sysexits::OS_ERR)?;
 
         let this = Self {

@@ -10,6 +10,7 @@ Fanout
 hlist
 idents
 incompat
+Linkerer
 miri
 nextest
 Nextest
@@ -18,6 +19,7 @@ OBJC
 OBJCXX
 overcaptures
 Packageable
+pstr
 recv
 Relocator
 rescope

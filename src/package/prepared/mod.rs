@@ -1,4 +1,5 @@
 mod cask;
+mod cask_stanza;
 mod formula;
 
 use std::sync::Arc;
@@ -6,9 +7,14 @@ use std::sync::Arc;
 use anyhow::Context as _;
 use enum_dispatch::enum_dispatch;
 
-pub(crate) use self::{cask::PreparedCask, formula::PreparedFormula};
+pub(crate) use self::{
+    cask::PreparedCask,
+    cask_stanza::{CommonStanza, Stanzas},
+    formula::PreparedFormula,
+};
 use super::{Packageable, resolved::ResolvedPackage};
 
+#[expect(clippy::large_enum_variant)]
 #[enum_dispatch]
 pub(crate) enum PreparedPackage {
     Formula(PreparedFormula),
