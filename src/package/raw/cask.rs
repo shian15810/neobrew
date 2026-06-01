@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap};
+use std::collections::HashMap;
 
 use os_info::Bitness;
 use serde::Deserialize;
@@ -30,13 +30,7 @@ impl Packageable for RawCask {
     }
 }
 
-impl RawPackageable for RawCask {
-    fn version(&self) -> Cow<'_, str> {
-        let version = &self.version;
-
-        Cow::Borrowed(version)
-    }
-}
+impl RawPackageable for RawCask {}
 
 #[derive(Deserialize)]
 #[serde(untagged)]

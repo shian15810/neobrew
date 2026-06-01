@@ -48,9 +48,9 @@ impl RelocatorInner for Relocation {
         let bytes = fs::read(path).await?;
         let bytes = Arc::from(bytes);
 
-        let has_magic_number = macos::MachO::has_magic_number(&bytes);
+        let has_magic = macos::MachO::has_magic(&bytes);
 
-        if !has_magic_number {
+        if !has_magic {
             return Ok(());
         }
 
@@ -77,15 +77,15 @@ impl RelocatorInner for Relocation {
 
         let base_path = path.base()?;
 
-        let file = NamedTempFile::new_in(base_path)?;
+        let temp_file = NamedTempFile::new_in(base_path)?;
 
-        let mut async_file = File::open_write(file.path()).await?;
+        let mut async_temp_file = File::open_write(temp_file.path()).await?;
 
-        async_file.write_all(&replaced_bytes).await?;
+        async_temp_file.write_all(&replaced_bytes).await?;
 
-        async_file.shutdown().await?;
+        async_temp_file.shutdown().await?;
 
-        let file = file.persist(path)?;
+        let file = temp_file.persist(path)?;
 
         file.set_permissions(permissions)?;
 

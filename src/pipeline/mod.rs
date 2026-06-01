@@ -116,6 +116,7 @@ pub(crate) trait Collect {
 impl Collect for HNil {
     type Outputs = Self;
 
+    #[expect(clippy::unused_async_trait_impl)]
     async fn collect(self) -> anyhow::Result<Self::Outputs> {
         let outputs = Self;
 

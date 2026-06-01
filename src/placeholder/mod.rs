@@ -1,5 +1,7 @@
 use std::{path::PathBuf, sync::Arc};
 
+use path_clean::PathClean as _;
+
 use crate::context::{Context, dirs::ProjectDirs as _};
 
 pub(crate) struct Placeholder {
@@ -32,7 +34,38 @@ impl Placeholder {
         }
     }
 
-    pub(crate) fn resolve(&self, pstr: &str) -> PathBuf {
+    pub(crate) fn resolve_source(&self, pstr: &str) -> PathBuf {
+        self.expand(pstr)
+    }
+
+    #[cfg(debug_assertions)]
+    pub(crate) fn resolve_target(&self, pstr: &str) -> PathBuf {
+        let path = self.expand(pstr);
+
+        if path.is_relative() {
+            return path;
+        }
+
+        let data_dir_path = self.context.homebrew_dirs.data_dir();
+
+        let prefix_dir_path = self.context.homebrew_dirs.prefix_dir();
+
+        if path.starts_with(&data_dir_path) || path.starts_with(prefix_dir_path) {
+            return path;
+        }
+
+        match path.strip_prefix("/") {
+            Ok(suffix_path) => data_dir_path.join(suffix_path),
+            Err(_) => data_dir_path.join(path),
+        }
+    }
+
+    #[cfg(not(debug_assertions))]
+    pub(crate) fn resolve_target(&self, pstr: &str) -> PathBuf {
+        self.expand(pstr)
+    }
+
+    fn expand(&self, pstr: &str) -> PathBuf {
         let pstr = match pstr.strip_prefix("~/") {
             Some(suffix_pstr) => format!("/$HOME/{suffix_pstr}"),
             None if pstr == "~" => "/$HOME".to_owned(),
@@ -48,33 +81,12 @@ impl Placeholder {
         let pstr = self
             .replacement_pairs
             .iter()
-            .fold(pstr, |pstr, (placeholder, replacement)| {
-                pstr.replace(placeholder, replacement)
+            .fold(pstr, |pstr, (placeholder, replacement_pstr)| {
+                pstr.replace(placeholder, replacement_pstr)
             });
 
         let path = PathBuf::from(pstr);
 
-        #[cfg(debug_assertions)]
-        {
-            use path_clean::PathClean as _;
-
-            let path = path.clean();
-
-            let data_dir_path = self.context.homebrew_dirs.data_dir();
-
-            let prefix_dir_path = self.context.homebrew_dirs.prefix_dir();
-
-            if path.starts_with(&data_dir_path) || path.starts_with(prefix_dir_path) {
-                return path;
-            }
-
-            match path.strip_prefix("/") {
-                Ok(suffix_path) => data_dir_path.join(suffix_path),
-                Err(_) => data_dir_path.join(path),
-            }
-        }
-
-        #[cfg(not(debug_assertions))]
-        path
+        path.clean()
     }
 }

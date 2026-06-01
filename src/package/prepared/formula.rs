@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use anyhow::Context as _;
 
 use super::{
@@ -11,6 +13,7 @@ use super::{
 
 pub(crate) struct PreparedFormula {
     pub(in super::super) name: String,
+    pub(in super::super) version: String,
     pub(in super::super) version_revision: String,
     bottle_rebuild: u64,
     bottle_tag: String,
@@ -18,30 +21,16 @@ pub(crate) struct PreparedFormula {
     bottle_url: String,
     bottle_sha256: String,
     pub(in super::super) keg_only: bool,
+    pub(in super::super) is_requested: bool,
 }
 
-impl TryFrom<ResolvedFormula> for PreparedFormula {
+impl TryFrom<(ResolvedFormula, bool)> for PreparedFormula {
     type Error = Option<anyhow::Error>;
 
-    fn try_from(resolved_formula: ResolvedFormula) -> Result<Self, Self::Error> {
-        #[cfg(debug_assertions)]
-        #[cfg_attr(
-            debug_assertions,
-            expect(resolving_to_items_shadowing_supertrait_items)
-        )]
-        let version_revision = {
-            use super::super::resolved::ResolvedPackageable as _;
-
-            resolved_formula.version()
-        };
-
-        #[cfg(not(debug_assertions))]
-        let version_revision = {
-            use super::super::resolved::ResolvedPackageable;
-
-            ResolvedPackageable::version(&resolved_formula)
-        };
-
+    fn try_from(
+        (resolved_formula, is_requested): (ResolvedFormula, bool),
+    ) -> Result<Self, Self::Error> {
+        let version_revision = resolved_formula.version_revision();
         let version_revision = version_revision.into_owned();
 
         let bottle_rebuild = resolved_formula.bottle.stable.rebuild;
@@ -52,6 +41,7 @@ impl TryFrom<ResolvedFormula> for PreparedFormula {
 
         let this = Self {
             name: resolved_formula.name,
+            version: resolved_formula.versions.stable,
             version_revision,
             bottle_rebuild,
             bottle_tag,
@@ -59,6 +49,7 @@ impl TryFrom<ResolvedFormula> for PreparedFormula {
             bottle_url: bottle.url,
             bottle_sha256: bottle.sha256,
             keg_only: resolved_formula.keg_only,
+            is_requested,
         };
 
         Ok(this)
@@ -71,7 +62,17 @@ impl Packageable for PreparedFormula {
     }
 
     fn version(&self) -> &str {
-        &self.version_revision
+        &self.version
+    }
+}
+
+impl PreparedPackageable for PreparedFormula {
+    fn download_url(&self) -> &str {
+        &self.bottle_url
+    }
+
+    fn expected_sha256(&self) -> &str {
+        &self.bottle_sha256
     }
 }
 
@@ -84,26 +85,23 @@ impl PreparedFormula {
         &self.bottle_tag
     }
 
-    pub(crate) fn oci_url(&self) -> &str {
-        &self.bottle_url
-    }
-
-    pub(crate) fn oci_sha256(&self) -> &str {
-        &self.bottle_sha256
-    }
-
     pub(crate) fn should_link_keg(&self) -> bool {
         !self.keg_only
     }
 }
 
-impl PreparedPackageable for PreparedFormula {
-    fn download_url(&self) -> &str {
-        &self.bottle_url
-    }
+impl ResolvedFormula {
+    fn version_revision(&self) -> Cow<'_, str> {
+        let version = &self.versions.stable;
 
-    fn expected_sha256(&self) -> &str {
-        &self.bottle_sha256
+        match self.revision {
+            0 => Cow::Borrowed(version),
+            revision => {
+                let version_revision = format!("{version}_{revision}");
+
+                Cow::Owned(version_revision)
+            },
+        }
     }
 }
 

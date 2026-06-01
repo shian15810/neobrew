@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, iter, sync::Arc};
+use std::{collections::HashMap, iter, sync::Arc};
 
 use super::{
     super::{
@@ -11,11 +11,11 @@ use super::{
 
 pub(crate) struct ResolvedCask {
     pub(in super::super) token: String,
-    version: String,
+    pub(in super::super) version: String,
     pub(in super::super) url: String,
     pub(in super::super) sha256: String,
     pub(in super::super) artifacts: Vec<Artifact>,
-    pub(crate) depends_on: DependsOn,
+    depends_on: DependsOn,
     pub(in super::super) variations: HashMap<String, Variation>,
 }
 
@@ -43,11 +43,11 @@ impl Packageable for ResolvedCask {
     }
 }
 
-impl ResolvedPackageable for ResolvedCask {
-    fn version(&self) -> Cow<'_, str> {
-        let version = &self.version;
+impl ResolvedPackageable for ResolvedCask {}
 
-        Cow::Borrowed(version)
+impl ResolvedCask {
+    pub(crate) fn depends_on(&self) -> &DependsOn {
+        &self.depends_on
     }
 }
 

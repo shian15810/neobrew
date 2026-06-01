@@ -5,6 +5,8 @@ Bitness
 CIGAM
 codenames
 cpio
+koly
+KOLY
 sysexits
 Sysexits
 untap

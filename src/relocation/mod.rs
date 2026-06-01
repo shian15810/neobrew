@@ -3,7 +3,7 @@ mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
 
-use std::{cmp::Reverse, path::Path, sync::Arc};
+use std::{borrow::Cow, cmp::Reverse, path::Path, sync::Arc};
 
 use async_walkdir::WalkDir;
 use futures::stream::StreamExt as _;
@@ -42,13 +42,14 @@ pub(crate) trait Relocator: RelocatorInner {
     }
 
     async fn patch(&self, streamed_formula: &StreamedFormula) -> anyhow::Result<()> {
+        let id = streamed_formula.id();
+
+        let version_revision = streamed_formula.version_revision();
+
         let cellar_dir_path = self.context().homebrew_dirs.cellar_dir();
 
         if streamed_formula.should_relocate(&cellar_dir_path) {
-            let keg_dir_path = self
-                .context()
-                .homebrew_dirs
-                .keg_dir(streamed_formula.id(), streamed_formula.version());
+            let keg_dir_path = self.context().homebrew_dirs.keg_dir(id, version_revision);
 
             self.patch_keg(&keg_dir_path).await?;
         }
@@ -87,11 +88,18 @@ trait RelocatorInner: From<([(&'static str, String); 4], Arc<Context>)> {
 
     fn replace_bytes(&self, bytes: &[u8]) -> anyhow::Result<Vec<u8>>;
 
-    fn replace_text(&self, text: &str) -> String {
-        self.replacement_pairs()
-            .iter()
-            .fold(text.to_owned(), |text, (placeholder, replacement)| {
-                text.replace(placeholder, replacement)
-            })
+    fn replace_text<'a>(&self, text: &'a str) -> Cow<'a, str> {
+        self.replacement_pairs().iter().fold(
+            Cow::Borrowed(text),
+            |current, (placeholder, replacement_pstr)| {
+                if current.contains(placeholder) {
+                    let text = current.replace(placeholder, replacement_pstr);
+
+                    Cow::Owned(text)
+                } else {
+                    current
+                }
+            },
+        )
     }
 }

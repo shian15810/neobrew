@@ -3,14 +3,11 @@ use std::sync::Arc;
 use clap::Args;
 use tokio::task::JoinSet;
 
-use super::{Resolution, Runner};
+use super::Runner;
 use crate::{context::Context, package::resolved::ResolvedPackage, registries::Registries};
 
 #[derive(Args)]
 pub(super) struct Uninstall {
-    #[command(flatten)]
-    resolution: Resolution,
-
     #[arg(value_name = "PACKAGE")]
     packages: Vec<String>,
 }
@@ -49,9 +46,7 @@ impl Uninstall {
     async fn resolve_packages(self, context: Arc<Context>) -> anyhow::Result<Vec<ResolvedPackage>> {
         let registries = Registries::new(context);
 
-        let strategy = self.resolution.strategy();
-
-        let resolved_packages = registries.resolve(self.packages, strategy).await?;
+        let (resolved_packages, _requested_package_ids) = registries.resolve(self.packages).await?;
 
         Ok(resolved_packages)
     }

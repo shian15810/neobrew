@@ -5,7 +5,10 @@ use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
 use anyhow::anyhow;
 use bytes::Bytes;
-use futures::stream::{self, StreamExt as _, TryStreamExt as _};
+use futures::{
+    future::{self, FutureExt as _},
+    stream::{self, StreamExt as _, TryStreamExt as _},
+};
 use tempfile::NamedTempFile;
 use tokio::{
     fs::{self, File},
@@ -45,16 +48,29 @@ impl Registries {
     pub(crate) async fn resolve(
         self,
         packages: impl IntoIterator<Item = String>,
-        strategy: ResolutionStrategy,
-    ) -> anyhow::Result<Vec<ResolvedPackage>> {
+    ) -> anyhow::Result<(Vec<ResolvedPackage>, HashSet<String>)> {
+        let mut requested_package_ids = HashSet::new();
+
         let mut resolved_package_ids = HashSet::new();
 
-        let resolved_packages = self.resolve_many(packages, strategy).await?;
+        let resolved_packages = self.resolve_many(packages).await?;
         let mut resolved_packages = resolved_packages
             .into_iter()
-            .flat_map(|resolved_package| resolved_package.iter())
+            .flat_map(|resolved_package| {
+                let mut resolved_package_iter = resolved_package.iter().peekable();
+
+                if let Some(resolved_package) = resolved_package_iter.peek() {
+                    let id = resolved_package.id();
+                    let id = id.to_owned();
+
+                    requested_package_ids.insert(id);
+                }
+
+                resolved_package_iter
+            })
             .filter(|resolved_package| {
-                let id = resolved_package.id().to_owned();
+                let id = resolved_package.id();
+                let id = id.to_owned();
 
                 resolved_package_ids.insert(id)
             })
@@ -71,19 +87,18 @@ impl Registries {
 
         resolved_packages.sort_by(|left, right| left.id().cmp(right.id()));
 
-        Ok(resolved_packages)
+        Ok((resolved_packages, requested_package_ids))
     }
 
     async fn resolve_many(
         self,
         packages: impl IntoIterator<Item = String>,
-        strategy: ResolutionStrategy,
     ) -> anyhow::Result<Vec<ResolvedPackage>> {
         let resolved_packages = stream::iter(packages)
             .map(async |package| {
                 let package = Arc::from(package);
 
-                let resolved_package = self.resolve_one(package, strategy.clone()).await?;
+                let resolved_package = self.resolve_one(package).await?;
 
                 anyhow::Ok(resolved_package)
             })
@@ -94,48 +109,40 @@ impl Registries {
         Ok(resolved_packages)
     }
 
-    async fn resolve_one(
-        &self,
-        package: Arc<str>,
-        strategy: ResolutionStrategy,
-    ) -> anyhow::Result<ResolvedPackage> {
-        if matches!(
-            strategy,
-            ResolutionStrategy::FormulaOnly | ResolutionStrategy::Both,
-        ) {
+    async fn resolve_one(&self, package: Arc<str>) -> anyhow::Result<ResolvedPackage> {
+        let resolved_formula_fut = async {
             let formula_registry = Arc::clone(&self.formula_registry);
 
-            if let Ok(resolved_formula) = formula_registry.resolve(Arc::clone(&package)).await {
-                let resolved_package = ResolvedPackage::Formula(resolved_formula);
+            let resolved_formula = formula_registry.resolve(Arc::clone(&package)).await?;
+            let resolved_formula = ResolvedPackage::Formula(resolved_formula);
 
-                return Ok(resolved_package);
-            }
-        }
+            anyhow::Ok(resolved_formula)
+        };
+        let resolved_formula_fut = resolved_formula_fut.boxed();
 
-        if matches!(
-            strategy,
-            ResolutionStrategy::CaskOnly | ResolutionStrategy::Both,
-        ) {
+        let resolved_cask_fut = async {
             let cask_registry = Arc::clone(&self.cask_registry);
 
-            if let Ok(resolved_cask) = cask_registry.resolve(Arc::clone(&package)).await {
-                let resolved_package = ResolvedPackage::Cask(resolved_cask);
+            let resolved_cask = cask_registry.resolve(Arc::clone(&package)).await?;
+            let resolved_cask = ResolvedPackage::Cask(resolved_cask);
 
-                return Ok(resolved_package);
-            }
-        }
+            anyhow::Ok(resolved_cask)
+        };
+        let resolved_cask_fut = resolved_cask_fut.boxed();
 
-        let err = anyhow!(r#"Package "{package}" not found"#);
+        #[expect(clippy::manual_let_else, clippy::single_match_else)]
+        let resolved_package =
+            match future::select_ok([resolved_formula_fut, resolved_cask_fut]).await {
+                Ok((resolved_package, _)) => resolved_package,
+                Err(_) => {
+                    let err = anyhow!(r#"Package "{package}" not found"#);
 
-        Err(err)
+                    return Err(err);
+                },
+            };
+
+        Ok(resolved_package)
     }
-}
-
-#[derive(Clone)]
-pub(crate) enum ResolutionStrategy {
-    FormulaOnly,
-    CaskOnly,
-    Both,
 }
 
 enum Registry {
@@ -172,15 +179,15 @@ trait RegistrableJson {
 
         fs::create_dir_all(file_base_path).await?;
 
-        let file = NamedTempFile::new_in(file_base_path)?;
+        let temp_file = NamedTempFile::new_in(file_base_path)?;
 
-        let mut async_file = File::open_write(file.path()).await?;
+        let mut async_temp_file = File::open_write(temp_file.path()).await?;
 
-        async_file.write_all(&bytes).await?;
+        async_temp_file.write_all(&bytes).await?;
 
-        async_file.shutdown().await?;
+        async_temp_file.shutdown().await?;
 
-        file.persist(file_path)?;
+        temp_file.persist(file_path)?;
 
         Ok(())
     }

@@ -42,26 +42,6 @@ impl Linkerer for FormulaLinker {
     type PreparedPackage = PreparedFormula;
     type StreamedPackage = StreamedFormula;
 
-    async fn is_updated(&self, prepared_package: &PreparedFormula) -> anyhow::Result<bool> {
-        let prepared_formula = prepared_package;
-
-        if !self.is_installed(prepared_formula).await? {
-            return Ok(false);
-        }
-
-        let id = prepared_formula.id();
-
-        let version = prepared_formula.version();
-
-        let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version);
-
-        if keg_dir_path.is_dir_exists_nofollow().await? {
-            return Ok(true);
-        }
-
-        Ok(false)
-    }
-
     async fn is_installed(&self, prepared_package: &PreparedFormula) -> anyhow::Result<bool> {
         let prepared_formula = prepared_package;
 
@@ -76,9 +56,35 @@ impl Linkerer for FormulaLinker {
         let mut rack_dir_entries = fs::read_dir(rack_dir_path).await?;
 
         while let Some(rack_dir_entry) = rack_dir_entries.next_entry().await? {
-            if rack_dir_entry.path().is_dir_exists_nofollow().await? {
+            let rack_dir_entry_path = rack_dir_entry.path();
+
+            let is_rack_dir_entry_exists = rack_dir_entry_path.is_dir_exists_nofollow().await?;
+
+            let is_rack_dir_entry_not_empty = !rack_dir_entry_path.is_dir_empty().await?;
+
+            if is_rack_dir_entry_exists && is_rack_dir_entry_not_empty {
                 return Ok(true);
             }
+        }
+
+        Ok(false)
+    }
+
+    async fn is_up_to_date(&self, prepared_package: &PreparedFormula) -> anyhow::Result<bool> {
+        let prepared_formula = prepared_package;
+
+        let id = prepared_formula.id();
+
+        let version = prepared_formula.version();
+
+        let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version);
+
+        let is_keg_dir_exists = keg_dir_path.is_dir_exists_nofollow().await?;
+
+        let is_keg_dir_not_empty = !keg_dir_path.is_dir_empty().await?;
+
+        if is_keg_dir_exists && is_keg_dir_not_empty {
+            return Ok(true);
         }
 
         Ok(false)
@@ -117,9 +123,9 @@ impl FormulaLinker {
     async fn link_opt(&self, streamed_formula: &StreamedFormula) -> anyhow::Result<()> {
         let id = streamed_formula.id();
 
-        let version = streamed_formula.version();
+        let version_revision = streamed_formula.version_revision();
 
-        let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version);
+        let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version_revision);
 
         let opt_prefix_symlink_path = self.context.homebrew_dirs.opt_prefix_symlink(id);
 
@@ -133,9 +139,9 @@ impl FormulaLinker {
     async fn link_keg(&self, streamed_formula: &StreamedFormula) -> anyhow::Result<()> {
         let id = streamed_formula.id();
 
-        let version = streamed_formula.version();
+        let version_revision = streamed_formula.version_revision();
 
-        let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version);
+        let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version_revision);
 
         let prefix_dir_path = self.context.homebrew_dirs.prefix_dir();
 
@@ -153,7 +159,8 @@ impl FormulaLinker {
 
             let should_skip = SKIP_LINK_DIR_NAMES.contains(keg_link_dir_name);
 
-            Self::link_dir(&keg_link_dir_path, &prefix_link_dir_path, should_skip).await?;
+            self.link_dir(&keg_link_dir_path, &prefix_link_dir_path, should_skip)
+                .await?;
         }
 
         keg_dir_path
@@ -163,27 +170,29 @@ impl FormulaLinker {
         Ok(())
     }
 
+    #[expect(clippy::self_only_used_in_recursion)]
     #[async_recursion]
     async fn link_dir(
-        src_dir_path: &Path,
-        dest_dir_path: &Path,
+        &self,
+        src_base_path: &Path,
+        dest_base_path: &Path,
         should_skip: bool,
     ) -> anyhow::Result<()> {
-        fs::create_dir_all(dest_dir_path).await?;
+        fs::create_dir_all(dest_base_path).await?;
 
-        let mut src_dir_entries = fs::read_dir(src_dir_path).await?;
+        let mut src_base_entries = fs::read_dir(src_base_path).await?;
 
-        while let Some(src_dir_entry) = src_dir_entries.next_entry().await? {
-            let src_path = src_dir_entry.path();
+        while let Some(src_base_entry) = src_base_entries.next_entry().await? {
+            let src_path = src_base_entry.path();
 
-            let dest_path = dest_dir_path.join(src_dir_entry.file_name());
+            let dest_path = dest_base_path.join(src_base_entry.file_name());
 
             if src_path.is_dir_exists_nofollow().await? {
                 if should_skip {
                     continue;
                 }
 
-                Self::link_dir(&src_path, &dest_path, false).await?;
+                self.link_dir(&src_path, &dest_path, false).await?;
 
                 continue;
             }

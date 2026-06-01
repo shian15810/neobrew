@@ -40,11 +40,13 @@ impl TempPourer {
     }
 
     async fn extract(
-        archive_format: ArchiveFormat,
+        &self,
+        archive_format: &ArchiveFormat,
         dir: &TempDir,
         buf_reader: impl AsyncBufRead + Unpin + Send,
     ) -> anyhow::Result<()> {
         match archive_format {
+            ArchiveFormat::Dmg => {},
             ArchiveFormat::TarGz => {
                 let gz_decoder = GzipDecoder::new(buf_reader);
 
@@ -73,9 +75,9 @@ impl TempPourer {
                     if file_name.ends_with('/') {
                         zip = entry_reader.skip().await?;
                     } else {
-                        let dest_dir_path = dir.path();
+                        let dest_base_path = dir.path();
 
-                        let dest_path = dest_dir_path.join(file_path);
+                        let dest_path = dest_base_path.join(file_path);
 
                         let dest_base_path = dest_path.base()?;
 
@@ -104,14 +106,21 @@ impl PullOperator for TempPourer {
     ) -> anyhow::Result<Self::Output> {
         fs::create_dir_all(&self.dir_path).await?;
 
-        let dir = TempDir::new_in(&self.dir_path)?;
+        let temp_dir = TempDir::new_in(&self.dir_path)?;
 
         let mut buf_reader = BufReader::new(reader);
 
-        if let Some(archive_format) = self.archive_format {
-            Self::extract(archive_format, &dir, buf_reader).await?;
+        if let Some(archive_format) = &self.archive_format {
+            match archive_format {
+                ArchiveFormat::Dmg => {
+                    io::copy(&mut buf_reader, &mut io::sink()).await?;
+                },
+                _ => {
+                    self.extract(archive_format, &temp_dir, buf_reader).await?;
+                },
+            }
         } else {
-            let mut peek_buf = [0_u8; ArchiveFormat::PEEK_BUF_SIZE];
+            let mut peek_buf = [0_u8; ArchiveFormat::PEEK_SIZE];
 
             buf_reader.read_exact(&mut peek_buf).await?;
 
@@ -119,11 +128,12 @@ impl PullOperator for TempPourer {
 
             let chained_buf_reader = Cursor::new(peek_buf).chain(buf_reader);
 
-            Self::extract(archive_format, &dir, chained_buf_reader).await?;
+            self.extract(&archive_format, &temp_dir, chained_buf_reader)
+                .await?;
         }
 
         let output = TempPourerOutput {
-            dir,
+            temp_dir,
 
             dir_path: self.dir_path,
             symlink_paths: self.symlink_paths,
@@ -134,30 +144,30 @@ impl PullOperator for TempPourer {
 }
 
 pub(crate) struct TempPourerOutput {
-    dir: TempDir,
+    temp_dir: TempDir,
 
     dir_path: PathBuf,
     symlink_paths: Vec<PathBuf>,
 }
 
 impl handler::AtomicWriter for TempPourerOutput {
-    async fn cleanup(self) -> anyhow::Result<()> {
-        self.dir.close()?;
+    fn cleanup(self) -> anyhow::Result<()> {
+        self.temp_dir.close()?;
 
         Ok(())
     }
 
     async fn persist(self) -> anyhow::Result<()> {
-        let src_dir_path = self.dir.path();
+        let src_base_path = self.temp_dir.path();
 
-        let dest_dir_path = self.dir_path;
+        let dest_base_path = self.dir_path;
 
-        let mut src_dir_entries = fs::read_dir(src_dir_path).await?;
+        let mut src_base_entries = fs::read_dir(src_base_path).await?;
 
-        while let Some(src_dir_entry) = src_dir_entries.next_entry().await? {
-            let src_path = src_dir_entry.path();
+        while let Some(src_base_entry) = src_base_entries.next_entry().await? {
+            let src_path = src_base_entry.path();
 
-            let dest_path = dest_dir_path.join(src_dir_entry.file_name());
+            let dest_path = dest_base_path.join(src_base_entry.file_name());
 
             if !src_path.is_dir_exists_nofollow().await? {
                 continue;
@@ -170,14 +180,14 @@ impl handler::AtomicWriter for TempPourerOutput {
             fs::rename(src_path, dest_path).await?;
         }
 
-        self.dir.close()?;
+        self.temp_dir.close()?;
 
         for symlink_path in self.symlink_paths {
             let symlink_base_path = symlink_path.base()?;
 
             fs::create_dir_all(symlink_base_path).await?;
 
-            dest_dir_path
+            dest_base_path
                 .create_relative_symlink_atomically_at(symlink_path)
                 .await?;
         }

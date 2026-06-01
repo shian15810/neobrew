@@ -72,7 +72,7 @@ trait Downloadable {
 
     fn archive_format(&self, symlink_path: &Path) -> anyhow::Result<Option<ArchiveFormat>>;
 
-    async fn symlink_file_paths(
+    async fn symlink_path_file_path(
         &self,
         prepared_package: &Self::PreparedPackage,
     ) -> anyhow::Result<(PathBuf, PathBuf)>;
@@ -121,7 +121,7 @@ trait Downloadable {
         prepared_package: &Self::PreparedPackage,
         expected_sha256: &str,
     ) -> anyhow::Result<Download> {
-        let (symlink_path, file_path) = self.symlink_file_paths(prepared_package).await?;
+        let (symlink_path, file_path) = self.symlink_path_file_path(prepared_package).await?;
 
         let archive_format = self.archive_format(&symlink_path)?;
 

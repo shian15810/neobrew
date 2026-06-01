@@ -1,4 +1,4 @@
-use std::{collections::HashMap, path::Path, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, path::Path, sync::Arc};
 
 use arwen::elf::rewriter::Writer;
 use itertools::Itertools as _;
@@ -49,9 +49,9 @@ impl RelocatorInner for Relocation {
         let bytes = fs::read(path).await?;
         let bytes = Arc::from(bytes);
 
-        let has_magic_number = linux::Elf::has_magic_number(&bytes);
+        let has_magic = linux::Elf::has_magic(&bytes);
 
-        if !has_magic_number {
+        if !has_magic {
             return Ok(());
         }
 
@@ -78,15 +78,15 @@ impl RelocatorInner for Relocation {
 
         let base_path = path.base()?;
 
-        let file = NamedTempFile::new_in(base_path)?;
+        let temp_file = NamedTempFile::new_in(base_path)?;
 
-        let mut async_file = File::open_write(file.path()).await?;
+        let mut async_temp_file = File::open_write(temp_file.path()).await?;
 
-        async_file.write_all(&replaced_bytes).await?;
+        async_temp_file.write_all(&replaced_bytes).await?;
 
-        async_file.shutdown().await?;
+        async_temp_file.shutdown().await?;
 
-        let file = file.persist(path)?;
+        let file = temp_file.persist(path)?;
 
         file.set_permissions(permissions)?;
 
@@ -119,17 +119,18 @@ impl RelocatorInner for Relocation {
         let new_needed = old_needed
             .into_iter()
             .filter_map(|old_need| {
-                let old_need = old_need.into_owned();
-
                 let new_need = self.replace_text(&old_need);
 
-                (new_need != old_need).then(|| {
-                    let old_need = old_need.into_bytes();
+                match new_need {
+                    Cow::Owned(new_string) => {
+                        let old_need = old_need.into_owned().into_bytes();
 
-                    let new_need = new_need.into_bytes();
+                        let new_need = new_string.into_bytes();
 
-                    (old_need, new_need)
-                })
+                        Some((old_need, new_need))
+                    },
+                    Cow::Borrowed(_) => None,
+                }
             })
             .collect::<HashMap<_, _>>();
 
@@ -142,13 +143,5 @@ impl RelocatorInner for Relocation {
         rewriter.write(&mut data)?;
 
         Ok(data)
-    }
-
-    fn replace_text(&self, text: &str) -> String {
-        self.replacement_pairs
-            .iter()
-            .fold(text.to_owned(), |text, (placeholder, replacement)| {
-                text.replace(placeholder, replacement)
-            })
     }
 }

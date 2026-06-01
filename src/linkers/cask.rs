@@ -27,27 +27,7 @@ impl Linkerer for CaskLinker {
     type PreparedPackage = PreparedCask;
     type StreamedPackage = StreamedCask;
 
-    async fn is_updated(&self, prepared_package: &Self::PreparedPackage) -> anyhow::Result<bool> {
-        let prepared_cask = prepared_package;
-
-        if !self.is_installed(prepared_cask).await? {
-            return Ok(false);
-        }
-
-        let id = prepared_cask.id();
-
-        let version = prepared_cask.version();
-
-        let staged_dir_path = self.context.homebrew_dirs.staged_dir(id, version);
-
-        if staged_dir_path.is_dir_exists_nofollow().await? {
-            return Ok(true);
-        }
-
-        Ok(false)
-    }
-
-    async fn is_installed(&self, prepared_package: &Self::PreparedPackage) -> anyhow::Result<bool> {
+    async fn is_installed(&self, prepared_package: &PreparedCask) -> anyhow::Result<bool> {
         let prepared_cask = prepared_package;
 
         let id = prepared_cask.id();
@@ -60,10 +40,36 @@ impl Linkerer for CaskLinker {
 
         let mut cask_dir_entries = fs::read_dir(cask_dir_path).await?;
 
-        while let Some(cask_dir_entries) = cask_dir_entries.next_entry().await? {
-            if cask_dir_entries.path().is_dir_exists_nofollow().await? {
+        while let Some(cask_dir_entry) = cask_dir_entries.next_entry().await? {
+            let cask_dir_entry_path = cask_dir_entry.path();
+
+            let is_cask_dir_entry_exists = cask_dir_entry_path.is_dir_exists_nofollow().await?;
+
+            let is_cask_dir_entry_not_empty = !cask_dir_entry_path.is_dir_empty().await?;
+
+            if is_cask_dir_entry_exists && is_cask_dir_entry_not_empty {
                 return Ok(true);
             }
+        }
+
+        Ok(false)
+    }
+
+    async fn is_up_to_date(&self, prepared_package: &PreparedCask) -> anyhow::Result<bool> {
+        let prepared_cask = prepared_package;
+
+        let id = prepared_cask.id();
+
+        let version = prepared_cask.version();
+
+        let staged_dir_path = self.context.homebrew_dirs.staged_dir(id, version);
+
+        let is_staged_dir_exists = staged_dir_path.is_dir_exists_nofollow().await?;
+
+        let is_staged_dir_not_empty = !staged_dir_path.is_dir_empty().await?;
+
+        if is_staged_dir_exists && is_staged_dir_not_empty {
+            return Ok(true);
         }
 
         Ok(false)
@@ -72,13 +78,13 @@ impl Linkerer for CaskLinker {
     async fn link(&self, streamed_package: &StreamedCask) -> anyhow::Result<()> {
         let streamed_cask = streamed_package;
 
-        let stanzas = &streamed_cask.variation_stanzas;
-
         let id = streamed_cask.id();
 
         let version = streamed_cask.version();
 
         let staged_dir_path = self.context.homebrew_dirs.staged_dir(id, version);
+
+        let stanzas = &streamed_cask.stanzas();
 
         self.link_commons(stanzas, &staged_dir_path).await?;
 
@@ -119,7 +125,7 @@ impl CaskLinker {
 
         let homebrew_dirs = &self.context.homebrew_dirs;
 
-        let dest_dir_paths = vec![
+        let dest_base_paths = vec![
             homebrew_dirs.bin_dir(),
             homebrew_dirs.man_dir(),
             homebrew_dirs.bash_completion_dir(),
@@ -129,15 +135,15 @@ impl CaskLinker {
 
         let permissions_modes = [Some(0o111), None, None, None, None];
 
-        let common_stanzas_iter = common_stanzass
+        let common_stanzas_futs = common_stanzass
             .into_iter()
-            .zip(&dest_dir_paths)
+            .zip(&dest_base_paths)
             .zip(permissions_modes)
-            .map(|((stanzas, dest_dir_path), permissions_mode)| {
-                self.link_common(stanzas, staged_dir_path, dest_dir_path, permissions_mode)
+            .map(|((stanzas, dest_base_path), permissions_mode)| {
+                self.link_common(stanzas, staged_dir_path, dest_base_path, permissions_mode)
             });
 
-        future::try_join_all(common_stanzas_iter).await?;
+        future::try_join_all(common_stanzas_futs).await?;
 
         Ok(())
     }
@@ -146,28 +152,28 @@ impl CaskLinker {
         &self,
         stanzas: &[CommonStanza],
         staged_dir_path: &Path,
-        dest_dir_path: &Path,
+        dest_base_path: &Path,
         permissions_mode: Option<u32>,
     ) -> anyhow::Result<()> {
         if stanzas.is_empty() {
             return Ok(());
         }
 
-        fs::create_dir_all(dest_dir_path).await?;
+        fs::create_dir_all(dest_base_path).await?;
 
         for stanza in stanzas {
             let stanza_source_pstr = &stanza.source;
 
-            let stanza_source_path = self.placeholder.resolve(stanza_source_pstr);
+            let stanza_source_path = self.placeholder.resolve_source(stanza_source_pstr);
 
             let src_path = staged_dir_path.join(stanza_source_path);
 
             let stanza_target_pstr = &stanza.target;
 
-            let stanza_target_path = self.placeholder.resolve(stanza_target_pstr);
+            let stanza_target_path = self.placeholder.resolve_target(stanza_target_pstr);
 
             let dest_path = if stanza_target_path.is_relative() {
-                dest_dir_path.join(stanza_target_path)
+                dest_base_path.join(stanza_target_path)
             } else {
                 stanza_target_path
             };
@@ -176,7 +182,7 @@ impl CaskLinker {
 
             let dest_path = match stanza_rename_pstr {
                 Some(stanza_rename_pstr) => {
-                    let stanza_rename_path = self.placeholder.resolve(stanza_rename_pstr);
+                    let stanza_rename_path = self.placeholder.resolve_target(stanza_rename_pstr);
 
                     if stanza_rename_path.is_relative() {
                         dest_path.with_file_name(stanza_rename_path)

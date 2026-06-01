@@ -35,13 +35,12 @@ impl Downloadable for FormulaDownload {
         Ok(Some(archive_format))
     }
 
-    async fn symlink_file_paths(
+    #[expect(clippy::unused_async_trait_impl)]
+    async fn symlink_path_file_path(
         &self,
-        prepared_package: &Self::PreparedPackage,
+        prepared_package: &PreparedFormula,
     ) -> anyhow::Result<(PathBuf, PathBuf)> {
         let prepared_formula = prepared_package;
-
-        let dir_path = self.context.homebrew_dirs.cache_dir();
 
         let id = prepared_formula.id();
 
@@ -65,12 +64,14 @@ impl Downloadable for FormulaDownload {
             bottle_rebuild => format!("{file_name}.{bottle_rebuild}.tar.gz"),
         };
 
+        let dir_path = self.context.homebrew_dirs.cache_dir();
+
         let symlink_path = dir_path.join(symlink_name);
 
         let file_path = dir_path.join("downloads").join(file_name);
 
-        let symlink_file_paths = (symlink_path, file_path);
+        let symlink_path_file_path = (symlink_path, file_path);
 
-        Ok(symlink_file_paths)
+        Ok(symlink_path_file_path)
     }
 }

@@ -32,22 +32,6 @@ impl Linkers {
         Ok(this)
     }
 
-    pub(crate) async fn is_updated(
-        &self,
-        prepared_package: &PreparedPackage,
-    ) -> anyhow::Result<bool> {
-        let is_updated = match prepared_package {
-            PreparedPackage::Formula(prepared_formula) => {
-                self.formula_linker.is_updated(prepared_formula).await?
-            },
-            PreparedPackage::Cask(prepared_cask) => {
-                self.cask_linker.is_updated(prepared_cask).await?
-            },
-        };
-
-        Ok(is_updated)
-    }
-
     pub(crate) async fn is_installed(
         &self,
         prepared_package: &PreparedPackage,
@@ -62,6 +46,22 @@ impl Linkers {
         };
 
         Ok(is_installed)
+    }
+
+    pub(crate) async fn is_up_to_date(
+        &self,
+        prepared_package: &PreparedPackage,
+    ) -> anyhow::Result<bool> {
+        let is_up_to_date = match prepared_package {
+            PreparedPackage::Formula(prepared_formula) => {
+                self.formula_linker.is_up_to_date(prepared_formula).await?
+            },
+            PreparedPackage::Cask(prepared_cask) => {
+                self.cask_linker.is_up_to_date(prepared_cask).await?
+            },
+        };
+
+        Ok(is_up_to_date)
     }
 
     pub(crate) async fn link(&self, streamed_package: &StreamedPackage) -> anyhow::Result<()> {
@@ -82,7 +82,8 @@ trait Linkerer: Sized {
     type PreparedPackage;
     type StreamedPackage;
 
-    async fn is_updated(&self, prepared_package: &Self::PreparedPackage) -> anyhow::Result<bool>;
+    async fn is_up_to_date(&self, prepared_package: &Self::PreparedPackage)
+    -> anyhow::Result<bool>;
 
     async fn is_installed(&self, prepared_package: &Self::PreparedPackage) -> anyhow::Result<bool>;
 

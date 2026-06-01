@@ -1,4 +1,4 @@
-use std::{borrow::Cow, collections::HashMap, path::PathBuf, str::FromStr};
+use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
 use serde::Deserialize;
 use serde_with::DeserializeFromStr;
@@ -31,20 +31,7 @@ impl Packageable for RawFormula {
     }
 }
 
-impl RawPackageable for RawFormula {
-    fn version(&self) -> Cow<'_, str> {
-        let version = &self.versions.stable;
-
-        match self.revision {
-            0 => Cow::Borrowed(version),
-            revision => {
-                let version_revision = format!("{version}_{revision}");
-
-                Cow::Owned(version_revision)
-            },
-        }
-    }
-}
+impl RawPackageable for RawFormula {}
 
 #[derive(Deserialize)]
 pub(in super::super) struct Versions {

@@ -49,6 +49,7 @@ mod macros;
 mod package;
 mod pipeline;
 mod placeholder;
+mod receipt;
 mod registries;
 mod relocation;
 mod streams;

@@ -6,7 +6,7 @@ impl MachO {
     const FAT_MAGIC_64: u32 = 0xcafe_babf;
     const FAT_CIGAM_64: u32 = 0xbfba_feca;
 
-    const BE_MAGIC_NUMBERS: &[u32] = &[
+    const BE_MAGICS: &[u32] = &[
         Self::FAT_MAGIC,
         Self::FAT_MAGIC_64,
         Self::MH_MAGIC,
@@ -18,7 +18,7 @@ impl MachO {
     const MH_MAGIC_64: u32 = 0xfeed_facf;
     const MH_CIGAM_64: u32 = 0xcffa_edfe;
 
-    const LE_MAGIC_NUMBERS: &[u32] = &[
+    const LE_MAGICS: &[u32] = &[
         Self::FAT_CIGAM,
         Self::FAT_CIGAM_64,
         Self::MH_CIGAM,
@@ -27,22 +27,22 @@ impl MachO {
 }
 
 impl MachO {
-    pub(crate) fn has_magic_number(bytes: &[u8]) -> bool {
+    pub(crate) fn has_magic(bytes: &[u8]) -> bool {
         let &[b0, b1, b2, b3, ..] = bytes else {
             return false;
         };
 
         let header_bytes = &[b0, b1, b2, b3];
 
-        let be_magic_number = u32::from_be_bytes(*header_bytes);
+        let peek_magic = u32::from_be_bytes(*header_bytes);
 
-        if Self::BE_MAGIC_NUMBERS.contains(&be_magic_number) {
+        if Self::BE_MAGICS.contains(&peek_magic) {
             return true;
         }
 
-        let le_magic_number = u32::from_le_bytes(*header_bytes);
+        let peek_magic = u32::from_le_bytes(*header_bytes);
 
-        if Self::LE_MAGIC_NUMBERS.contains(&le_magic_number) {
+        if Self::LE_MAGICS.contains(&peek_magic) {
             return true;
         }
 

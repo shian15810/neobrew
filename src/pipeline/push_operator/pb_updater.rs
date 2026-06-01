@@ -105,6 +105,7 @@ impl PushOperator for PbUpdater {
     type Item = Bytes;
     type Output = ProgressBar;
 
+    #[expect(clippy::unused_async_trait_impl)]
     async fn feed(&mut self, chunk: Self::Item) -> anyhow::Result<()> {
         let content_length = chunk.len();
         let content_length = u64::try_from(content_length)?;
@@ -114,6 +115,7 @@ impl PushOperator for PbUpdater {
         Ok(())
     }
 
+    #[expect(clippy::unused_async_trait_impl)]
     async fn flush(self) -> anyhow::Result<Self::Output> {
         let pb = self.pb;
 

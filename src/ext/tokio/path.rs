@@ -16,6 +16,8 @@ pub(crate) trait PathExt {
 
     async fn file_type(&self) -> io::Result<FileType>;
 
+    async fn is_dir_empty(&self) -> io::Result<bool>;
+
     async fn is_dir_exists_nofollow(&self) -> io::Result<bool>;
 
     async fn is_file_exists_nofollow(&self) -> io::Result<bool>;
@@ -51,6 +53,16 @@ impl PathExt for Path {
         let file_type = metadata.file_type();
 
         Ok(file_type)
+    }
+
+    async fn is_dir_empty(&self) -> io::Result<bool> {
+        let mut entries = fs::read_dir(self).await?;
+
+        let entry = entries.next_entry().await?;
+
+        let is_dir_empty = entry.is_none();
+
+        Ok(is_dir_empty)
     }
 
     async fn is_dir_exists_nofollow(&self) -> io::Result<bool> {

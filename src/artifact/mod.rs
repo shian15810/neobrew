@@ -5,7 +5,7 @@ use tokio::fs;
 
 use crate::{
     context::Context,
-    ext::std::path::PathExt as _,
+    ext::{std::path::PathExt as _, tokio::path::PathExt as _},
     package::{
         Packageable as _,
         prepared::{CommonStanza, Stanzas},
@@ -30,13 +30,13 @@ impl Artifact {
     }
 
     pub(crate) async fn relocate(&self, streamed_cask: &StreamedCask) -> anyhow::Result<()> {
-        let stanzas = &streamed_cask.variation_stanzas;
-
         let id = streamed_cask.id();
 
         let version = streamed_cask.version();
 
         let staged_dir_path = self.context.homebrew_dirs.staged_dir(id, version);
+
+        let stanzas = streamed_cask.stanzas();
 
         self.relocate_commons(stanzas, &staged_dir_path).await?;
 
@@ -69,7 +69,7 @@ impl Artifact {
 
         let homebrew_dirs = &self.context.homebrew_dirs;
 
-        let dest_dir_paths = vec![
+        let dest_base_paths = vec![
             Some(homebrew_dirs.app_dir()),
             Some(homebrew_dirs.app_dir()),
             Some(homebrew_dirs.colorpicker_dir()),
@@ -88,15 +88,15 @@ impl Artifact {
             None,
         ];
 
-        let common_stanzas_iter =
+        let common_stanzas_futs =
             common_stanzass
                 .into_iter()
-                .zip(&dest_dir_paths)
-                .map(|(stanzas, dest_dir_path)| {
-                    self.relocate_common(stanzas, staged_dir_path, dest_dir_path.as_deref())
+                .zip(&dest_base_paths)
+                .map(|(stanzas, dest_base_path)| {
+                    self.relocate_common(stanzas, staged_dir_path, dest_base_path.as_deref())
                 });
 
-        future::try_join_all(common_stanzas_iter).await?;
+        future::try_join_all(common_stanzas_futs).await?;
 
         Ok(())
     }
@@ -105,30 +105,30 @@ impl Artifact {
         &self,
         stanzas: &[CommonStanza],
         staged_dir_path: &Path,
-        dest_dir_path: Option<&Path>,
+        dest_base_path: Option<&Path>,
     ) -> anyhow::Result<()> {
         if stanzas.is_empty() {
             return Ok(());
         }
 
-        if let Some(dest_dir_path) = dest_dir_path {
-            fs::create_dir_all(dest_dir_path).await?;
+        if let Some(dest_base_path) = dest_base_path {
+            fs::create_dir_all(dest_base_path).await?;
         }
 
         for stanza in stanzas {
             let stanza_source_pstr = &stanza.source;
 
-            let stanza_source_path = self.placeholder.resolve(stanza_source_pstr);
+            let stanza_source_path = self.placeholder.resolve_source(stanza_source_pstr);
 
             let src_path = staged_dir_path.join(stanza_source_path);
 
             let stanza_target_pstr = &stanza.target;
 
-            let stanza_target_path = self.placeholder.resolve(stanza_target_pstr);
+            let stanza_target_path = self.placeholder.resolve_target(stanza_target_pstr);
 
             let dest_path = if stanza_target_path.is_relative() {
-                dest_dir_path
-                    .map(|dest_dir_path| dest_dir_path.join(&stanza_target_path))
+                dest_base_path
+                    .map(|dest_base_path| dest_base_path.join(&stanza_target_path))
                     .unwrap_or(stanza_target_path)
             } else {
                 stanza_target_path
@@ -138,7 +138,7 @@ impl Artifact {
 
             let dest_path = match stanza_rename_pstr {
                 Some(stanza_rename_pstr) => {
-                    let stanza_rename_path = self.placeholder.resolve(stanza_rename_pstr);
+                    let stanza_rename_path = self.placeholder.resolve_target(stanza_rename_pstr);
 
                     if stanza_rename_path.is_relative() {
                         dest_path.with_file_name(stanza_rename_path)
@@ -152,6 +152,10 @@ impl Artifact {
             let dest_base_path = dest_path.base()?;
 
             fs::create_dir_all(dest_base_path).await?;
+
+            if dest_path.is_dir_exists_nofollow().await? {
+                fs::remove_dir_all(&dest_path).await?;
+            }
 
             fs::rename(src_path, dest_path).await?;
         }

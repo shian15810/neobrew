@@ -38,10 +38,7 @@ impl Registrable for FormulaRegistry {
         }
     }
 
-    async fn resolve(
-        self: Arc<Self>,
-        package: Arc<str>,
-    ) -> anyhow::Result<Arc<Self::ResolvedPackage>> {
+    async fn resolve(self: Arc<Self>, package: Arc<str>) -> anyhow::Result<Arc<ResolvedFormula>> {
         let stack = Vec::new();
 
         let resolved_formula = self.resolve_with_stack(package, stack).await?;

@@ -15,33 +15,16 @@ pub(crate) struct PreparedCask {
     variation_url: String,
     variation_sha256: String,
     pub(in super::super) variation_stanzas: Stanzas,
+    pub(in super::super) is_requested: bool,
 }
 
-impl TryFrom<ResolvedCask> for PreparedCask {
+impl TryFrom<(ResolvedCask, bool)> for PreparedCask {
     type Error = Option<anyhow::Error>;
 
-    fn try_from(resolved_cask: ResolvedCask) -> Result<Self, Self::Error> {
-        #[cfg(debug_assertions)]
-        #[cfg_attr(
-            debug_assertions,
-            expect(resolving_to_items_shadowing_supertrait_items)
-        )]
-        let version = {
-            use super::super::resolved::ResolvedPackageable as _;
-
-            resolved_cask.version()
-        };
-
-        #[cfg(not(debug_assertions))]
-        let version = {
-            use super::super::resolved::ResolvedPackageable;
-
-            ResolvedPackageable::version(&resolved_cask)
-        };
-
-        let version = version.into_owned();
-
+    fn try_from((resolved_cask, is_requested): (ResolvedCask, bool)) -> Result<Self, Self::Error> {
         let token = resolved_cask.token.clone();
+
+        let version = resolved_cask.version.clone();
 
         let (variation_tag, variation) = resolved_cask.variation_entry()?;
 
@@ -52,6 +35,7 @@ impl TryFrom<ResolvedCask> for PreparedCask {
             variation_url: variation.url,
             variation_sha256: variation.sha256,
             variation_stanzas: Stanzas::from(variation.artifacts),
+            is_requested,
         };
 
         Ok(this)

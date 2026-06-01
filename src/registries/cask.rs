@@ -34,10 +34,7 @@ impl Registrable for CaskRegistry {
         }
     }
 
-    async fn resolve(
-        self: Arc<Self>,
-        package: Arc<str>,
-    ) -> anyhow::Result<Arc<Self::ResolvedPackage>> {
+    async fn resolve(self: Arc<Self>, package: Arc<str>) -> anyhow::Result<Arc<ResolvedCask>> {
         let resolved_cask = self.resolve_inner(package).await?;
 
         Ok(resolved_cask)

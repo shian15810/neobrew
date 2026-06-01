@@ -1,8 +1,6 @@
 mod cask;
 mod formula;
 
-use std::borrow::Cow;
-
 use enum_dispatch::enum_dispatch;
 
 pub(super) use self::{
@@ -37,8 +35,5 @@ pub(crate) enum RawPackage {
     Cask(RawCask),
 }
 
-#[cfg_attr(debug_assertions, expect(shadowing_supertrait_items))]
 #[enum_dispatch(RawPackage)]
-trait RawPackageable: Packageable {
-    fn version(&self) -> Cow<'_, str>;
-}
+trait RawPackageable: Packageable {}

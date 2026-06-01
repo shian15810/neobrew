@@ -14,8 +14,8 @@ use crate::ext::{
 };
 
 pub(crate) struct TempWriter {
-    file: NamedTempFile,
-    buf_file: BufWriter<File>,
+    temp_file: NamedTempFile,
+    buf_temp_file: BufWriter<File>,
 
     file_path: PathBuf,
     symlink_paths: Vec<PathBuf>,
@@ -30,15 +30,15 @@ impl TempWriter {
 
         fs::create_dir_all(file_base_path).await?;
 
-        let file = NamedTempFile::new_in(file_base_path)?;
+        let temp_file = NamedTempFile::new_in(file_base_path)?;
 
-        let async_file = File::open_write(file.path()).await?;
+        let async_temp_file = File::open_write(temp_file.path()).await?;
 
-        let buf_file = BufWriter::new(async_file);
+        let buf_temp_file = BufWriter::new(async_temp_file);
 
         let this = Self {
-            file,
-            buf_file,
+            temp_file,
+            buf_temp_file,
 
             file_path,
             symlink_paths,
@@ -53,16 +53,16 @@ impl PushOperator for TempWriter {
     type Output = TempWriterOutput;
 
     async fn feed(&mut self, chunk: Self::Item) -> anyhow::Result<()> {
-        self.buf_file.write_all(&chunk).await?;
+        self.buf_temp_file.write_all(&chunk).await?;
 
         Ok(())
     }
 
     async fn flush(mut self) -> anyhow::Result<Self::Output> {
-        self.buf_file.shutdown().await?;
+        self.buf_temp_file.shutdown().await?;
 
         let output = TempWriterOutput {
-            file: self.file,
+            temp_file: self.temp_file,
 
             file_path: self.file_path,
             symlink_paths: self.symlink_paths,
@@ -73,30 +73,30 @@ impl PushOperator for TempWriter {
 }
 
 pub(crate) struct TempWriterOutput {
-    file: NamedTempFile,
+    temp_file: NamedTempFile,
 
     file_path: PathBuf,
     symlink_paths: Vec<PathBuf>,
 }
 
 impl handler::AtomicWriter for TempWriterOutput {
-    async fn cleanup(self) -> anyhow::Result<()> {
-        self.file.close()?;
+    fn cleanup(self) -> anyhow::Result<()> {
+        self.temp_file.close()?;
 
         Ok(())
     }
 
     async fn persist(self) -> anyhow::Result<()> {
-        let dest_file_path = self.file_path;
+        let dest_path = self.file_path;
 
-        self.file.persist(&dest_file_path)?;
+        self.temp_file.persist(&dest_path)?;
 
         for symlink_path in self.symlink_paths {
             let symlink_base_path = symlink_path.base()?;
 
             fs::create_dir_all(symlink_base_path).await?;
 
-            dest_file_path
+            dest_path
                 .create_relative_symlink_atomically_at(symlink_path)
                 .await?;
         }

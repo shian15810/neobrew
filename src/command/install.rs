@@ -9,13 +9,13 @@ use indicatif::{MultiProgress, ProgressBar};
 use indoc::formatdoc;
 use tokio::task::JoinSet;
 
-use super::{Resolution, Runner};
+use super::Runner;
 use crate::{
     artifact::Artifact,
     compatibility::{Compatibility, Compatibilizer as _},
     context::Context,
     downloads::Downloads,
-    ext::{core::result::ResultExt as _, tokio::path::PathExt as _},
+    ext::core::result::ResultExt as _,
     linkers::Linkers,
     package::{
         Packageable as _,
@@ -25,23 +25,20 @@ use crate::{
     },
     pipeline::{Pipeline, handler::AtomicWriter as _, pull_operator, push_operator},
     placeholder::Placeholder,
-    registries::{Registries, ResolutionStrategy},
+    registries::Registries,
     relocation::{Relocation, Relocator as _},
     streams::Streams,
 };
 
 #[derive(Args)]
 pub(super) struct Install {
-    #[command(flatten)]
-    resolution: Resolution,
-
     #[arg(value_name = "PACKAGE")]
     packages: Vec<String>,
 }
 
 impl Runner for Install {
     async fn run_concurrent(self, context: Arc<Context>) -> anyhow::Result<()> {
-        let installation = Installation::prepare(self.packages, self.resolution, context).await?;
+        let installation = Installation::prepare(self.packages, context).await?;
 
         installation.start().await?;
 
@@ -51,7 +48,6 @@ impl Runner for Install {
 
 struct Installation {
     packages: Vec<String>,
-    resolution: Resolution,
 
     multi_pb: MultiProgress,
 
@@ -70,17 +66,12 @@ struct Installation {
 }
 
 impl Installation {
-    async fn prepare(
-        packages: Vec<String>,
-        resolution: Resolution,
-        context: Arc<Context>,
-    ) -> anyhow::Result<Arc<Self>> {
+    async fn prepare(packages: Vec<String>, context: Arc<Context>) -> anyhow::Result<Arc<Self>> {
         let placeholder = Placeholder::new(Arc::clone(&context));
         let placeholder = Arc::new(placeholder);
 
         let this = Self {
             packages,
-            resolution,
 
             multi_pb: MultiProgress::new(),
 
@@ -109,23 +100,16 @@ impl Installation {
 
         let this = Arc::clone(&self);
 
-        let strategy = self.resolution.strategy();
-
-        this.run_many(&self.packages, strategy).await?;
+        this.run_many(&self.packages).await?;
 
         Ok(())
     }
 
-    async fn run_many(
-        self: Arc<Self>,
-        packages: &[String],
-        strategy: ResolutionStrategy,
-    ) -> anyhow::Result<()> {
+    async fn run_many(self: Arc<Self>, packages: &[String]) -> anyhow::Result<()> {
         let registries = Registries::new(Arc::clone(&self.context));
 
-        let resolved_packages = registries
-            .resolve(packages.iter().cloned(), strategy)
-            .await?;
+        let (resolved_packages, requested_package_ids) =
+            registries.resolve(packages.iter().cloned()).await?;
 
         let max_id_length = resolved_packages
             .iter()
@@ -173,33 +157,39 @@ impl Installation {
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
 
-        let (resolved_packages_pbs, incompatible_resolved_packages_pbs) = resolved_packages
+        let (resolved_packages_pbs, resolved_packages_incompatible_pbs) = resolved_packages
             .into_iter()
             .zip(pbs)
             .partition::<Vec<_>, _>(|(resolved_package, _)| match resolved_package {
                 ResolvedPackage::Formula(_) => true,
                 ResolvedPackage::Cask(resolved_cask) => {
-                    self.compatibility.check(&resolved_cask.depends_on)
+                    self.compatibility.check(resolved_cask.depends_on())
                 },
             });
 
-        let (_, incompatible_pbs) = incompatible_resolved_packages_pbs
+        let (_, incompatible_pbs) = resolved_packages_incompatible_pbs
             .into_iter()
             .unzip::<_, _, Vec<_>, Vec<_>>();
 
-        for incompatible_pb in incompatible_pbs {
-            incompatible_pb.set_prefix("Incompatible");
+        for pb in incompatible_pbs {
+            pb.set_prefix("Incompatible");
 
-            incompatible_pb.finish();
+            pb.finish();
         }
 
         let (resolved_packages, pbs) = resolved_packages_pbs
             .into_iter()
             .unzip::<_, _, Vec<_>, Vec<_>>();
 
+        let is_requesteds = resolved_packages
+            .iter()
+            .map(|resolved_package| requested_package_ids.contains(resolved_package.id()))
+            .collect::<Vec<_>>();
+
         #[cfg(debug_assertions)]
         let prepared_packages = resolved_packages
             .into_iter()
+            .zip(is_requesteds)
             .map(PreparedPackage::try_from)
             .filter_map(Result::transpose_err)
             .try_collect::<Vec<_>>()?;
@@ -207,6 +197,7 @@ impl Installation {
         #[cfg(not(debug_assertions))]
         let prepared_packages = resolved_packages
             .into_iter()
+            .zip(is_requesteds)
             .map(PreparedPackage::try_from)
             .filter_map(Result::transpose_err)
             .collect::<anyhow::Result<Vec<_>>>()?;
@@ -241,6 +232,18 @@ impl Installation {
         prepared_package: PreparedPackage,
         pb: ProgressBar,
     ) -> anyhow::Result<()> {
+        let is_installed = self.linkers.is_installed(&prepared_package).await?;
+
+        let is_up_to_date = self.linkers.is_up_to_date(&prepared_package).await?;
+
+        if is_installed && is_up_to_date {
+            pb.set_prefix("Up-to-date");
+
+            pb.finish();
+
+            return Ok(());
+        }
+
         pb.set_prefix("Preparing");
 
         let id = prepared_package.id();
@@ -248,22 +251,6 @@ impl Installation {
         let version = prepared_package.version();
 
         let expected_sha256 = prepared_package.expected_sha256();
-
-        let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version);
-
-        if keg_dir_path.is_dir_exists_nofollow().await? {
-            let streamed_package = StreamedPackage::from(prepared_package);
-
-            self.relocate(&streamed_package, &pb).await?;
-
-            self.link(&streamed_package, &pb).await?;
-
-            pb.set_prefix("Installed");
-
-            pb.finish();
-
-            return Ok(());
-        }
 
         let download = self
             .downloads
@@ -322,7 +309,11 @@ impl Installation {
 
         self.link(&streamed_package, &pb).await?;
 
-        pb.set_prefix("Installed");
+        if is_installed && !is_up_to_date {
+            pb.set_prefix("Upgraded");
+        } else {
+            pb.set_prefix("Installed");
+        }
 
         pb.finish();
 
@@ -346,10 +337,10 @@ impl Installation {
                 .await?;
 
         if hashed_sha256 != expected_sha256 {
-            temp_pourer_output.cleanup().await?;
+            temp_pourer_output.cleanup()?;
 
             let err =
-                Self::streamed_sha256_mismatch_err(id, version, &hashed_sha256, expected_sha256);
+                self.streamed_sha256_mismatch_err(id, version, &hashed_sha256, expected_sha256);
 
             return Err(err);
         }
@@ -377,12 +368,12 @@ impl Installation {
                 .await?;
 
         if hashed_sha256 != expected_sha256 {
-            temp_writer_output.cleanup().await?;
+            temp_writer_output.cleanup()?;
 
-            temp_pourer_output.cleanup().await?;
+            temp_pourer_output.cleanup()?;
 
             let err =
-                Self::streamed_sha256_mismatch_err(id, version, &hashed_sha256, expected_sha256);
+                self.streamed_sha256_mismatch_err(id, version, &hashed_sha256, expected_sha256);
 
             return Err(err);
         }
@@ -394,7 +385,9 @@ impl Installation {
         Ok(pb)
     }
 
+    #[expect(clippy::unused_self)]
     fn streamed_sha256_mismatch_err(
+        &self,
         id: &str,
         version: &str,
         actual: &str,

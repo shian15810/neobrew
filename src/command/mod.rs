@@ -4,7 +4,6 @@ mod uninstall;
 use std::{ffi::OsString, sync::Arc};
 
 use clap::{
-    Args,
     ColorChoice,
     Parser,
     Subcommand,
@@ -20,7 +19,7 @@ use proc_exit::{WithCodeResultExt as _, sysexits::ToSysexitsResultExt as _};
 use tokio::process::Command;
 
 use self::{install::Install, uninstall::Uninstall};
-use crate::{context::Context, registries::ResolutionStrategy};
+use crate::context::Context;
 
 #[derive(Parser)]
 #[command(
@@ -149,23 +148,4 @@ enum Internal {
 #[enum_dispatch(Internal)]
 trait Runner {
     async fn run_concurrent(self, context: Arc<Context>) -> anyhow::Result<()>;
-}
-
-#[derive(Args)]
-struct Resolution {
-    #[arg(long, alias = "formulae", conflicts_with = "cask")]
-    formula: bool,
-
-    #[arg(long, alias = "casks", conflicts_with = "formula")]
-    cask: bool,
-}
-
-impl Resolution {
-    fn strategy(&self) -> ResolutionStrategy {
-        match (self.formula, self.cask) {
-            (true, _) => ResolutionStrategy::FormulaOnly,
-            (_, true) => ResolutionStrategy::CaskOnly,
-            _ => ResolutionStrategy::Both,
-        }
-    }
 }

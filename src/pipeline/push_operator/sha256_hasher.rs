@@ -20,12 +20,14 @@ impl PushOperator for Sha256Hasher {
     type Item = Bytes;
     type Output = String;
 
+    #[expect(clippy::unused_async_trait_impl)]
     async fn feed(&mut self, chunk: Self::Item) -> anyhow::Result<()> {
         self.digest.update(chunk);
 
         Ok(())
     }
 
+    #[expect(clippy::unused_async_trait_impl)]
     async fn flush(self) -> anyhow::Result<Self::Output> {
         let hashed_sha256 = self.digest.finalize();
         let hashed_sha256 = HexDisplay(&hashed_sha256);

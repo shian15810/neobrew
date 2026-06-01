@@ -42,13 +42,11 @@ impl Downloadable for CaskDownload {
         Ok(Some(archive_format))
     }
 
-    async fn symlink_file_paths(
+    async fn symlink_path_file_path(
         &self,
-        prepared_package: &Self::PreparedPackage,
+        prepared_package: &PreparedCask,
     ) -> anyhow::Result<(PathBuf, PathBuf)> {
         let prepared_cask = prepared_package;
-
-        let dir_path = self.context.homebrew_dirs.cache_dir();
 
         let version = prepared_cask.version();
 
@@ -85,12 +83,14 @@ impl Downloadable for CaskDownload {
 
         let file_name = format!("{url_hash}--{name}");
 
+        let dir_path = self.context.homebrew_dirs.cache_dir();
+
         let symlink_path = dir_path.join("Cask").join(symlink_name);
 
         let file_path = dir_path.join("downloads").join(file_name);
 
-        let symlink_file_paths = (symlink_path, file_path);
+        let symlink_path_file_path = (symlink_path, file_path);
 
-        Ok(symlink_file_paths)
+        Ok(symlink_path_file_path)
     }
 }
