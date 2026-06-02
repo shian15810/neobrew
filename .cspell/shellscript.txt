@@ -2,6 +2,8 @@
 clicolor
 Eeuo
 euvx
+mountrandom
+nobrowse
 OLDIFS
 postlint
 posttest

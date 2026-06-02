@@ -166,13 +166,13 @@ impl CaskLinker {
 
             let stanza_source_path = self.placeholder.resolve_source(stanza_source_pstr);
 
-            let src_path = staged_dir_path.join(stanza_source_path);
+            let src_item_path = staged_dir_path.join(stanza_source_path);
 
             let stanza_target_pstr = &stanza.target;
 
             let stanza_target_path = self.placeholder.resolve_target(stanza_target_pstr);
 
-            let dest_path = if stanza_target_path.is_relative() {
+            let dest_item_path = if stanza_target_path.is_relative() {
                 dest_base_path.join(stanza_target_path)
             } else {
                 stanza_target_path
@@ -180,33 +180,33 @@ impl CaskLinker {
 
             let stanza_rename_pstr = &stanza.rename;
 
-            let dest_path = match stanza_rename_pstr {
+            let dest_item_path = match stanza_rename_pstr {
                 Some(stanza_rename_pstr) => {
                     let stanza_rename_path = self.placeholder.resolve_target(stanza_rename_pstr);
 
                     if stanza_rename_path.is_relative() {
-                        dest_path.with_file_name(stanza_rename_path)
+                        dest_item_path.with_file_name(stanza_rename_path)
                     } else {
                         stanza_rename_path
                     }
                 },
-                None => dest_path,
+                None => dest_item_path,
             };
 
-            let dest_base_path = dest_path.base()?;
+            let dest_base_path = dest_item_path.base()?;
 
             fs::create_dir_all(dest_base_path).await?;
 
-            src_path
-                .create_relative_symlink_atomically_at(dest_path)
+            src_item_path
+                .create_relative_symlink_atomically_at(dest_item_path)
                 .await?;
 
             if let Some(permissions_mode) = permissions_mode {
-                let mut permissions = fs::symlink_metadata(&src_path).await?.permissions();
+                let mut permissions = fs::symlink_metadata(&src_item_path).await?.permissions();
 
                 permissions.set_mode(permissions.mode() | permissions_mode);
 
-                fs::set_permissions(src_path, permissions).await?;
+                fs::set_permissions(src_item_path, permissions).await?;
             }
         }
 

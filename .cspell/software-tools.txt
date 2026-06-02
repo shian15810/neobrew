@@ -6,6 +6,7 @@ colorpicker
 Colorpicker
 darwin
 devcontainers
+fseventsd
 linux
 linuxbrew
 mdimporter
@@ -25,6 +26,7 @@ Sonoma
 tahoe
 taplo
 Taplo
+timemachine
 tombi
 Tombi
 trixie

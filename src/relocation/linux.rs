@@ -45,8 +45,8 @@ impl RelocatorInner for Relocation {
         &self.context
     }
 
-    async fn patch_file(&self, path: &Path) -> anyhow::Result<()> {
-        let bytes = fs::read(path).await?;
+    async fn patch_file(&self, dest_file_path: &Path) -> anyhow::Result<()> {
+        let bytes = fs::read(dest_file_path).await?;
         let bytes = Arc::from(bytes);
 
         let has_magic = linux::Elf::has_magic(&bytes);
@@ -72,13 +72,13 @@ impl RelocatorInner for Relocation {
             return Ok(());
         }
 
-        let metadata = fs::symlink_metadata(path).await?;
+        let metadata = fs::symlink_metadata(dest_file_path).await?;
 
         let permissions = metadata.permissions();
 
-        let base_path = path.base()?;
+        let dest_base_path = dest_file_path.base()?;
 
-        let temp_file = NamedTempFile::new_in(base_path)?;
+        let temp_file = NamedTempFile::new_in(dest_base_path)?;
 
         let mut async_temp_file = File::open_write(temp_file.path()).await?;
 
@@ -86,9 +86,9 @@ impl RelocatorInner for Relocation {
 
         async_temp_file.shutdown().await?;
 
-        let file = temp_file.persist(path)?;
+        let dest_file = temp_file.persist(dest_file_path)?;
 
-        file.set_permissions(permissions)?;
+        dest_file.set_permissions(permissions)?;
 
         Ok(())
     }

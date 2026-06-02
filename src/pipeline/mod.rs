@@ -1,4 +1,5 @@
 pub(crate) mod handler;
+mod operator;
 pub(crate) mod pull_operator;
 pub(crate) mod push_operator;
 

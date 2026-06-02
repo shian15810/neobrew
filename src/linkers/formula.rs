@@ -183,22 +183,25 @@ impl FormulaLinker {
         let mut src_base_entries = fs::read_dir(src_base_path).await?;
 
         while let Some(src_base_entry) = src_base_entries.next_entry().await? {
-            let src_path = src_base_entry.path();
+            let src_file_name = src_base_entry.file_name();
 
-            let dest_path = dest_base_path.join(src_base_entry.file_name());
+            let src_file_path = src_base_entry.path();
 
-            if src_path.is_dir_exists_nofollow().await? {
+            let dest_file_path = dest_base_path.join(src_file_name);
+
+            if src_file_path.is_dir_exists_nofollow().await? {
                 if should_skip {
                     continue;
                 }
 
-                self.link_dir(&src_path, &dest_path, false).await?;
+                self.link_dir(&src_file_path, &dest_file_path, false)
+                    .await?;
 
                 continue;
             }
 
-            src_path
-                .create_relative_symlink_atomically_at(dest_path)
+            src_file_path
+                .create_relative_symlink_atomically_at(dest_file_path)
                 .await?;
         }
 

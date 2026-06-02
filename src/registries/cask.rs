@@ -83,8 +83,8 @@ impl RegistrableJson for CaskRegistry {
     fn json_path(&self, id: &str) -> PathBuf {
         let file_name = format!("{id}.json");
 
-        let dir = self.context.homebrew_dirs.cache_dir();
+        let cache_dir_path = self.context.homebrew_dirs.cache_dir();
 
-        dir.join("api/cask").join(file_name)
+        cache_dir_path.join("api/cask").join(file_name)
     }
 }

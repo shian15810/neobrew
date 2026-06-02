@@ -64,11 +64,11 @@ impl Downloadable for FormulaDownload {
             bottle_rebuild => format!("{file_name}.{bottle_rebuild}.tar.gz"),
         };
 
-        let dir_path = self.context.homebrew_dirs.cache_dir();
+        let cache_dir_path = self.context.homebrew_dirs.cache_dir();
 
-        let symlink_path = dir_path.join(symlink_name);
+        let symlink_path = cache_dir_path.join(symlink_name);
 
-        let file_path = dir_path.join("downloads").join(file_name);
+        let file_path = cache_dir_path.join("downloads").join(file_name);
 
         let symlink_path_file_path = (symlink_path, file_path);
 

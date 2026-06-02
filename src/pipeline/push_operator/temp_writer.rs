@@ -17,20 +17,20 @@ pub(crate) struct TempWriter {
     temp_file: NamedTempFile,
     buf_temp_file: BufWriter<File>,
 
-    file_path: PathBuf,
+    dest_file_path: PathBuf,
     symlink_paths: Vec<PathBuf>,
 }
 
 impl TempWriter {
-    pub(crate) async fn new(
-        file_path: PathBuf,
+    pub(crate) async fn try_init(
+        dest_file_path: PathBuf,
         symlink_paths: Vec<PathBuf>,
     ) -> anyhow::Result<Self> {
-        let file_base_path = file_path.base()?;
+        let dest_base_path = dest_file_path.base()?;
 
-        fs::create_dir_all(file_base_path).await?;
+        fs::create_dir_all(dest_base_path).await?;
 
-        let temp_file = NamedTempFile::new_in(file_base_path)?;
+        let temp_file = NamedTempFile::new_in(dest_base_path)?;
 
         let async_temp_file = File::open_write(temp_file.path()).await?;
 
@@ -40,7 +40,7 @@ impl TempWriter {
             temp_file,
             buf_temp_file,
 
-            file_path,
+            dest_file_path,
             symlink_paths,
         };
 
@@ -64,7 +64,7 @@ impl PushOperator for TempWriter {
         let output = TempWriterOutput {
             temp_file: self.temp_file,
 
-            file_path: self.file_path,
+            dest_file_path: self.dest_file_path,
             symlink_paths: self.symlink_paths,
         };
 
@@ -75,7 +75,7 @@ impl PushOperator for TempWriter {
 pub(crate) struct TempWriterOutput {
     temp_file: NamedTempFile,
 
-    file_path: PathBuf,
+    dest_file_path: PathBuf,
     symlink_paths: Vec<PathBuf>,
 }
 
@@ -87,16 +87,14 @@ impl handler::AtomicWriter for TempWriterOutput {
     }
 
     async fn persist(self) -> anyhow::Result<()> {
-        let dest_path = self.file_path;
-
-        self.temp_file.persist(&dest_path)?;
+        self.temp_file.persist(&self.dest_file_path)?;
 
         for symlink_path in self.symlink_paths {
             let symlink_base_path = symlink_path.base()?;
 
             fs::create_dir_all(symlink_base_path).await?;
 
-            dest_path
+            self.dest_file_path
                 .create_relative_symlink_atomically_at(symlink_path)
                 .await?;
         }

@@ -99,18 +99,18 @@ impl Commands {
                 proc_exit::Code::SUCCESS.ok()
             },
             Self::External(args) => {
-                let mut cmd = Command::new("brew");
+                let mut brew = Command::new("brew");
 
-                cmd.args(args)
+                brew.args(args)
                     .env("HOMEBREW_NO_ANALYTICS", "1")
                     .env("HOMEBREW_NO_ENV_HINTS", "1");
 
                 match context.config.verbosity_filter {
                     VerbosityFilter::Debug => {
-                        cmd.env("HOMEBREW_DEBUG", "1");
+                        brew.env("HOMEBREW_DEBUG", "1");
                     },
                     VerbosityFilter::Info => {
-                        cmd.env("HOMEBREW_VERBOSE", "1");
+                        brew.env("HOMEBREW_VERBOSE", "1");
                     },
                     _ => {},
                 }
@@ -118,15 +118,15 @@ impl Commands {
                 #[expect(clippy::match_wildcard_for_single_variants)]
                 match context.config.color_choice {
                     ColorChoice::Never => {
-                        cmd.env("HOMEBREW_NO_COLOR", "1");
+                        brew.env("HOMEBREW_NO_COLOR", "1");
                     },
                     ColorChoice::Always => {
-                        cmd.env("HOMEBREW_COLOR", "1");
+                        brew.env("HOMEBREW_COLOR", "1");
                     },
                     _ => {},
                 }
 
-                let result = cmd.status().await;
+                let result = brew.status().await;
 
                 let status = result.to_sysexits()?;
 

@@ -22,19 +22,19 @@ use crate::{
 
 pub(crate) struct TempPourer {
     archive_format: Option<ArchiveFormat>,
-    dir_path: PathBuf,
+    dest_dir_path: PathBuf,
     symlink_paths: Vec<PathBuf>,
 }
 
 impl TempPourer {
     pub(crate) fn new(
         archive_format: Option<ArchiveFormat>,
-        dir_path: PathBuf,
+        dest_dir_path: PathBuf,
         symlink_paths: Vec<PathBuf>,
     ) -> Self {
         Self {
             archive_format,
-            dir_path,
+            dest_dir_path,
             symlink_paths,
         }
     }
@@ -58,32 +58,32 @@ impl TempPourer {
                 let mut zip = ZipFileReader::with_tokio(buf_reader);
 
                 while let Some(mut entry_reader) = zip.next_with_entry().await? {
-                    let file_name = entry_reader.reader().entry().filename().as_str()?;
+                    let src_file_pstr = entry_reader.reader().entry().filename().as_str()?;
 
-                    let file_path = Path::new(file_name);
+                    let src_file_path = Path::new(src_file_pstr);
 
-                    let is_file_path_safe = file_path
+                    let is_src_file_path_safe = src_file_path
                         .components()
                         .all(|component| matches!(component, Component::Normal(_)));
 
-                    if !is_file_path_safe {
-                        let err = anyhow!(r#"Unsafe ZIP entry: "{file_name}""#);
+                    if !is_src_file_path_safe {
+                        let err = anyhow!(r#"Unsafe ZIP entry: "{src_file_pstr}""#);
 
                         return Err(err);
                     }
 
-                    if file_name.ends_with('/') {
+                    if src_file_pstr.ends_with('/') {
                         zip = entry_reader.skip().await?;
                     } else {
                         let dest_base_path = dir.path();
 
-                        let dest_path = dest_base_path.join(file_path);
+                        let dest_file_path = dest_base_path.join(src_file_path);
 
-                        let dest_base_path = dest_path.base()?;
+                        let dest_base_path = dest_file_path.base()?;
 
                         fs::create_dir_all(dest_base_path).await?;
 
-                        let mut dest_file = File::create(dest_path).await?;
+                        let mut dest_file = File::create(dest_file_path).await?;
 
                         io::copy(&mut entry_reader.reader_mut().compat(), &mut dest_file).await?;
 
@@ -104,9 +104,11 @@ impl PullOperator for TempPourer {
         self,
         reader: impl AsyncRead + Unpin + Send,
     ) -> anyhow::Result<Self::Output> {
-        fs::create_dir_all(&self.dir_path).await?;
+        let dest_base_path = &self.dest_dir_path;
 
-        let temp_dir = TempDir::new_in(&self.dir_path)?;
+        fs::create_dir_all(dest_base_path).await?;
+
+        let temp_dir = TempDir::new_in(dest_base_path)?;
 
         let mut buf_reader = BufReader::new(reader);
 
@@ -135,7 +137,7 @@ impl PullOperator for TempPourer {
         let output = TempPourerOutput {
             temp_dir,
 
-            dir_path: self.dir_path,
+            dest_dir_path: self.dest_dir_path,
             symlink_paths: self.symlink_paths,
         };
 
@@ -146,7 +148,7 @@ impl PullOperator for TempPourer {
 pub(crate) struct TempPourerOutput {
     temp_dir: TempDir,
 
-    dir_path: PathBuf,
+    dest_dir_path: PathBuf,
     symlink_paths: Vec<PathBuf>,
 }
 
@@ -160,24 +162,26 @@ impl handler::AtomicWriter for TempPourerOutput {
     async fn persist(self) -> anyhow::Result<()> {
         let src_base_path = self.temp_dir.path();
 
-        let dest_base_path = self.dir_path;
+        let dest_base_path = self.dest_dir_path;
 
         let mut src_base_entries = fs::read_dir(src_base_path).await?;
 
         while let Some(src_base_entry) = src_base_entries.next_entry().await? {
-            let src_path = src_base_entry.path();
+            let src_dir_name = src_base_entry.file_name();
 
-            let dest_path = dest_base_path.join(src_base_entry.file_name());
+            let src_dir_path = src_base_entry.path();
 
-            if !src_path.is_dir_exists_nofollow().await? {
+            let dest_dir_path = dest_base_path.join(src_dir_name);
+
+            if !src_dir_path.is_dir_exists_nofollow().await? {
                 continue;
             }
 
-            if dest_path.is_dir_exists_nofollow().await? {
-                fs::remove_dir_all(&dest_path).await?;
+            if dest_dir_path.is_dir_exists_nofollow().await? {
+                fs::remove_dir_all(&dest_dir_path).await?;
             }
 
-            fs::rename(src_path, dest_path).await?;
+            fs::rename(src_dir_path, dest_dir_path).await?;
         }
 
         self.temp_dir.close()?;

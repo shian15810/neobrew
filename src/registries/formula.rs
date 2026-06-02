@@ -136,8 +136,8 @@ impl RegistrableJson for FormulaRegistry {
     fn json_path(&self, id: &str) -> PathBuf {
         let file_name = format!("{id}.json");
 
-        let dir = self.context.homebrew_dirs.cache_dir();
+        let cache_dir_path = self.context.homebrew_dirs.cache_dir();
 
-        dir.join("api/formula").join(file_name)
+        cache_dir_path.join("api/formula").join(file_name)
     }
 }

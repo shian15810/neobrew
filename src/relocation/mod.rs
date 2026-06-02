@@ -69,22 +69,22 @@ trait RelocatorInner: From<([(&'static str, String); 4], Arc<Context>)> {
     fn context(&self) -> &Context;
 
     async fn patch_keg(&self, keg_dir_path: &Path) -> anyhow::Result<()> {
-        let mut entries = WalkDir::new(keg_dir_path);
+        let mut keg_entries = WalkDir::new(keg_dir_path);
 
-        while let Some(entry) = entries.next().await {
-            let path = entry?.path();
+        while let Some(keg_entry) = keg_entries.next().await {
+            let keg_entry_path = keg_entry?.path();
 
-            if !path.is_file_exists_nofollow().await? {
+            if !keg_entry_path.is_file_exists_nofollow().await? {
                 continue;
             }
 
-            self.patch_file(&path).await?;
+            self.patch_file(&keg_entry_path).await?;
         }
 
         Ok(())
     }
 
-    async fn patch_file(&self, path: &Path) -> anyhow::Result<()>;
+    async fn patch_file(&self, dest_file_path: &Path) -> anyhow::Result<()>;
 
     fn replace_bytes(&self, bytes: &[u8]) -> anyhow::Result<Vec<u8>>;
 

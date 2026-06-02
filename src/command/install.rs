@@ -284,9 +284,11 @@ impl Installation {
             self.stream_from_download(id, version, expected_sha256, operators, stream)
                 .await?
         } else {
-            let temp_writer =
-                push_operator::TempWriter::new(download.file_path, vec![download.symlink_path])
-                    .await?;
+            let temp_writer = push_operator::TempWriter::try_init(
+                download.file_path,
+                vec![download.symlink_path],
+            )
+            .await?;
 
             let (stream, content_length) = self.streams.oci_or_url(&prepared_package).await?;
 
