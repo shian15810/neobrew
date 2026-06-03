@@ -1,4 +1,7 @@
 # Custom Dictionary Words
+apfs
+APFS
+Automator
 caskroom
 catalina
 catppuccin
@@ -6,11 +9,13 @@ colorpicker
 Colorpicker
 darwin
 devcontainers
+diskutil
 fseventsd
 linux
 linuxbrew
 mdimporter
 Mdimporter
+mkbom
 nbrew
 neobrew
 Neobrew

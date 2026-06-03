@@ -4,6 +4,7 @@ use std::{
 };
 
 use async_recursion::async_recursion;
+use futures::future;
 use tokio::fs;
 
 use super::Linkerer;
@@ -75,9 +76,9 @@ impl Linkerer for FormulaLinker {
 
         let id = prepared_formula.id();
 
-        let version = prepared_formula.version();
+        let version_revision = prepared_formula.version_revision();
 
-        let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version);
+        let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version_revision);
 
         let is_keg_dir_exists = keg_dir_path.is_dir_exists_nofollow().await?;
 
@@ -107,11 +108,18 @@ impl FormulaLinker {
     pub(super) async fn try_init(context: Arc<Context>) -> anyhow::Result<Self> {
         let prefix_dir_path = context.homebrew_dirs.prefix_dir();
 
-        for must_exist_dir_name in MUST_EXIST_DIR_NAMES.as_slice() {
-            let must_exist_dir_path = prefix_dir_path.join(must_exist_dir_name);
+        let must_exist_dir_name_futs =
+            MUST_EXIST_DIR_NAMES
+                .iter()
+                .map(async |must_exist_dir_name| {
+                    let must_exist_dir_path = prefix_dir_path.join(must_exist_dir_name);
 
-            fs::create_dir_all(must_exist_dir_path).await?;
-        }
+                    fs::create_dir_all(must_exist_dir_path).await?;
+
+                    anyhow::Ok(())
+                });
+
+        future::try_join_all(must_exist_dir_name_futs).await?;
 
         let this = Self {
             context,
@@ -148,11 +156,11 @@ impl FormulaLinker {
         let linked_keg_prefix_symlink_path =
             self.context.homebrew_dirs.linked_keg_prefix_symlink(id);
 
-        for keg_link_dir_name in KEG_LINK_DIR_NAMES {
+        let keg_link_dir_name_futs = KEG_LINK_DIR_NAMES.iter().map(async |keg_link_dir_name| {
             let keg_link_dir_path = keg_dir_path.join(keg_link_dir_name);
 
             if !keg_link_dir_path.try_exists()? {
-                continue;
+                return Ok(());
             }
 
             let prefix_link_dir_path = prefix_dir_path.join(keg_link_dir_name);
@@ -161,7 +169,11 @@ impl FormulaLinker {
 
             self.link_dir(&keg_link_dir_path, &prefix_link_dir_path, should_skip)
                 .await?;
-        }
+
+            anyhow::Ok(())
+        });
+
+        future::try_join_all(keg_link_dir_name_futs).await?;
 
         keg_dir_path
             .create_relative_symlink_atomically_at(linked_keg_prefix_symlink_path)
@@ -231,9 +243,9 @@ impl FormulaLinker {
     async fn is_opt_linked(&self, prepared_formula: &PreparedFormula) -> anyhow::Result<bool> {
         let id = prepared_formula.id();
 
-        let version = prepared_formula.version();
+        let version_revision = prepared_formula.version_revision();
 
-        let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version);
+        let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version_revision);
 
         let opt_prefix_symlink_path = self.context.homebrew_dirs.opt_prefix_symlink(id);
 
@@ -252,9 +264,9 @@ impl FormulaLinker {
     async fn is_keg_linked(&self, prepared_formula: &PreparedFormula) -> anyhow::Result<bool> {
         let id = prepared_formula.id();
 
-        let version = prepared_formula.version();
+        let version_revision = prepared_formula.version_revision();
 
-        let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version);
+        let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version_revision);
 
         let linked_keg_prefix_symlink_path =
             self.context.homebrew_dirs.linked_keg_prefix_symlink(id);

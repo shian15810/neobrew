@@ -1,12 +1,9 @@
 use std::sync::Arc;
 
-use anyhow::anyhow;
-use bytes::Bytes;
 use clap::Args;
 use frunk::hlist_pat;
-use futures::stream;
+use futures::stream::StreamExt as _;
 use indicatif::{MultiProgress, ProgressBar};
-use indoc::formatdoc;
 use tokio::task::JoinSet;
 
 use super::Runner;
@@ -23,7 +20,7 @@ use crate::{
         resolved::ResolvedPackage,
         streamed::StreamedPackage,
     },
-    pipeline::{Pipeline, handler::AtomicWriter as _, pull_operator, push_operator},
+    pipeline::{Operator as _, Pipeline, post_operator, pull_operator, push_operator},
     placeholder::Placeholder,
     registries::Registries,
     relocation::{Relocation, Relocator as _},
@@ -100,16 +97,15 @@ impl Installation {
 
         let this = Arc::clone(&self);
 
-        this.run_many(&self.packages).await?;
+        this.run_many().await?;
 
         Ok(())
     }
 
-    async fn run_many(self: Arc<Self>, packages: &[String]) -> anyhow::Result<()> {
+    async fn run_many(self: Arc<Self>) -> anyhow::Result<()> {
         let registries = Registries::new(Arc::clone(&self.context));
 
-        let (resolved_packages, requested_package_ids) =
-            registries.resolve(packages.iter().cloned()).await?;
+        let (resolved_packages, requested_package_ids) = registries.resolve(&self.packages).await?;
 
         let max_id_length = resolved_packages
             .iter()
@@ -257,53 +253,57 @@ impl Installation {
             .retrieve(&prepared_package, expected_sha256)
             .await?;
 
-        let pourer_dir_path = match prepared_package {
+        let (stream, content_length) = if download.is_verified {
+            let (stream, content_length) = self.streams.download(&download.file_path).await?;
+
+            let stream = stream.left_stream();
+
+            let content_length = Some(content_length);
+
+            (stream, content_length)
+        } else {
+            let (stream, content_length) = self.streams.oci_or_url(&prepared_package).await?;
+
+            let stream = stream.right_stream();
+
+            (stream, content_length)
+        };
+
+        let sha256_hasher = push_operator::Sha256Hasher::new(expected_sha256.to_owned());
+
+        let pour_dir_path = match prepared_package {
             PreparedPackage::Formula(_) => self.context.homebrew_dirs.cellar_dir(),
             PreparedPackage::Cask(_) => self.context.homebrew_dirs.staged_dir(id, version),
         };
 
+        let temp_writer = push_operator::TempWriter::try_init(
+            download.file_path,
+            vec![download.symlink_path],
+            !download.is_verified,
+        )
+        .await?;
+
+        let dmg_pourer = post_operator::DmgPourer::try_init(
+            pour_dir_path.clone(),
+            download.archive_format.clone(),
+        )
+        .await?;
+
+        let temp_writer = temp_writer.pipe(dmg_pourer);
+
         let temp_pourer =
-            pull_operator::TempPourer::new(download.archive_format, pourer_dir_path, vec![]);
+            pull_operator::TempPourer::try_init(pour_dir_path, vec![], download.archive_format)
+                .await?;
 
-        let sha256_hasher = push_operator::Sha256Hasher::new();
+        let pb_updater = push_operator::PbUpdater::try_new(pb, content_length)?;
 
-        let pb = if download.is_valid {
-            let (stream, content_length) = self.streams.download(&download.file_path).await?;
-
-            let content_length = Some(content_length);
-
-            let pb_updater = push_operator::PbUpdater::try_new(pb, content_length)?;
-
-            let operators = Operators {
-                temp_pourer,
-                temp_writer: (),
-                sha256_hasher,
-                pb_updater,
-            };
-
-            self.stream_from_download(id, version, expected_sha256, operators, stream)
-                .await?
-        } else {
-            let temp_writer = push_operator::TempWriter::try_init(
-                download.file_path,
-                vec![download.symlink_path],
-            )
+        let hlist_pat![_, _, _, pb] = Pipeline::build(stream, Arc::clone(&self.context))
+            .fanout(sha256_hasher)
+            .fanout(temp_writer)
+            .fanout(temp_pourer)
+            .fanout(pb_updater)
+            .run_parallel()
             .await?;
-
-            let (stream, content_length) = self.streams.oci_or_url(&prepared_package).await?;
-
-            let pb_updater = push_operator::PbUpdater::try_new(pb, content_length)?;
-
-            let operators = Operators {
-                pb_updater,
-                sha256_hasher,
-                temp_writer,
-                temp_pourer,
-            };
-
-            self.stream_from_oci_or_url(id, version, expected_sha256, operators, stream)
-                .await?
-        };
 
         let streamed_package = StreamedPackage::from(prepared_package);
 
@@ -320,87 +320,6 @@ impl Installation {
         pb.finish();
 
         Ok(())
-    }
-
-    async fn stream_from_download(
-        &self,
-        id: &str,
-        version: &str,
-        expected_sha256: &str,
-        operators: Operators<()>,
-        stream: impl stream::Stream<Item = anyhow::Result<Bytes>> + Send + 'static,
-    ) -> anyhow::Result<ProgressBar> {
-        let hlist_pat![pb, hashed_sha256, temp_pourer_output] =
-            Pipeline::build(stream, Arc::clone(&self.context))
-                .fanout(operators.pb_updater)
-                .fanout(operators.sha256_hasher)
-                .fanout(operators.temp_pourer)
-                .run_parallel()
-                .await?;
-
-        if hashed_sha256 != expected_sha256 {
-            temp_pourer_output.cleanup()?;
-
-            let err =
-                self.streamed_sha256_mismatch_err(id, version, &hashed_sha256, expected_sha256);
-
-            return Err(err);
-        }
-
-        temp_pourer_output.persist().await?;
-
-        Ok(pb)
-    }
-
-    async fn stream_from_oci_or_url(
-        &self,
-        id: &str,
-        version: &str,
-        expected_sha256: &str,
-        operators: Operators,
-        stream: impl stream::Stream<Item = anyhow::Result<Bytes>> + Send + 'static,
-    ) -> anyhow::Result<ProgressBar> {
-        let hlist_pat![pb, hashed_sha256, temp_writer_output, temp_pourer_output] =
-            Pipeline::build(stream, Arc::clone(&self.context))
-                .fanout(operators.pb_updater)
-                .fanout(operators.sha256_hasher)
-                .fanout(operators.temp_writer)
-                .fanout(operators.temp_pourer)
-                .run_parallel()
-                .await?;
-
-        if hashed_sha256 != expected_sha256 {
-            temp_writer_output.cleanup()?;
-
-            temp_pourer_output.cleanup()?;
-
-            let err =
-                self.streamed_sha256_mismatch_err(id, version, &hashed_sha256, expected_sha256);
-
-            return Err(err);
-        }
-
-        temp_writer_output.persist().await?;
-
-        temp_pourer_output.persist().await?;
-
-        Ok(pb)
-    }
-
-    #[expect(clippy::unused_self)]
-    fn streamed_sha256_mismatch_err(
-        &self,
-        id: &str,
-        version: &str,
-        actual: &str,
-        expected: &str,
-    ) -> anyhow::Error {
-        anyhow!(formatdoc! {r#"
-            SHA-256 mismatch detected for package "{id}" of version "{version}":
-
-                - Actual    :   "{actual}"
-                - Expected  :   "{expected}""#,
-        })
     }
 
     async fn relocate(
@@ -433,11 +352,4 @@ impl Installation {
 
         Ok(())
     }
-}
-
-struct Operators<TempWriter = push_operator::TempWriter> {
-    pb_updater: push_operator::PbUpdater,
-    sha256_hasher: push_operator::Sha256Hasher,
-    temp_writer: TempWriter,
-    temp_pourer: pull_operator::TempPourer,
 }

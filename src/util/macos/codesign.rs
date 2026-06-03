@@ -7,15 +7,15 @@ use tokio_util::task::AbortOnDropHandle;
 pub(crate) struct Codesign;
 
 impl Codesign {
-    pub(crate) async fn in_place(path: &Path) -> anyhow::Result<()> {
-        let path = path.to_owned();
+    pub(crate) async fn in_place(target_path: &Path) -> anyhow::Result<()> {
+        let target_path = target_path.to_owned();
 
         let handle = task::spawn_blocking(|| {
             let settings = SigningSettings::default();
 
             let signer = UnifiedSigner::new(settings);
 
-            signer.sign_path_in_place(path)?;
+            signer.sign_path_in_place(target_path)?;
 
             anyhow::Ok(())
         });

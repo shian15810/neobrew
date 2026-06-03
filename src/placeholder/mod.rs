@@ -35,12 +35,12 @@ impl Placeholder {
     }
 
     pub(crate) fn resolve_source(&self, pstr: &str) -> PathBuf {
-        self.expand(pstr)
+        self.replace_pstr(pstr)
     }
 
     #[cfg(debug_assertions)]
     pub(crate) fn resolve_target(&self, pstr: &str) -> PathBuf {
-        let path = self.expand(pstr);
+        let path = self.replace_pstr(pstr);
 
         if path.is_relative() {
             return path;
@@ -62,10 +62,10 @@ impl Placeholder {
 
     #[cfg(not(debug_assertions))]
     pub(crate) fn resolve_target(&self, pstr: &str) -> PathBuf {
-        self.expand(pstr)
+        self.replace_pstr(pstr)
     }
 
-    fn expand(&self, pstr: &str) -> PathBuf {
+    fn replace_pstr(&self, pstr: &str) -> PathBuf {
         let pstr = match pstr.strip_prefix("~/") {
             Some(suffix_pstr) => format!("/$HOME/{suffix_pstr}"),
             None if pstr == "~" => "/$HOME".to_owned(),

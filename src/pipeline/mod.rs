@@ -1,5 +1,5 @@
-pub(crate) mod handler;
-mod operator;
+mod channels;
+pub(crate) mod post_operator;
 pub(crate) mod pull_operator;
 pub(crate) mod push_operator;
 
@@ -17,12 +17,15 @@ use futures::{
 use tokio::task;
 use tokio_util::{sync::PollSender, task::AbortOnDropHandle};
 
+use self::{channels::PipelineChannels as Channels, post_operator::PostOperator};
 use crate::context::Context;
 
 pub(crate) struct Pipeline<Item, St, Si, Handles> {
     stream: St,
     sink: Si,
     handles: Handles,
+
+    channels: Arc<Channels>,
 
     context: Arc<Context>,
 
@@ -34,10 +37,15 @@ impl<Item, St> Pipeline<Item, St, sink::SinkErrInto<sink::Drain<Item>, Item, any
         let sink = sink::drain();
         let sink = sink.sink_err_into();
 
+        let channels = Channels::new();
+        let channels = Arc::new(channels);
+
         Self {
             stream,
             sink,
             handles: HNil,
+
+            channels,
 
             context,
 
@@ -63,7 +71,7 @@ impl<
         sink::Fanout<Si, sink::SinkErrInto<PollSender<Item>, Item, anyhow::Error>>,
         HCons<AbortOnDropHandle<anyhow::Result<Op::Output>>, Handles>,
     > {
-        let (sink, handle) = operator.launch(&self.context);
+        let (sink, handle) = operator.launch(Arc::clone(&self.channels), Arc::clone(&self.context));
 
         let sink = sink.sink_err_into();
         let sink = self.sink.fanout(sink);
@@ -75,6 +83,8 @@ impl<
                 head: handle,
                 tail: self.handles,
             },
+
+            channels: self.channels,
 
             context: self.context,
 
@@ -144,14 +154,61 @@ impl<Item, Handles: Collect> Collect for HCons<AbortOnDropHandle<anyhow::Result<
     }
 }
 
-pub(crate) trait Operator<Item, _Marker> {
+pub(crate) trait Operator<Item, _Marker>: Sized {
     type Output;
 
     fn launch(
         self,
-        context: &Context,
+        channels: Arc<Channels>,
+        context: Arc<Context>,
     ) -> (
         PollSender<Item>,
         AbortOnDropHandle<anyhow::Result<Self::Output>>,
     );
+
+    fn pipe<PostOp>(self, post_operator: PostOp) -> PipedOperator<Self, PostOp> {
+        PipedOperator {
+            operator: self,
+            post_operator,
+        }
+    }
+}
+
+pub(crate) struct PipedOperator<Op, PostOp> {
+    operator: Op,
+    post_operator: PostOp,
+}
+
+impl<
+    Item,
+    Op: Operator<Item, _Marker, Output: Send + 'static>,
+    PostOp: PostOperator<Input = Op::Output, Output: Send> + 'static,
+    _Marker,
+> Operator<Item, _Marker> for PipedOperator<Op, PostOp>
+{
+    type Output = PostOp::Output;
+
+    fn launch(
+        self,
+        channels: Arc<Channels>,
+        context: Arc<Context>,
+    ) -> (
+        PollSender<Item>,
+        AbortOnDropHandle<anyhow::Result<Self::Output>>,
+    ) {
+        let (sink, handle) = self
+            .operator
+            .launch(Arc::clone(&channels), Arc::clone(&context));
+
+        let handle = task::spawn(async {
+            let input = handle.await??;
+
+            let output = self.post_operator.proceed(input, channels, context).await?;
+
+            anyhow::Ok(output)
+        });
+        let handle = AbortOnDropHandle::new(handle);
+
+        (sink, handle)
+    }
 }

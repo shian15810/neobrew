@@ -1,9 +1,11 @@
-use std::{fmt::Write as _, time::Duration};
+use std::{fmt::Write as _, sync::Arc, time::Duration};
 
+use anyhow::anyhow;
 use bytes::Bytes;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 
-use super::PushOperator;
+use super::{super::channels::PipelineChannels as Channels, PushOperator};
+use crate::context::Context;
 
 pub(crate) struct PbUpdater {
     pb: ProgressBar,
@@ -115,10 +117,44 @@ impl PushOperator for PbUpdater {
         Ok(())
     }
 
-    #[expect(clippy::unused_async_trait_impl)]
-    async fn flush(self) -> anyhow::Result<Self::Output> {
+    async fn flush(
+        self,
+        channels: Arc<Channels>,
+        _context: Arc<Context>,
+    ) -> anyhow::Result<Self::Output> {
+        let mut is_verified_rx = channels.is_verified_rx.clone();
+
+        let is_verified = *is_verified_rx.wait_for(Option::is_some).await?;
+
+        if matches!(is_verified, Some(false)) {
+            self.cleanup()?;
+
+            let err = anyhow!("Progress bar updater failed due to SHA-256 mismatch");
+
+            return Err(err);
+        }
+
+        let pb = self.pb.clone();
+
+        self.persist().await?;
+
+        let output = pb;
+
+        Ok(output)
+    }
+
+    fn cleanup(self) -> anyhow::Result<()> {
         let pb = self.pb;
 
-        Ok(pb)
+        pb.set_prefix("Mismatched");
+
+        pb.finish();
+
+        Ok(())
+    }
+
+    #[expect(clippy::unused_async_trait_impl)]
+    async fn persist(self) -> anyhow::Result<()> {
+        Ok(())
     }
 }

@@ -1,5 +1,7 @@
 mod temp_pourer;
 
+use std::sync::Arc;
+
 use bytes::Buf;
 use futures::stream::StreamExt as _;
 use tokio::{
@@ -11,7 +13,7 @@ use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::{io::StreamReader, sync::PollSender, task::AbortOnDropHandle};
 
 pub(crate) use self::temp_pourer::TempPourer;
-use super::Operator;
+use super::{Operator, channels::PipelineChannels as Channels};
 use crate::context::Context;
 
 #[trait_variant::make(Send)]
@@ -19,10 +21,17 @@ pub(crate) trait PullOperator {
     type Output;
 
     #[expect(clippy::wrong_self_convention)]
-    async fn from_reader(
+    async fn from_reader(&self, reader: impl AsyncRead + Unpin + Send) -> anyhow::Result<()>;
+
+    async fn after_drain(
         self,
-        reader: impl AsyncRead + Unpin + Send,
+        channels: Arc<Channels>,
+        context: Arc<Context>,
     ) -> anyhow::Result<Self::Output>;
+
+    fn cleanup(self) -> anyhow::Result<()>;
+
+    async fn persist(self) -> anyhow::Result<()>;
 }
 
 impl<
@@ -35,7 +44,8 @@ impl<
 
     fn launch(
         self,
-        context: &Context,
+        channels: Arc<Channels>,
+        context: Arc<Context>,
     ) -> (
         PollSender<Item>,
         AbortOnDropHandle<anyhow::Result<Self::Output>>,
@@ -50,9 +60,11 @@ impl<
         let mut reader = StreamReader::new(stream);
 
         let handle = task::spawn(async move {
-            let output = self.from_reader(&mut reader).await?;
+            self.from_reader(&mut reader).await?;
 
             io::copy(&mut reader, &mut io::sink()).await?;
+
+            let output = self.after_drain(channels, context).await?;
 
             anyhow::Ok(output)
         });

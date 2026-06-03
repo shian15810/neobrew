@@ -55,12 +55,12 @@ impl RelocatorInner for Relocation {
             return Ok(());
         }
 
-        let cloned_self = self.clone();
+        let this = self.clone();
 
         let cloned_bytes = Arc::clone(&bytes);
 
         let handle = task::spawn_blocking(move || {
-            let replaced_bytes = cloned_self.replace_bytes(&cloned_bytes)?;
+            let replaced_bytes = this.replace_bytes(&cloned_bytes)?;
 
             anyhow::Ok(replaced_bytes)
         });

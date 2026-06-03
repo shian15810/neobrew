@@ -46,7 +46,7 @@ impl ArchiveFormat {
 
         let archive_format = match kind.extension() {
             "gz" => {
-                if !Self::is_tar_gz(bytes).await {
+                if !Self::detect_tar_gz(bytes).await {
                     let err = anyhow!("Gzip stream has no tar archive within");
 
                     return Err(err);
@@ -65,7 +65,7 @@ impl ArchiveFormat {
         Ok(archive_format)
     }
 
-    async fn is_tar_gz(bytes: &[u8]) -> bool {
+    async fn detect_tar_gz(bytes: &[u8]) -> bool {
         let mut peek_buf = [0_u8; Self::PEEK_SIZE];
 
         let buf_reader = BufReader::new(bytes);
@@ -81,12 +81,12 @@ impl ArchiveFormat {
         infer::archive::is_tar(&peek_buf)
     }
 
-    async fn is_dmg(path: &Path) -> anyhow::Result<bool> {
+    pub(crate) async fn is_dmg(file_path: &Path) -> anyhow::Result<bool> {
         const KOLY_MAGIC: &[u8; 4] = b"koly";
         const KOLY_OFFSET: i64 = -512;
         const KOLY_SIZE: u64 = KOLY_OFFSET.unsigned_abs();
 
-        let mut file = File::open(path).await?;
+        let mut file = File::open(file_path).await?;
 
         let metadata = file.metadata().await?;
 

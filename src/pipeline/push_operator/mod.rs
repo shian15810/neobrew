@@ -1,6 +1,8 @@
 mod pb_updater;
 mod sha256_hasher;
-mod temp_writer;
+pub(super) mod temp_writer;
+
+use std::sync::Arc;
 
 use tokio::{sync::mpsc, task};
 use tokio_util::{sync::PollSender, task::AbortOnDropHandle};
@@ -10,7 +12,7 @@ pub(crate) use self::{
     sha256_hasher::Sha256Hasher,
     temp_writer::TempWriter,
 };
-use super::Operator;
+use super::{Operator, channels::PipelineChannels as Channels};
 use crate::context::Context;
 
 #[trait_variant::make(Send)]
@@ -20,7 +22,15 @@ pub(crate) trait PushOperator {
 
     async fn feed(&mut self, chunk: Self::Item) -> anyhow::Result<()>;
 
-    async fn flush(self) -> anyhow::Result<Self::Output>;
+    async fn flush(
+        self,
+        channels: Arc<Channels>,
+        context: Arc<Context>,
+    ) -> anyhow::Result<Self::Output>;
+
+    fn cleanup(self) -> anyhow::Result<()>;
+
+    async fn persist(self) -> anyhow::Result<()>;
 }
 
 impl<
@@ -33,7 +43,8 @@ impl<
 
     fn launch(
         mut self,
-        context: &Context,
+        channels: Arc<Channels>,
+        context: Arc<Context>,
     ) -> (
         PollSender<Item>,
         AbortOnDropHandle<anyhow::Result<Self::Output>>,
@@ -47,7 +58,7 @@ impl<
                 self.feed(item).await?;
             }
 
-            let output = self.flush().await?;
+            let output = self.flush(channels, context).await?;
 
             anyhow::Ok(output)
         });

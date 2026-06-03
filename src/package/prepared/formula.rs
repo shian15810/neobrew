@@ -77,6 +77,10 @@ impl PreparedPackageable for PreparedFormula {
 }
 
 impl PreparedFormula {
+    pub(crate) fn version_revision(&self) -> &str {
+        &self.version_revision
+    }
+
     pub(crate) fn bottle_rebuild(&self) -> u64 {
         self.bottle_rebuild
     }

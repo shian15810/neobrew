@@ -5,10 +5,7 @@ use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
 use anyhow::anyhow;
 use bytes::Bytes;
-use futures::{
-    future::{self, FutureExt as _},
-    stream::{self, StreamExt as _, TryStreamExt as _},
-};
+use futures::future::{self, FutureExt as _};
 use tempfile::NamedTempFile;
 use tokio::{
     fs::{self, File},
@@ -47,7 +44,7 @@ impl Registries {
 
     pub(crate) async fn resolve(
         self,
-        packages: impl IntoIterator<Item = String>,
+        packages: &[String],
     ) -> anyhow::Result<(Vec<ResolvedPackage>, HashSet<String>)> {
         let mut requested_package_ids = HashSet::new();
 
@@ -90,21 +87,17 @@ impl Registries {
         Ok((resolved_packages, requested_package_ids))
     }
 
-    async fn resolve_many(
-        self,
-        packages: impl IntoIterator<Item = String>,
-    ) -> anyhow::Result<Vec<ResolvedPackage>> {
-        let resolved_packages = stream::iter(packages)
-            .map(async |package| {
-                let package = Arc::from(package);
+    async fn resolve_many(self, packages: &[String]) -> anyhow::Result<Vec<ResolvedPackage>> {
+        let resolved_packages_fut = packages.iter().map(async |package| {
+            let package = package.as_ref();
+            let package = Arc::from(package);
 
-                let resolved_package = self.resolve_one(package).await?;
+            let resolved_package = self.resolve_one(package).await?;
 
-                anyhow::Ok(resolved_package)
-            })
-            .buffer_unordered(self.context.concurrency_limit)
-            .try_collect::<Vec<_>>();
-        let resolved_packages = resolved_packages.await?;
+            anyhow::Ok(resolved_package)
+        });
+
+        let resolved_packages = future::try_join_all(resolved_packages_fut).await?;
 
         Ok(resolved_packages)
     }

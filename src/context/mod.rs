@@ -17,6 +17,7 @@ use self::{
 pub(crate) static INFO: LazyLock<Info> = LazyLock::new(os_info::get);
 
 const MAX_CONCURRENCY: usize = 1 << 4;
+const BUFFER_MULTIPLIER: usize = 1 << 4;
 
 static CONCURRENCY_LIMIT: LazyLock<usize> = LazyLock::new(|| {
     thread::available_parallelism()
@@ -24,8 +25,6 @@ static CONCURRENCY_LIMIT: LazyLock<usize> = LazyLock::new(|| {
         .get()
         .min(MAX_CONCURRENCY)
 });
-
-const BUFFER_MULTIPLIER: usize = 1 << 4;
 
 #[expect(clippy::module_name_repetitions)]
 pub struct Context {

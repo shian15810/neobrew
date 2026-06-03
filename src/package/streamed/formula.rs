@@ -8,7 +8,7 @@ use super::{
 pub(crate) struct StreamedFormula {
     pub(in super::super) name: String,
     pub(in super::super) version: String,
-    pub(in super::super) version_revision: String,
+    version_revision: String,
     bottle_cellar: BottleStableFileCellar,
     keg_only: bool,
     pub(in super::super) is_requested: bool,
@@ -48,7 +48,9 @@ impl StreamedFormula {
         match &self.bottle_cellar {
             BottleStableFileCellar::Any => true,
             BottleStableFileCellar::AnySkipRelocation => false,
-            BottleStableFileCellar::Path(path) => path == cellar_dir_path,
+            BottleStableFileCellar::Path(bottle_cellar_path) => {
+                bottle_cellar_path == cellar_dir_path
+            },
         }
     }
 

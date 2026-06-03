@@ -126,11 +126,11 @@ impl Commands {
                     _ => {},
                 }
 
-                let result = brew.status().await;
+                let brew = brew.status().await;
 
-                let status = result.to_sysexits()?;
+                let exit_status = brew.to_sysexits()?;
 
-                proc_exit::Code::from_status(status).ok()?;
+                proc_exit::Code::from_status(exit_status).ok()?;
 
                 proc_exit::Code::SUCCESS.ok()
             },

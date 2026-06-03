@@ -32,11 +32,11 @@ impl Streams {
         impl stream::Stream<Item = anyhow::Result<Bytes>> + Send + 'static,
         u64,
     )> {
-        let download_file = File::open(file_path).await?;
+        let file = File::open(file_path).await?;
 
-        let content_length = download_file.metadata().await?.len();
+        let content_length = file.metadata().await?.len();
 
-        let stream = ReaderStream::new(download_file);
+        let stream = ReaderStream::new(file);
         let stream = stream.err_into();
 
         Ok((stream, content_length))

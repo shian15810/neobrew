@@ -2,6 +2,7 @@
 clicolor
 Eeuo
 euvx
+mann
 mountrandom
 nobrowse
 OLDIFS

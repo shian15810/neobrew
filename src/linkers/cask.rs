@@ -1,4 +1,4 @@
-use std::{os::unix::fs::PermissionsExt as _, path::Path, sync::Arc};
+use std::{path::Path, sync::Arc};
 
 use futures::future;
 use tokio::fs;
@@ -99,11 +99,18 @@ impl CaskLinker {
     ) -> anyhow::Result<Self> {
         let prefix_dir_path = context.homebrew_dirs.prefix_dir();
 
-        for must_exist_dir_name in MUST_EXIST_DIR_NAMES {
-            let must_exist_dir_path = prefix_dir_path.join(must_exist_dir_name);
+        let must_exist_dir_name_futs =
+            MUST_EXIST_DIR_NAMES
+                .iter()
+                .map(async |must_exist_dir_name| {
+                    let must_exist_dir_path = prefix_dir_path.join(must_exist_dir_name);
 
-            fs::create_dir_all(must_exist_dir_path).await?;
-        }
+                    fs::create_dir_all(must_exist_dir_path).await?;
+
+                    anyhow::Ok(())
+                });
+
+        future::try_join_all(must_exist_dir_name_futs).await?;
 
         let this = Self {
             placeholder,
@@ -115,7 +122,7 @@ impl CaskLinker {
     }
 
     async fn link_commons(&self, stanzas: &Stanzas, staged_dir_path: &Path) -> anyhow::Result<()> {
-        let common_stanzass = vec![
+        let common_stanzas = vec![
             &stanzas.binary,
             &stanzas.manpage,
             &stanzas.bash_completion,
@@ -135,7 +142,7 @@ impl CaskLinker {
 
         let permissions_modes = [Some(0o111), None, None, None, None];
 
-        let common_stanzas_futs = common_stanzass
+        let common_stanza_futs = common_stanzas
             .into_iter()
             .zip(&dest_base_paths)
             .zip(permissions_modes)
@@ -143,7 +150,7 @@ impl CaskLinker {
                 self.link_common(stanzas, staged_dir_path, dest_base_path, permissions_mode)
             });
 
-        future::try_join_all(common_stanzas_futs).await?;
+        future::try_join_all(common_stanza_futs).await?;
 
         Ok(())
     }
@@ -161,7 +168,7 @@ impl CaskLinker {
 
         fs::create_dir_all(dest_base_path).await?;
 
-        for stanza in stanzas {
+        let stanza_futs = stanzas.iter().map(async |stanza| {
             let stanza_source_pstr = &stanza.source;
 
             let stanza_source_path = self.placeholder.resolve_source(stanza_source_pstr);
@@ -202,13 +209,13 @@ impl CaskLinker {
                 .await?;
 
             if let Some(permissions_mode) = permissions_mode {
-                let mut permissions = fs::symlink_metadata(&src_item_path).await?.permissions();
-
-                permissions.set_mode(permissions.mode() | permissions_mode);
-
-                fs::set_permissions(src_item_path, permissions).await?;
+                src_item_path.add_permissions_mode(permissions_mode).await?;
             }
-        }
+
+            anyhow::Ok(())
+        });
+
+        future::try_join_all(stanza_futs).await?;
 
         Ok(())
     }

@@ -4,7 +4,6 @@ use std::{
     path::Path,
 };
 
-use anyhow::Context as _;
 use lazy_regex::{regex, regex_captures};
 
 pub(crate) trait PathExt {
@@ -15,7 +14,9 @@ pub(crate) trait PathExt {
 
 impl PathExt for Path {
     fn base(&self) -> anyhow::Result<&Self> {
-        let base = self.parent().context("No parent directory found")?;
+        let default = Self::new("/");
+
+        let base = self.parent().unwrap_or(default);
 
         Ok(base)
     }

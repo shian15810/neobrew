@@ -63,25 +63,25 @@ impl Downloadable for CaskDownload {
 
         let url = Url::parse(url)?;
 
-        let mut name = url.path_segments().context("Invalid URL")?;
-        let name = name.next_back().context("Empty path segments")?;
+        let mut url_name = url.path_segments().context("Invalid URL")?;
+        let url_name = url_name.next_back().context("Empty path segments")?;
 
-        let path = Path::new(name);
+        let url_path = Path::new(url_name);
 
-        let compound_extension = path.compound_extension();
+        let url_compound_extension = url_path.compound_extension();
 
-        let symlink_name = match compound_extension {
-            Some(compound_extension) => {
-                let compound_extension = compound_extension
+        let symlink_name = match url_compound_extension {
+            Some(url_compound_extension) => {
+                let url_compound_extension = url_compound_extension
                     .to_str()
                     .context("Invalid compound extension")?;
 
-                format!("{name}--{version}.{compound_extension}")
+                format!("{url_name}--{version}.{url_compound_extension}")
             },
-            None => format!("{name}--{version}"),
+            None => format!("{url_name}--{version}"),
         };
 
-        let file_name = format!("{url_hash}--{name}");
+        let file_name = format!("{url_hash}--{url_name}");
 
         let cache_dir_path = self.context.homebrew_dirs.cache_dir();
 

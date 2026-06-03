@@ -17,8 +17,10 @@ impl FormulaStream {
     pub(super) fn oci(prepared_formula: &PreparedFormula) -> Option<(Reference, OciDescriptor)> {
         let registry = Self::OCI_REGISTRY;
 
+        let url = prepared_formula.download_url();
+
         let repository = format!("https://{registry}/v2/");
-        let repository = prepared_formula.download_url().strip_prefix(&repository)?;
+        let repository = url.strip_prefix(&repository)?;
 
         let (repository, _) = repository.split_once("/blobs/")?;
 

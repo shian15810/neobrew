@@ -1,6 +1,7 @@
 use std::{
     fs::FileType,
     io::{self, ErrorKind},
+    os::unix::fs::PermissionsExt as _,
     path::{Path, PathBuf},
 };
 
@@ -17,6 +18,8 @@ pub(crate) trait PathExt {
     async fn file_type(&self) -> io::Result<FileType>;
 
     async fn is_dir_empty(&self) -> io::Result<bool>;
+
+    async fn add_permissions_mode(&self, mode: u32) -> io::Result<()>;
 
     async fn is_dir_exists_nofollow(&self) -> io::Result<bool>;
 
@@ -41,7 +44,7 @@ impl PathExt for Path {
         let path = match fs::canonicalize(self).await {
             Ok(path) => path,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-            Err(err) => return Err(err)?,
+            Err(err) => return Err(err),
         };
 
         Ok(Some(path))
@@ -56,7 +59,11 @@ impl PathExt for Path {
     }
 
     async fn is_dir_empty(&self) -> io::Result<bool> {
-        let mut entries = fs::read_dir(self).await?;
+        let mut entries = match fs::read_dir(self).await {
+            Ok(entries) => entries,
+            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(true),
+            Err(err) => return Err(err),
+        };
 
         let entry = entries.next_entry().await?;
 
@@ -65,11 +72,23 @@ impl PathExt for Path {
         Ok(is_dir_empty)
     }
 
+    async fn add_permissions_mode(&self, mode: u32) -> io::Result<()> {
+        let metadata = fs::symlink_metadata(self).await?;
+
+        let mut permissions = metadata.permissions();
+
+        permissions.set_mode(permissions.mode() | mode);
+
+        fs::set_permissions(self, permissions).await?;
+
+        Ok(())
+    }
+
     async fn is_dir_exists_nofollow(&self) -> io::Result<bool> {
         let metadata = match fs::symlink_metadata(self).await {
             Ok(metadata) => metadata,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(false),
-            Err(err) => return Err(err)?,
+            Err(err) => return Err(err),
         };
 
         let file_type = metadata.file_type();
@@ -83,7 +102,7 @@ impl PathExt for Path {
         let metadata = match fs::symlink_metadata(self).await {
             Ok(metadata) => metadata,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(false),
-            Err(err) => return Err(err)?,
+            Err(err) => return Err(err),
         };
 
         let file_type = metadata.file_type();
@@ -97,7 +116,7 @@ impl PathExt for Path {
         let metadata = match fs::symlink_metadata(self).await {
             Ok(metadata) => metadata,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(false),
-            Err(err) => return Err(err)?,
+            Err(err) => return Err(err),
         };
 
         let file_type = metadata.file_type();

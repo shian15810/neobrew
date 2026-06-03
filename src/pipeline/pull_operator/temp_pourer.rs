@@ -1,11 +1,13 @@
 use std::{
     io::Cursor,
     path::{Component, Path, PathBuf},
+    sync::Arc,
 };
 
 use anyhow::anyhow;
 use async_compression::tokio::bufread::GzipDecoder;
 use async_zip::base::read::stream::ZipFileReader;
+use futures::future;
 use tempfile::TempDir;
 use tokio::{
     fs::{self, File},
@@ -14,29 +16,44 @@ use tokio::{
 use tokio_tar::Archive;
 use tokio_util::compat::FuturesAsyncReadCompatExt as _;
 
-use super::{super::handler, PullOperator};
+use super::{super::channels::PipelineChannels as Channels, PullOperator};
 use crate::{
+    context::Context,
     ext::{std::path::PathExt as _, tokio::path::PathExt as _},
     util::ArchiveFormat,
 };
 
 pub(crate) struct TempPourer {
-    archive_format: Option<ArchiveFormat>,
+    temp_dir: TempDir,
+
     dest_dir_path: PathBuf,
     symlink_paths: Vec<PathBuf>,
+
+    archive_format: Option<ArchiveFormat>,
 }
 
 impl TempPourer {
-    pub(crate) fn new(
-        archive_format: Option<ArchiveFormat>,
+    pub(crate) async fn try_init(
         dest_dir_path: PathBuf,
         symlink_paths: Vec<PathBuf>,
-    ) -> Self {
-        Self {
-            archive_format,
+        archive_format: Option<ArchiveFormat>,
+    ) -> anyhow::Result<Self> {
+        let dest_base_path = &dest_dir_path;
+
+        fs::create_dir_all(dest_base_path).await?;
+
+        let temp_dir = TempDir::new_in(dest_base_path)?;
+
+        let this = Self {
+            temp_dir,
+
             dest_dir_path,
             symlink_paths,
-        }
+
+            archive_format,
+        };
+
+        Ok(this)
     }
 
     async fn extract(
@@ -55,9 +72,9 @@ impl TempPourer {
                 archive.unpack(dir.path()).await?;
             },
             ArchiveFormat::Zip => {
-                let mut zip = ZipFileReader::with_tokio(buf_reader);
+                let mut zip_reader = ZipFileReader::with_tokio(buf_reader);
 
-                while let Some(mut entry_reader) = zip.next_with_entry().await? {
+                while let Some(mut entry_reader) = zip_reader.next_with_entry().await? {
                     let src_file_pstr = entry_reader.reader().entry().filename().as_str()?;
 
                     let src_file_path = Path::new(src_file_pstr);
@@ -73,7 +90,7 @@ impl TempPourer {
                     }
 
                     if src_file_pstr.ends_with('/') {
-                        zip = entry_reader.skip().await?;
+                        zip_reader = entry_reader.skip().await?;
                     } else {
                         let dest_base_path = dir.path();
 
@@ -87,7 +104,7 @@ impl TempPourer {
 
                         io::copy(&mut entry_reader.reader_mut().compat(), &mut dest_file).await?;
 
-                        zip = entry_reader.done().await?;
+                        zip_reader = entry_reader.done().await?;
                     }
                 }
             },
@@ -100,16 +117,7 @@ impl TempPourer {
 impl PullOperator for TempPourer {
     type Output = TempPourerOutput;
 
-    async fn from_reader(
-        self,
-        reader: impl AsyncRead + Unpin + Send,
-    ) -> anyhow::Result<Self::Output> {
-        let dest_base_path = &self.dest_dir_path;
-
-        fs::create_dir_all(dest_base_path).await?;
-
-        let temp_dir = TempDir::new_in(dest_base_path)?;
-
+    async fn from_reader(&self, reader: impl AsyncRead + Unpin + Send) -> anyhow::Result<()> {
         let mut buf_reader = BufReader::new(reader);
 
         if let Some(archive_format) = &self.archive_format {
@@ -118,7 +126,8 @@ impl PullOperator for TempPourer {
                     io::copy(&mut buf_reader, &mut io::sink()).await?;
                 },
                 _ => {
-                    self.extract(archive_format, &temp_dir, buf_reader).await?;
+                    self.extract(archive_format, &self.temp_dir, buf_reader)
+                        .await?;
                 },
             }
         } else {
@@ -130,29 +139,44 @@ impl PullOperator for TempPourer {
 
             let chained_buf_reader = Cursor::new(peek_buf).chain(buf_reader);
 
-            self.extract(&archive_format, &temp_dir, chained_buf_reader)
+            self.extract(&archive_format, &self.temp_dir, chained_buf_reader)
                 .await?;
         }
 
-        let output = TempPourerOutput {
-            temp_dir,
+        Ok(())
+    }
 
-            dest_dir_path: self.dest_dir_path,
-            symlink_paths: self.symlink_paths,
+    async fn after_drain(
+        self,
+        channels: Arc<Channels>,
+        _context: Arc<Context>,
+    ) -> anyhow::Result<Self::Output> {
+        let mut is_verified_rx = channels.is_verified_rx.clone();
+
+        let is_verified = *is_verified_rx.wait_for(Option::is_some).await?;
+
+        if matches!(is_verified, Some(false)) {
+            self.cleanup()?;
+
+            let err = anyhow!("Pourer failed due to SHA-256 mismatch");
+
+            return Err(err);
+        }
+
+        let dest_dir_path = self.dest_dir_path.clone();
+
+        let symlink_paths = self.symlink_paths.clone();
+
+        self.persist().await?;
+
+        let output = TempPourerOutput {
+            dest_dir_path,
+            symlink_paths,
         };
 
         Ok(output)
     }
-}
 
-pub(crate) struct TempPourerOutput {
-    temp_dir: TempDir,
-
-    dest_dir_path: PathBuf,
-    symlink_paths: Vec<PathBuf>,
-}
-
-impl handler::AtomicWriter for TempPourerOutput {
     fn cleanup(self) -> anyhow::Result<()> {
         self.temp_dir.close()?;
 
@@ -186,7 +210,7 @@ impl handler::AtomicWriter for TempPourerOutput {
 
         self.temp_dir.close()?;
 
-        for symlink_path in self.symlink_paths {
+        let symlink_path_futs = self.symlink_paths.into_iter().map(async |symlink_path| {
             let symlink_base_path = symlink_path.base()?;
 
             fs::create_dir_all(symlink_base_path).await?;
@@ -194,8 +218,17 @@ impl handler::AtomicWriter for TempPourerOutput {
             dest_base_path
                 .create_relative_symlink_atomically_at(symlink_path)
                 .await?;
-        }
+
+            anyhow::Ok(())
+        });
+
+        future::try_join_all(symlink_path_futs).await?;
 
         Ok(())
     }
+}
+
+pub(crate) struct TempPourerOutput {
+    dest_dir_path: PathBuf,
+    symlink_paths: Vec<PathBuf>,
 }

@@ -77,10 +77,10 @@ impl FromStr for BottleStableFileCellar {
         let bottle_cellar = match bottle_cellar {
             "any" => Self::Any,
             "any_skip_relocation" => Self::AnySkipRelocation,
-            pstr => {
-                let path = PathBuf::from(pstr);
+            bottle_cellar_pstr => {
+                let bottle_cellar_path = PathBuf::from(bottle_cellar_pstr);
 
-                Self::Path(path)
+                Self::Path(bottle_cellar_path)
             },
         };
 

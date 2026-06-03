@@ -48,7 +48,7 @@ impl Artifact {
         stanzas: &Stanzas,
         staged_dir_path: &Path,
     ) -> anyhow::Result<()> {
-        let common_stanzass = vec![
+        let common_stanzas = vec![
             &stanzas.app,
             &stanzas.suite,
             &stanzas.colorpicker,
@@ -88,15 +88,15 @@ impl Artifact {
             None,
         ];
 
-        let common_stanzas_futs =
-            common_stanzass
+        let common_stanza_futs =
+            common_stanzas
                 .into_iter()
                 .zip(&dest_base_paths)
                 .map(|(stanzas, dest_base_path)| {
                     self.relocate_common(stanzas, staged_dir_path, dest_base_path.as_deref())
                 });
 
-        future::try_join_all(common_stanzas_futs).await?;
+        future::try_join_all(common_stanza_futs).await?;
 
         Ok(())
     }
@@ -115,7 +115,7 @@ impl Artifact {
             fs::create_dir_all(dest_base_path).await?;
         }
 
-        for stanza in stanzas {
+        let stanza_futs = stanzas.iter().map(async |stanza| {
             let stanza_source_pstr = &stanza.source;
 
             let stanza_source_path = self.placeholder.resolve_source(stanza_source_pstr);
@@ -158,7 +158,11 @@ impl Artifact {
             }
 
             fs::rename(src_item_path, dest_item_path).await?;
-        }
+
+            anyhow::Ok(())
+        });
+
+        future::try_join_all(stanza_futs).await?;
 
         Ok(())
     }

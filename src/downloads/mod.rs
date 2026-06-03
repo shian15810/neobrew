@@ -23,7 +23,7 @@ pub(crate) struct Download {
     pub(crate) archive_format: Option<ArchiveFormat>,
     pub(crate) symlink_path: PathBuf,
     pub(crate) file_path: PathBuf,
-    pub(crate) is_valid: bool,
+    pub(crate) is_verified: bool,
 }
 
 pub(crate) struct Downloads {
@@ -77,7 +77,7 @@ trait Downloadable {
         prepared_package: &Self::PreparedPackage,
     ) -> anyhow::Result<(PathBuf, PathBuf)>;
 
-    async fn file_sha256(&self, file_path: &Path) -> anyhow::Result<Option<String>> {
+    async fn sha256(&self, file_path: &Path) -> anyhow::Result<Option<String>> {
         let Some(mut file) = File::open_if_exists(file_path).await? else {
             return Ok(None);
         };
@@ -88,14 +88,14 @@ trait Downloadable {
 
         io::copy(&mut file, &mut sink).await?;
 
-        let file_sha256 = digest.finalize();
-        let file_sha256 = HexDisplay(&file_sha256);
-        let file_sha256 = format!("{file_sha256:x}");
+        let sha256 = digest.finalize();
+        let sha256 = HexDisplay(&sha256);
+        let sha256 = format!("{sha256:x}");
 
-        Ok(Some(file_sha256))
+        Ok(Some(sha256))
     }
 
-    async fn is_valid(
+    async fn verify(
         &self,
         symlink_path: &Path,
         file_path: &Path,
@@ -111,9 +111,10 @@ trait Downloadable {
 
         let is_sha256_equal = file_sha256 == expected_sha256;
 
-        let is_valid = is_file_exists && is_symlink_exists && is_symlink_valid && is_sha256_equal;
+        let is_verified =
+            is_file_exists && is_symlink_exists && is_symlink_valid && is_sha256_equal;
 
-        Ok(is_valid)
+        Ok(is_verified)
     }
 
     async fn retrieve(
@@ -125,26 +126,26 @@ trait Downloadable {
 
         let archive_format = self.archive_format(&symlink_path)?;
 
-        let Some(file_sha256) = self.file_sha256(&file_path).await? else {
+        let Some(file_sha256) = self.sha256(&file_path).await? else {
             let download = Download {
                 archive_format,
                 symlink_path,
                 file_path,
-                is_valid: false,
+                is_verified: false,
             };
 
             return Ok(download);
         };
 
-        let is_valid = self
-            .is_valid(&symlink_path, &file_path, &file_sha256, expected_sha256)
+        let is_verified = self
+            .verify(&symlink_path, &file_path, &file_sha256, expected_sha256)
             .await?;
 
         let download = Download {
             archive_format,
             symlink_path,
             file_path,
-            is_valid,
+            is_verified,
         };
 
         Ok(download)

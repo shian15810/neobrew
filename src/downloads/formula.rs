@@ -44,7 +44,7 @@ impl Downloadable for FormulaDownload {
 
         let id = prepared_formula.id();
 
-        let version = prepared_formula.version();
+        let version_revision = prepared_formula.version_revision();
 
         let bottle_rebuild = prepared_formula.bottle_rebuild();
 
@@ -56,9 +56,9 @@ impl Downloadable for FormulaDownload {
         let url_hash = HexDisplay(&url_hash);
         let url_hash = format!("{url_hash:x}");
 
-        let symlink_name = format!("{id}--{version}");
+        let symlink_name = format!("{id}--{version_revision}");
 
-        let file_name = format!("{url_hash}--{id}--{version}.{bottle_tag}.bottle");
+        let file_name = format!("{url_hash}--{id}--{version_revision}.{bottle_tag}.bottle");
         let file_name = match bottle_rebuild {
             0 => format!("{file_name}.tar.gz"),
             bottle_rebuild => format!("{file_name}.{bottle_rebuild}.tar.gz"),

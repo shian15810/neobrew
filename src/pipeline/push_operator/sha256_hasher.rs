@@ -1,17 +1,25 @@
+use std::sync::Arc;
+
+use anyhow::anyhow;
 use base16ct::HexDisplay;
 use bytes::Bytes;
 use sha2::{Digest as _, Sha256};
 
-use super::PushOperator;
+use super::{super::channels::PipelineChannels as Channels, PushOperator};
+use crate::context::Context;
 
 pub(crate) struct Sha256Hasher {
     digest: Sha256,
+
+    expected: String,
 }
 
 impl Sha256Hasher {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(expected: String) -> Self {
         Self {
             digest: Sha256::new(),
+
+            expected,
         }
     }
 }
@@ -27,12 +35,43 @@ impl PushOperator for Sha256Hasher {
         Ok(())
     }
 
-    #[expect(clippy::unused_async_trait_impl)]
-    async fn flush(self) -> anyhow::Result<Self::Output> {
-        let hashed_sha256 = self.digest.finalize();
-        let hashed_sha256 = HexDisplay(&hashed_sha256);
-        let hashed_sha256 = format!("{hashed_sha256:x}");
+    async fn flush(
+        self,
+        channels: Arc<Channels>,
+        _context: Arc<Context>,
+    ) -> anyhow::Result<Self::Output> {
+        let digest = self.digest.clone();
 
-        Ok(hashed_sha256)
+        let hashed = digest.finalize();
+        let hashed = HexDisplay(&hashed);
+        let hashed = format!("{hashed:x}");
+
+        let is_verified = hashed == self.expected;
+        let is_verified = Some(is_verified);
+
+        channels.is_verified_tx.send(is_verified)?;
+
+        if matches!(is_verified, Some(false)) {
+            self.cleanup()?;
+
+            let err = anyhow!("Hasher failed due to SHA-256 mismatch");
+
+            return Err(err);
+        }
+
+        self.persist().await?;
+
+        let output = hashed;
+
+        Ok(output)
+    }
+
+    fn cleanup(self) -> anyhow::Result<()> {
+        Ok(())
+    }
+
+    #[expect(clippy::unused_async_trait_impl)]
+    async fn persist(self) -> anyhow::Result<()> {
+        Ok(())
     }
 }

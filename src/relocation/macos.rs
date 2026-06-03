@@ -54,12 +54,12 @@ impl RelocatorInner for Relocation {
             return Ok(());
         }
 
-        let cloned_self = self.clone();
+        let this = self.clone();
 
         let cloned_bytes = Arc::clone(&bytes);
 
         let handle = task::spawn_blocking(move || {
-            let replaced_bytes = cloned_self.replace_bytes(&cloned_bytes)?;
+            let replaced_bytes = this.replace_bytes(&cloned_bytes)?;
 
             anyhow::Ok(replaced_bytes)
         });
@@ -125,7 +125,7 @@ impl RelocatorInner for Relocation {
         };
 
         for old_rpath in rpaths {
-            let new_rpath = self.replace_text(old_rpath);
+            let new_rpath = self.replace_pstr(old_rpath);
 
             if new_rpath != old_rpath {
                 container.change_rpath(old_rpath, &new_rpath)?;
@@ -133,7 +133,7 @@ impl RelocatorInner for Relocation {
         }
 
         for old_install_id in install_ids {
-            let new_install_id = self.replace_text(old_install_id);
+            let new_install_id = self.replace_pstr(old_install_id);
 
             if new_install_id != old_install_id {
                 container.change_install_id(&new_install_id)?;
@@ -141,7 +141,7 @@ impl RelocatorInner for Relocation {
         }
 
         for old_install_name in install_names {
-            let new_install_name = self.replace_text(old_install_name);
+            let new_install_name = self.replace_pstr(old_install_name);
 
             if new_install_name != old_install_name {
                 container.change_install_name(old_install_name, &new_install_name)?;

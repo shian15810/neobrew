@@ -1,5 +1,6 @@
 # Custom Dictionary Words
 donotpresent
+eula
 noqa
+Recents
 requesteds
-stanzass

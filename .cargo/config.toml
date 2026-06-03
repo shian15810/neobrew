@@ -8,6 +8,7 @@ target = "host-tuple"
 
 [env]
 RUST_BACKTRACE = "1"
+RUSTC_ICE = "0"
 
 [target.'cfg(all())']
 rustflags = ["--cfg=tokio_unstable"]

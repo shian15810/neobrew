@@ -7,6 +7,12 @@ codenames
 cpio
 koly
 KOLY
+libexec
+relpath
+relpstr
+sgml
 sysexits
 Sysexits
+tftpboot
+UDTO
 untap

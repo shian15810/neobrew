@@ -72,7 +72,9 @@ trait RelocatorInner: From<([(&'static str, String); 4], Arc<Context>)> {
         let mut keg_entries = WalkDir::new(keg_dir_path);
 
         while let Some(keg_entry) = keg_entries.next().await {
-            let keg_entry_path = keg_entry?.path();
+            let keg_entry = keg_entry?;
+
+            let keg_entry_path = keg_entry.path();
 
             if !keg_entry_path.is_file_exists_nofollow().await? {
                 continue;
@@ -88,7 +90,7 @@ trait RelocatorInner: From<([(&'static str, String); 4], Arc<Context>)> {
 
     fn replace_bytes(&self, bytes: &[u8]) -> anyhow::Result<Vec<u8>>;
 
-    fn replace_text<'a>(&self, text: &'a str) -> Cow<'a, str> {
+    fn replace_pstr<'a>(&self, text: &'a str) -> Cow<'a, str> {
         self.replacement_pairs().iter().fold(
             Cow::Borrowed(text),
             |current, (placeholder, replacement_pstr)| {

@@ -10,8 +10,8 @@ impl Elf {
             return false;
         };
 
-        let header_bytes = &[b0, b1, b2, b3];
+        let peek_bytes = &[b0, b1, b2, b3];
 
-        header_bytes == Self::ELF_MAGIC
+        peek_bytes == Self::ELF_MAGIC
     }
 }
