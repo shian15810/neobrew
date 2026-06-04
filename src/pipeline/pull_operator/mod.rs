@@ -1,4 +1,4 @@
-mod temp_pourer;
+mod archive_pourer;
 
 use std::sync::Arc;
 
@@ -12,7 +12,7 @@ use tokio::{
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::{io::StreamReader, sync::PollSender, task::AbortOnDropHandle};
 
-pub(crate) use self::temp_pourer::TempPourer;
+pub(crate) use self::archive_pourer::ArchivePourer;
 use super::{Operator, channels::PipelineChannels as Channels};
 use crate::context::Context;
 

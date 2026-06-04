@@ -1,5 +1,5 @@
 use super::{
-    super::{Packageable, streamed::StreamedFormula},
+    super::{Packageable, pipelined::PipelinedFormula},
     InstalledPackageable,
 };
 
@@ -9,12 +9,12 @@ pub(crate) struct InstalledFormula {
     is_requested: bool,
 }
 
-impl From<StreamedFormula> for InstalledFormula {
-    fn from(streamed_formula: StreamedFormula) -> Self {
+impl From<PipelinedFormula> for InstalledFormula {
+    fn from(pipelined_formula: PipelinedFormula) -> Self {
         Self {
-            name: streamed_formula.name,
-            version: streamed_formula.version,
-            is_requested: streamed_formula.is_requested,
+            name: pipelined_formula.name,
+            version: pipelined_formula.version,
+            is_requested: pipelined_formula.is_requested,
         }
     }
 }

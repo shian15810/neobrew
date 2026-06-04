@@ -1,6 +1,6 @@
+pub(super) mod file_writer;
 mod pb_updater;
 mod sha256_hasher;
-pub(super) mod temp_writer;
 
 use std::sync::Arc;
 
@@ -8,9 +8,9 @@ use tokio::{sync::mpsc, task};
 use tokio_util::{sync::PollSender, task::AbortOnDropHandle};
 
 pub(crate) use self::{
+    file_writer::FileWriter,
     pb_updater::PbUpdater,
     sha256_hasher::Sha256Hasher,
-    temp_writer::TempWriter,
 };
 use super::{Operator, channels::PipelineChannels as Channels};
 use crate::context::Context;

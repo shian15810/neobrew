@@ -10,14 +10,15 @@ use futures::{
     future::{self, TryFutureExt as _},
     stream::StreamExt as _,
 };
+use indicatif::ProgressBar;
 use path_clean::PathClean as _;
 use plist::Value;
 use tempfile::{NamedTempFile, TempDir};
 use tokio::{fs, io::AsyncWriteExt as _, process::Command};
 
 use super::{
-    super::{channels::PipelineChannels as Channels, push_operator::temp_writer::TempWriterOutput},
-    PostOperator,
+    super::{channels::PipelineChannels as Channels, push_operator::file_writer::FileWriterOutput},
+    PipedOperator,
 };
 use crate::{
     context::Context,
@@ -31,10 +32,12 @@ pub(crate) struct DmgPourer {
     dest_dir_path: PathBuf,
 
     archive_format: Option<ArchiveFormat>,
+
+    pb: ProgressBar,
 }
 
-impl PostOperator for DmgPourer {
-    type Input = TempWriterOutput;
+impl PipedOperator for DmgPourer {
+    type Input = FileWriterOutput;
     type Output = ();
 
     async fn proceed(
@@ -43,6 +46,10 @@ impl PostOperator for DmgPourer {
         _channels: Arc<Channels>,
         _context: Arc<Context>,
     ) -> anyhow::Result<Self::Output> {
+        let pb = &self.pb;
+
+        pb.set_prefix("Pouring");
+
         self.pour(&input.dest_file_path).await?;
 
         Ok(())
@@ -50,22 +57,6 @@ impl PostOperator for DmgPourer {
 }
 
 impl DmgPourer {
-    const DMG_METADATA: &[&str] = &[
-        ".background",
-        ".com.apple.timemachine.donotpresent",
-        ".com.apple.timemachine.supported",
-        ".DocumentRevisions-V100",
-        ".DS_Store",
-        ".fseventsd",
-        ".MobileBackups",
-        ".Spotlight-V100",
-        ".TemporaryItems",
-        ".Trashes",
-        ".VolumeIcon.icns",
-        ".HFS+ Private Directory Data\r",
-        ".HFS+ Private Data\r",
-    ];
-
     const SYSTEM_DIRS: &[&str] = &[
         "/",
         "/Applications",
@@ -296,9 +287,26 @@ impl DmgPourer {
         "/var/tmp",
     ];
 
+    const DMG_METADATA: &[&str] = &[
+        ".background",
+        ".com.apple.timemachine.donotpresent",
+        ".com.apple.timemachine.supported",
+        ".DocumentRevisions-V100",
+        ".DS_Store",
+        ".fseventsd",
+        ".MobileBackups",
+        ".Spotlight-V100",
+        ".TemporaryItems",
+        ".Trashes",
+        ".VolumeIcon.icns",
+        ".HFS+ Private Directory Data\r",
+        ".HFS+ Private Data\r",
+    ];
+
     pub(crate) async fn try_init(
         dest_dir_path: PathBuf,
         archive_format: Option<ArchiveFormat>,
+        pb: ProgressBar,
     ) -> anyhow::Result<Self> {
         let dest_base_path = &dest_dir_path;
 
@@ -312,6 +320,8 @@ impl DmgPourer {
             dest_dir_path,
 
             archive_format,
+
+            pb,
         };
 
         Ok(this)
@@ -507,20 +517,24 @@ impl DmgPourer {
             return Err(err);
         }
 
-        let temp_bom_file = NamedTempFile::new_in(dest_base_path)?;
-
         let temp_list_file = NamedTempFile::new_in(dest_base_path)?;
 
-        fs::write(temp_list_file.path(), bom.join("\n")).await?;
+        let temp_bom_file = NamedTempFile::new_in(dest_base_path)?;
+
+        let temp_list_file_path = temp_list_file.path();
+
+        let temp_bom_file_path = temp_bom_file.path();
+
+        fs::write(temp_list_file_path, bom).await?;
 
         let mut mkbom = Command::new("mkbom");
 
         mkbom
             .arg("-s")
             .arg("-i")
-            .arg(temp_list_file.path())
+            .arg(temp_list_file_path)
             .arg("--")
-            .arg(temp_bom_file.path());
+            .arg(temp_bom_file_path);
 
         let mkbom = mkbom.output().await?;
 
@@ -537,7 +551,7 @@ impl DmgPourer {
 
         ditto
             .arg("--bom")
-            .arg(temp_bom_file.path())
+            .arg(temp_bom_file_path)
             .arg("--")
             .arg(mount_point)
             .arg(dest_base_path);
@@ -578,8 +592,10 @@ impl DmgPourer {
         Ok(())
     }
 
-    async fn bom(&self, mount_point: &Path) -> anyhow::Result<Vec<String>> {
-        let mut bom = Vec::new();
+    async fn bom(&self, mount_point: &Path) -> anyhow::Result<String> {
+        let mut mount_point_entry_relpstrs = Vec::new();
+
+        mount_point_entry_relpstrs.push(".".to_owned());
 
         let mut mount_point_entries = WalkDir::new(mount_point);
 
@@ -588,38 +604,40 @@ impl DmgPourer {
 
             let mount_point_entry_path = mount_point_entry.path();
 
+            if self.is_system_dir_symlink(&mount_point_entry_path).await? {
+                continue;
+            }
+
             let mount_point_entry_relpath = mount_point_entry_path.strip_prefix(mount_point)?;
+
+            #[cfg(debug_assertions)]
+            if mount_point_entry_relpath.is_empty() {
+                continue;
+            }
+
+            #[cfg(not(debug_assertions))]
+            if mount_point_entry_relpath.as_os_str().is_empty() {
+                continue;
+            }
 
             if self.is_dmg_metadata(mount_point_entry_relpath) {
                 continue;
             }
 
-            if self.is_system_dir_symlink(&mount_point_entry_path).await? {
-                continue;
-            }
-
             let mount_point_entry_relpstr = mount_point_entry_relpath.to_string_lossy();
-            let mount_point_entry_relpstr = if mount_point_entry_relpstr.is_empty() {
-                ".".to_owned()
-            } else {
-                format!("./{mount_point_entry_relpstr}")
-            };
+            let mount_point_entry_relpstr = format!("./{mount_point_entry_relpstr}");
 
-            bom.push(mount_point_entry_relpstr);
+            mount_point_entry_relpstrs.push(mount_point_entry_relpstr);
         }
 
-        Ok(bom)
-    }
+        mount_point_entry_relpstrs.sort();
+        mount_point_entry_relpstrs.dedup();
 
-    #[expect(clippy::unused_self)]
-    fn is_dmg_metadata(&self, entry_relpath: &Path) -> bool {
-        entry_relpath
-            .components()
-            .find_map(|component| match component {
-                Component::Normal(first_component_pstr) => first_component_pstr.to_str(),
-                _ => None,
-            })
-            .is_some_and(|first_component_pstr| Self::DMG_METADATA.contains(&first_component_pstr))
+        let mut bom = mount_point_entry_relpstrs.join("\n");
+
+        bom.push('\n');
+
+        Ok(bom)
     }
 
     async fn is_system_dir_symlink(&self, path: &Path) -> anyhow::Result<bool> {
@@ -643,6 +661,17 @@ impl DmgPourer {
         let is_system_dir_symlink = Self::SYSTEM_DIRS.contains(&symlink_pstr);
 
         Ok(is_system_dir_symlink)
+    }
+
+    #[expect(clippy::unused_self)]
+    fn is_dmg_metadata(&self, entry_relpath: &Path) -> bool {
+        entry_relpath
+            .components()
+            .find_map(|component| match component {
+                Component::Normal(first_component_pstr) => first_component_pstr.to_str(),
+                _ => None,
+            })
+            .is_some_and(|first_component_pstr| Self::DMG_METADATA.contains(&first_component_pstr))
     }
 
     async fn eject(&self, mount_point: &Path) -> anyhow::Result<()> {

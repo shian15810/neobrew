@@ -4,7 +4,6 @@ use anyhow::anyhow;
 use async_recursion::async_recursion;
 use foyer::{Cache, CacheBuilder};
 use futures::future;
-use itertools::Itertools as _;
 
 use super::{Registrable, RegistrableJson};
 use crate::{
@@ -61,7 +60,8 @@ impl FormulaRegistry {
             let stack = stack
                 .into_iter()
                 .map(|formula| format!(r#""{formula}""#))
-                .join(" -> ");
+                .collect::<Vec<_>>();
+            let stack = stack.join(" -> ");
 
             let err = anyhow!("Circular package dependency detected: {stack}");
 

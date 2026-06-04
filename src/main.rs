@@ -100,5 +100,5 @@ fn init_tracing(verbosity_filter: VerbosityFilter) {
     registry.with(filtered_layer).init();
 }
 
-#[cfg(not(all(debug_assertions, not(test))))]
+#[cfg(any(not(debug_assertions), test))]
 use console_subscriber as _;

@@ -12,7 +12,7 @@ pub(crate) struct PbUpdater {
 }
 
 impl PbUpdater {
-    const TEMPLATE: &str = "{spinner} {prefix:<12} {msg}";
+    const TEMPLATE_PREFIX: &str = "{spinner} {prefix:<12} {msg}";
 
     pub(crate) fn create(
         multi_pb: &MultiProgress,
@@ -24,7 +24,7 @@ impl PbUpdater {
         let pb = ProgressBar::new_spinner();
         let pb = multi_pb.add(pb);
 
-        let mut template = Self::TEMPLATE.to_owned();
+        let mut template = Self::TEMPLATE_PREFIX.to_owned();
 
         template.push(' ');
         template.push_str("{wide_bar}");
@@ -59,7 +59,7 @@ impl PbUpdater {
     }
 
     pub(crate) fn try_new(pb: ProgressBar, content_length: Option<u64>) -> anyhow::Result<Self> {
-        let mut template = Self::TEMPLATE.to_owned();
+        let mut template = Self::TEMPLATE_PREFIX.to_owned();
 
         template.push(' ');
 
@@ -109,10 +109,12 @@ impl PushOperator for PbUpdater {
 
     #[expect(clippy::unused_async_trait_impl)]
     async fn feed(&mut self, chunk: Self::Item) -> anyhow::Result<()> {
+        let pb = &self.pb;
+
         let content_length = chunk.len();
         let content_length = u64::try_from(content_length)?;
 
-        self.pb.inc(content_length);
+        pb.inc(content_length);
 
         Ok(())
     }
@@ -122,6 +124,8 @@ impl PushOperator for PbUpdater {
         channels: Arc<Channels>,
         _context: Arc<Context>,
     ) -> anyhow::Result<Self::Output> {
+        let pb = self.pb.clone();
+
         let mut is_verified_rx = channels.is_verified_rx.clone();
 
         let is_verified = *is_verified_rx.wait_for(Option::is_some).await?;
@@ -133,8 +137,6 @@ impl PushOperator for PbUpdater {
 
             return Err(err);
         }
-
-        let pb = self.pb.clone();
 
         self.persist().await?;
 

@@ -8,7 +8,7 @@ use tokio::task::JoinSet;
 
 use super::Runner;
 use crate::{
-    artifact::Artifact,
+    artifact::{Artifact, Artifactable as _},
     compatibility::{Compatibility, Compatibilizer as _},
     context::Context,
     downloads::Downloads,
@@ -16,11 +16,11 @@ use crate::{
     linkers::Linkers,
     package::{
         Packageable as _,
+        pipelined::PipelinedPackage,
         prepared::{PreparedPackage, PreparedPackageable as _},
         resolved::ResolvedPackage,
-        streamed::StreamedPackage,
     },
-    pipeline::{Operator as _, Pipeline, post_operator, pull_operator, push_operator},
+    pipeline::{Operator as _, Pipeline, piped_operator, pull_operator, push_operator},
     placeholder::Placeholder,
     registries::Registries,
     relocation::{Relocation, Relocator as _},
@@ -269,47 +269,49 @@ impl Installation {
             (stream, content_length)
         };
 
-        let sha256_hasher = push_operator::Sha256Hasher::new(expected_sha256.to_owned());
+        let sha256_hasher =
+            push_operator::Sha256Hasher::new(expected_sha256.to_owned(), !download.is_verified);
 
         let pour_dir_path = match prepared_package {
             PreparedPackage::Formula(_) => self.context.homebrew_dirs.cellar_dir(),
             PreparedPackage::Cask(_) => self.context.homebrew_dirs.staged_dir(id, version),
         };
 
-        let temp_writer = push_operator::TempWriter::try_init(
+        let file_writer = push_operator::FileWriter::try_init(
             download.file_path,
             vec![download.symlink_path],
             !download.is_verified,
         )
         .await?;
 
-        let dmg_pourer = post_operator::DmgPourer::try_init(
+        let dmg_pourer = piped_operator::DmgPourer::try_init(
             pour_dir_path.clone(),
             download.archive_format.clone(),
+            pb.clone(),
         )
         .await?;
 
-        let temp_writer = temp_writer.pipe(dmg_pourer);
+        let file_writer = file_writer.pipe(dmg_pourer);
 
-        let temp_pourer =
-            pull_operator::TempPourer::try_init(pour_dir_path, vec![], download.archive_format)
+        let archive_pourer =
+            pull_operator::ArchivePourer::try_init(pour_dir_path, vec![], download.archive_format)
                 .await?;
 
         let pb_updater = push_operator::PbUpdater::try_new(pb, content_length)?;
 
         let hlist_pat![_, _, _, pb] = Pipeline::build(stream, Arc::clone(&self.context))
             .fanout(sha256_hasher)
-            .fanout(temp_writer)
-            .fanout(temp_pourer)
+            .fanout(file_writer)
+            .fanout(archive_pourer)
             .fanout(pb_updater)
             .run_parallel()
             .await?;
 
-        let streamed_package = StreamedPackage::from(prepared_package);
+        let pipelined_package = PipelinedPackage::from(prepared_package);
 
-        self.relocate(&streamed_package, &pb).await?;
+        self.relocate(&pipelined_package, &pb).await?;
 
-        self.link(&streamed_package, &pb).await?;
+        self.link(&pipelined_package, &pb).await?;
 
         if is_installed && !is_up_to_date {
             pb.set_prefix("Upgraded");
@@ -324,17 +326,17 @@ impl Installation {
 
     async fn relocate(
         &self,
-        streamed_package: &StreamedPackage,
+        pipelined_package: &PipelinedPackage,
         pb: &ProgressBar,
     ) -> anyhow::Result<()> {
         pb.set_prefix("Relocating");
 
-        match streamed_package {
-            StreamedPackage::Formula(streamed_formula) => {
-                self.relocation.patch(streamed_formula).await?;
+        match pipelined_package {
+            PipelinedPackage::Formula(pipelined_formula) => {
+                self.relocation.patch(pipelined_formula).await?;
             },
-            StreamedPackage::Cask(streamed_cask) => {
-                self.artifact.relocate(streamed_cask).await?;
+            PipelinedPackage::Cask(pipelined_cask) => {
+                self.artifact.relocate(pipelined_cask).await?;
             },
         }
 
@@ -343,12 +345,12 @@ impl Installation {
 
     async fn link(
         &self,
-        streamed_package: &StreamedPackage,
+        pipelined_package: &PipelinedPackage,
         pb: &ProgressBar,
     ) -> anyhow::Result<()> {
         pb.set_prefix("Linking");
 
-        self.linkers.link(streamed_package).await?;
+        self.linkers.link(pipelined_package).await?;
 
         Ok(())
     }

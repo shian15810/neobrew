@@ -26,6 +26,7 @@ pub(crate) struct Stanzas {
     pub(crate) internet_plugin: Vec<CommonStanza>,
     pub(crate) keyboard_layout: Vec<CommonStanza>,
     pub(crate) prefpane: Vec<CommonStanza>,
+    pub(crate) qlplugin: Vec<CommonStanza>,
     pub(crate) mdimporter: Vec<CommonStanza>,
     pub(crate) screen_saver: Vec<CommonStanza>,
     pub(crate) service: Vec<CommonStanza>,
@@ -177,6 +178,14 @@ impl From<Vec<Artifact>> for Stanzas {
                     let prefpane_stanza = CommonStanza::from((prefpane, target));
 
                     this.prefpane.push(prefpane_stanza);
+                },
+                Artifact::Qlplugin {
+                    qlplugin,
+                    target,
+                } => {
+                    let qlplugin_stanza = CommonStanza::from((qlplugin, target));
+
+                    this.qlplugin.push(qlplugin_stanza);
                 },
                 Artifact::Mdimporter {
                     mdimporter,

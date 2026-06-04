@@ -100,6 +100,10 @@ pub(in super::super) enum Artifact {
         prefpane: ArtifactCommonSource,
         target: String,
     },
+    Qlplugin {
+        qlplugin: ArtifactCommonSource,
+        target: String,
+    },
     Mdimporter {
         mdimporter: ArtifactCommonSource,
         target: String,

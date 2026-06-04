@@ -10,6 +10,7 @@ KOLY
 libexec
 relpath
 relpstr
+relpstrs
 sgml
 sysexits
 Sysexits

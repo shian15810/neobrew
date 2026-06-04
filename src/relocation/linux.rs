@@ -1,7 +1,6 @@
 use std::{borrow::Cow, collections::HashMap, path::Path, sync::Arc};
 
 use arwen::elf::rewriter::Writer;
-use itertools::Itertools as _;
 use tempfile::NamedTempFile;
 use tokio::{
     fs::{self, File},
@@ -101,8 +100,9 @@ impl RelocatorInner for Relocation {
 
             let new_runpath = old_runpath
                 .split(':')
-                .map(|component| self.replace_text(component))
-                .join(":");
+                .map(|component| self.replace_pstr(component))
+                .collect::<Vec<_>>();
+            let new_runpath = new_runpath.join(":");
 
             if new_runpath != old_runpath {
                 let new_runpath = new_runpath.into_bytes();
@@ -119,7 +119,7 @@ impl RelocatorInner for Relocation {
         let new_needed = old_needed
             .into_iter()
             .filter_map(|old_need| {
-                let new_need = self.replace_text(&old_need);
+                let new_need = self.replace_pstr(&old_need);
 
                 match new_need {
                     Cow::Owned(new_string) => {

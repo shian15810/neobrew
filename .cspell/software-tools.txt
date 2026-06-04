@@ -23,6 +23,8 @@ NEOBREW
 Neobrew's
 prefpane
 Prefpane
+qlplugin
+Qlplugin
 sccache
 Sccache
 SCCACHE

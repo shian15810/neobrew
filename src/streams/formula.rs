@@ -12,10 +12,20 @@ pub(super) struct FormulaStream {
 }
 
 impl FormulaStream {
-    pub(super) const OCI_REGISTRY: &str = "ghcr.io";
+    pub(super) const OCI_REGISTRY_URL: &str = "ghcr.io";
 
-    pub(super) fn oci(prepared_formula: &PreparedFormula) -> Option<(Reference, OciDescriptor)> {
-        let registry = Self::OCI_REGISTRY;
+    pub(super) fn new(context: Arc<Context>) -> Self {
+        Self {
+            context,
+        }
+    }
+
+    #[expect(clippy::unused_self)]
+    pub(super) fn oci(
+        &self,
+        prepared_formula: &PreparedFormula,
+    ) -> Option<(Reference, OciDescriptor)> {
+        let registry = Self::OCI_REGISTRY_URL;
 
         let url = prepared_formula.download_url();
 

@@ -1,3 +1,4 @@
+mod cask;
 mod formula;
 
 use std::{path::Path, sync::Arc};
@@ -8,19 +9,25 @@ use oci_client::secrets::RegistryAuth;
 use tokio::fs::File;
 use tokio_util::io::ReaderStream;
 
-use self::formula::FormulaStream;
+use self::{cask::CaskStream, formula::FormulaStream};
 use crate::{
     context::Context,
     package::prepared::{PreparedPackage, PreparedPackageable as _},
 };
 
 pub(crate) struct Streams {
+    formula_stream: FormulaStream,
+    cask_stream: CaskStream,
+
     context: Arc<Context>,
 }
 
 impl Streams {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         Self {
+            formula_stream: FormulaStream::new(Arc::clone(&context)),
+            cask_stream: CaskStream::new(Arc::clone(&context)),
+
             context,
         }
     }
@@ -51,12 +58,14 @@ impl Streams {
     )> {
         match prepared_package {
             PreparedPackage::Formula(prepared_formula) => {
-                let (reference, descriptor) = FormulaStream::oci(prepared_formula)
+                let (reference, descriptor) = self
+                    .formula_stream
+                    .oci(prepared_formula)
                     .ok_or_else(|| anyhow::anyhow!("No OCI reference for formula"))?;
 
                 self.context
                     .oci_client
-                    .store_auth_if_needed(FormulaStream::OCI_REGISTRY, &RegistryAuth::Anonymous)
+                    .store_auth_if_needed(FormulaStream::OCI_REGISTRY_URL, &RegistryAuth::Anonymous)
                     .await;
 
                 let sized_stream = self

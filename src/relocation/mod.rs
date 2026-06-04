@@ -15,7 +15,7 @@ pub(crate) use self::macos::Relocation;
 use crate::{
     context::Context,
     ext::tokio::path::PathExt as _,
-    package::{Packageable as _, streamed::StreamedFormula},
+    package::{Packageable as _, pipelined::PipelinedFormula},
 };
 
 #[expect(private_bounds)]
@@ -41,14 +41,14 @@ pub(crate) trait Relocator: RelocatorInner {
         Self::from((replacement_pairs, context))
     }
 
-    async fn patch(&self, streamed_formula: &StreamedFormula) -> anyhow::Result<()> {
-        let id = streamed_formula.id();
+    async fn patch(&self, pipelined_formula: &PipelinedFormula) -> anyhow::Result<()> {
+        let id = pipelined_formula.id();
 
-        let version_revision = streamed_formula.version_revision();
+        let version_revision = pipelined_formula.version_revision();
 
         let cellar_dir_path = self.context().homebrew_dirs.cellar_dir();
 
-        if streamed_formula.should_relocate(&cellar_dir_path) {
+        if pipelined_formula.should_relocate(&cellar_dir_path) {
             let keg_dir_path = self.context().homebrew_dirs.keg_dir(id, version_revision);
 
             self.patch_keg(&keg_dir_path).await?;

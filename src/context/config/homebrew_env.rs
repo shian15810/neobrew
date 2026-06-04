@@ -45,8 +45,10 @@ impl EnvConfig for HomebrewEnvConfig {
 impl HomebrewEnvConfig {
     #[cfg_attr(not(debug_assertions), visibility::make(pub(in super::super)))]
     const DEFAULT_PREFIX: &str = cfg_select! {
-        all(target_os = "macos", target_arch = "aarch64") => "/opt/homebrew",
-        all(target_os = "macos", target_arch = "x86_64") => "/usr/local",
+        target_os = "macos" => cfg_select! {
+            target_arch = "aarch64" => "/opt/homebrew",
+            target_arch = "x86_64" => "/usr/local",
+        },
         target_os = "linux" => "/home/linuxbrew/.linuxbrew",
     };
 

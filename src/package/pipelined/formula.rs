@@ -2,10 +2,10 @@ use std::path::Path;
 
 use super::{
     super::{Packageable, prepared::PreparedFormula, raw::BottleStableFileCellar},
-    StreamedPackageable,
+    PipelinedPackageable,
 };
 
-pub(crate) struct StreamedFormula {
+pub(crate) struct PipelinedFormula {
     pub(in super::super) name: String,
     pub(in super::super) version: String,
     version_revision: String,
@@ -14,7 +14,7 @@ pub(crate) struct StreamedFormula {
     pub(in super::super) is_requested: bool,
 }
 
-impl From<PreparedFormula> for StreamedFormula {
+impl From<PreparedFormula> for PipelinedFormula {
     fn from(prepared_formula: PreparedFormula) -> Self {
         Self {
             name: prepared_formula.name,
@@ -27,7 +27,7 @@ impl From<PreparedFormula> for StreamedFormula {
     }
 }
 
-impl Packageable for StreamedFormula {
+impl Packageable for PipelinedFormula {
     fn id(&self) -> &str {
         &self.name
     }
@@ -37,9 +37,9 @@ impl Packageable for StreamedFormula {
     }
 }
 
-impl StreamedPackageable for StreamedFormula {}
+impl PipelinedPackageable for PipelinedFormula {}
 
-impl StreamedFormula {
+impl PipelinedFormula {
     pub(crate) fn version_revision(&self) -> &str {
         &self.version_revision
     }

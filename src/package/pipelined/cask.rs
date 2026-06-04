@@ -3,17 +3,17 @@ use super::{
         Packageable,
         prepared::{PreparedCask, Stanzas},
     },
-    StreamedPackageable,
+    PipelinedPackageable,
 };
 
-pub(crate) struct StreamedCask {
+pub(crate) struct PipelinedCask {
     pub(in super::super) token: String,
     pub(in super::super) version: String,
     variation_stanzas: Stanzas,
     pub(in super::super) is_requested: bool,
 }
 
-impl From<PreparedCask> for StreamedCask {
+impl From<PreparedCask> for PipelinedCask {
     fn from(prepared_cask: PreparedCask) -> Self {
         Self {
             token: prepared_cask.token,
@@ -24,7 +24,7 @@ impl From<PreparedCask> for StreamedCask {
     }
 }
 
-impl Packageable for StreamedCask {
+impl Packageable for PipelinedCask {
     fn id(&self) -> &str {
         &self.token
     }
@@ -34,9 +34,9 @@ impl Packageable for StreamedCask {
     }
 }
 
-impl StreamedPackageable for StreamedCask {}
+impl PipelinedPackageable for PipelinedCask {}
 
-impl StreamedCask {
+impl PipelinedCask {
     pub(crate) fn stanzas(&self) -> &Stanzas {
         &self.variation_stanzas
     }

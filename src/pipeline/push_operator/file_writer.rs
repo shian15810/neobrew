@@ -18,7 +18,7 @@ use crate::{
     },
 };
 
-pub(crate) struct TempWriter {
+pub(crate) struct FileWriter {
     temp_file: NamedTempFile,
     buf_async_temp_file: BufWriter<File>,
 
@@ -28,7 +28,7 @@ pub(crate) struct TempWriter {
     should_run: bool,
 }
 
-impl TempWriter {
+impl FileWriter {
     pub(crate) async fn try_init(
         dest_file_path: PathBuf,
         symlink_paths: Vec<PathBuf>,
@@ -60,14 +60,16 @@ impl TempWriter {
     }
 }
 
-impl PushOperator for TempWriter {
+impl PushOperator for FileWriter {
     type Item = Bytes;
-    type Output = TempWriterOutput;
+    type Output = FileWriterOutput;
 
     async fn feed(&mut self, chunk: Self::Item) -> anyhow::Result<()> {
-        if self.should_run {
-            self.buf_async_temp_file.write_all(&chunk).await?;
+        if !self.should_run {
+            return Ok(());
         }
+
+        self.buf_async_temp_file.write_all(&chunk).await?;
 
         Ok(())
     }
@@ -77,37 +79,48 @@ impl PushOperator for TempWriter {
         channels: Arc<Channels>,
         _context: Arc<Context>,
     ) -> anyhow::Result<Self::Output> {
+        let dest_file_path = self.dest_file_path.clone();
+
+        let symlink_paths = self.symlink_paths.clone();
+
+        if !self.should_run {
+            self.buf_async_temp_file.shutdown().await?;
+
+            let async_temp_file = self.buf_async_temp_file.get_mut();
+
+            async_temp_file.shutdown().await?;
+
+            self.cleanup()?;
+
+            let output = FileWriterOutput {
+                dest_file_path,
+                symlink_paths,
+            };
+
+            return Ok(output);
+        }
+
         self.buf_async_temp_file.shutdown().await?;
 
         let async_temp_file = self.buf_async_temp_file.get_mut();
 
         async_temp_file.shutdown().await?;
 
-        if self.should_run {
-            let mut is_verified_rx = channels.is_verified_rx.clone();
+        let mut is_verified_rx = channels.is_verified_rx.clone();
 
-            let is_verified = *is_verified_rx.wait_for(Option::is_some).await?;
+        let is_verified = *is_verified_rx.wait_for(Option::is_some).await?;
 
-            if matches!(is_verified, Some(false)) {
-                self.cleanup()?;
-
-                let err = anyhow!("Writer failed due to SHA-256 mismatch");
-
-                return Err(err);
-            }
-        }
-
-        let dest_file_path = self.dest_file_path.clone();
-
-        let symlink_paths = self.symlink_paths.clone();
-
-        if self.should_run {
-            self.persist().await?;
-        } else {
+        if matches!(is_verified, Some(false)) {
             self.cleanup()?;
+
+            let err = anyhow!("Writer failed due to SHA-256 mismatch");
+
+            return Err(err);
         }
 
-        let output = TempWriterOutput {
+        self.persist().await?;
+
+        let output = FileWriterOutput {
             dest_file_path,
             symlink_paths,
         };
@@ -142,7 +155,7 @@ impl PushOperator for TempWriter {
     }
 }
 
-pub(crate) struct TempWriterOutput {
+pub(crate) struct FileWriterOutput {
     pub(in super::super) dest_file_path: PathBuf,
     symlink_paths: Vec<PathBuf>,
 }

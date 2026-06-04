@@ -5,7 +5,11 @@ use path_clean::PathClean as _;
 use crate::context::{Context, dirs::ProjectDirs as _};
 
 pub(crate) struct Placeholder {
+    #[cfg(target_os = "macos")]
     replacement_pairs: [(&'static str, String); 4],
+
+    #[cfg(target_os = "linux")]
+    replacement_pairs: [(&'static str, String); 3],
 
     context: Arc<Context>,
 }
@@ -14,12 +18,21 @@ impl Placeholder {
     pub(crate) fn new(context: Arc<Context>) -> Self {
         let homebrew_dirs = &context.homebrew_dirs;
 
+        #[cfg(target_os = "macos")]
         let replacement_pairs = [
             ("/$HOME", homebrew_dirs.home_dir()),
             ("$HOMEBREW_PREFIX", homebrew_dirs.prefix_dir()),
             ("$HOMEBREW_CELLAR", homebrew_dirs.cellar_dir()),
             ("$APPDIR", homebrew_dirs.app_dir()),
         ];
+
+        #[cfg(target_os = "linux")]
+        let replacement_pairs = [
+            ("/$HOME", homebrew_dirs.home_dir()),
+            ("$HOMEBREW_PREFIX", homebrew_dirs.prefix_dir()),
+            ("$HOMEBREW_CELLAR", homebrew_dirs.cellar_dir()),
+        ];
+
         let replacement_pairs = replacement_pairs.map(|(placeholder, replacement_path)| {
             let replacement_pstr = replacement_path.to_string_lossy();
             let replacement_pstr = replacement_pstr.into_owned();
@@ -72,6 +85,7 @@ impl Placeholder {
             None => pstr.to_owned(),
         };
 
+        #[cfg(target_os = "macos")]
         let pstr = match pstr.strip_prefix("/Applications/") {
             Some(suffix_pstr) => format!("$APPDIR/{suffix_pstr}"),
             None if pstr == "/Applications" => "$APPDIR".to_owned(),

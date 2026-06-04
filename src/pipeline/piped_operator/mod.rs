@@ -7,7 +7,7 @@ use super::channels::PipelineChannels as Channels;
 use crate::context::Context;
 
 #[trait_variant::make(Send)]
-pub(crate) trait PostOperator {
+pub(crate) trait PipedOperator {
     type Input;
     type Output;
 

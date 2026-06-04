@@ -1,5 +1,5 @@
 mod channels;
-pub(crate) mod post_operator;
+pub(crate) mod piped_operator;
 pub(crate) mod pull_operator;
 pub(crate) mod push_operator;
 
@@ -17,7 +17,7 @@ use futures::{
 use tokio::task;
 use tokio_util::{sync::PollSender, task::AbortOnDropHandle};
 
-use self::{channels::PipelineChannels as Channels, post_operator::PostOperator};
+use self::{channels::PipelineChannels as Channels, piped_operator::PipedOperator};
 use crate::context::Context;
 
 pub(crate) struct Pipeline<Item, St, Si, Handles> {
@@ -166,27 +166,27 @@ pub(crate) trait Operator<Item, _Marker>: Sized {
         AbortOnDropHandle<anyhow::Result<Self::Output>>,
     );
 
-    fn pipe<PostOp>(self, post_operator: PostOp) -> PipedOperator<Self, PostOp> {
-        PipedOperator {
+    fn pipe<PipedOp>(self, piped_operator: PipedOp) -> ChainedOperator<Self, PipedOp> {
+        ChainedOperator {
             operator: self,
-            post_operator,
+            piped_operator,
         }
     }
 }
 
-pub(crate) struct PipedOperator<Op, PostOp> {
+pub(crate) struct ChainedOperator<Op, PipedOp> {
     operator: Op,
-    post_operator: PostOp,
+    piped_operator: PipedOp,
 }
 
 impl<
     Item,
     Op: Operator<Item, _Marker, Output: Send + 'static>,
-    PostOp: PostOperator<Input = Op::Output, Output: Send> + 'static,
+    PipedOp: PipedOperator<Input = Op::Output, Output: Send> + 'static,
     _Marker,
-> Operator<Item, _Marker> for PipedOperator<Op, PostOp>
+> Operator<Item, _Marker> for ChainedOperator<Op, PipedOp>
 {
-    type Output = PostOp::Output;
+    type Output = PipedOp::Output;
 
     fn launch(
         self,
@@ -203,7 +203,10 @@ impl<
         let handle = task::spawn(async {
             let input = handle.await??;
 
-            let output = self.post_operator.proceed(input, channels, context).await?;
+            let output = self
+                .piped_operator
+                .proceed(input, channels, context)
+                .await?;
 
             anyhow::Ok(output)
         });

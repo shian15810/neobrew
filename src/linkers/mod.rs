@@ -6,7 +6,7 @@ use std::sync::Arc;
 use self::{cask::CaskLinker, formula::FormulaLinker};
 use crate::{
     context::Context,
-    package::{prepared::PreparedPackage, streamed::StreamedPackage},
+    package::{pipelined::PipelinedPackage, prepared::PreparedPackage},
     placeholder::Placeholder,
 };
 
@@ -64,13 +64,13 @@ impl Linkers {
         Ok(is_up_to_date)
     }
 
-    pub(crate) async fn link(&self, streamed_package: &StreamedPackage) -> anyhow::Result<()> {
-        match streamed_package {
-            StreamedPackage::Formula(streamed_formula) => {
-                self.formula_linker.link(streamed_formula).await?;
+    pub(crate) async fn link(&self, pipelined_package: &PipelinedPackage) -> anyhow::Result<()> {
+        match pipelined_package {
+            PipelinedPackage::Formula(pipelined_formula) => {
+                self.formula_linker.link(pipelined_formula).await?;
             },
-            StreamedPackage::Cask(streamed_cask) => {
-                self.cask_linker.link(streamed_cask).await?;
+            PipelinedPackage::Cask(pipelined_cask) => {
+                self.cask_linker.link(pipelined_cask).await?;
             },
         }
 
@@ -80,12 +80,12 @@ impl Linkers {
 
 trait Linkerer: Sized {
     type PreparedPackage;
-    type StreamedPackage;
+    type PipelinedPackage;
 
     async fn is_up_to_date(&self, prepared_package: &Self::PreparedPackage)
     -> anyhow::Result<bool>;
 
     async fn is_installed(&self, prepared_package: &Self::PreparedPackage) -> anyhow::Result<bool>;
 
-    async fn link(&self, streamed_package: &Self::StreamedPackage) -> anyhow::Result<()>;
+    async fn link(&self, pipelined_package: &Self::PipelinedPackage) -> anyhow::Result<()>;
 }

@@ -12,14 +12,18 @@ pub(crate) struct Sha256Hasher {
     digest: Sha256,
 
     expected: String,
+
+    should_run: bool,
 }
 
 impl Sha256Hasher {
-    pub(crate) fn new(expected: String) -> Self {
+    pub(crate) fn new(expected: String, should_run: bool) -> Self {
         Self {
             digest: Sha256::new(),
 
             expected,
+
+            should_run,
         }
     }
 }
@@ -30,6 +34,10 @@ impl PushOperator for Sha256Hasher {
 
     #[expect(clippy::unused_async_trait_impl)]
     async fn feed(&mut self, chunk: Self::Item) -> anyhow::Result<()> {
+        if !self.should_run {
+            return Ok(());
+        }
+
         self.digest.update(chunk);
 
         Ok(())
@@ -41,6 +49,22 @@ impl PushOperator for Sha256Hasher {
         _context: Arc<Context>,
     ) -> anyhow::Result<Self::Output> {
         let digest = self.digest.clone();
+
+        if !self.should_run {
+            let expected = self.expected.clone();
+
+            digest.finalize();
+
+            let is_verified = Some(true);
+
+            channels.is_verified_tx.send(is_verified)?;
+
+            self.cleanup()?;
+
+            let output = expected;
+
+            return Ok(output);
+        }
 
         let hashed = digest.finalize();
         let hashed = HexDisplay(&hashed);

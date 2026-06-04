@@ -9,8 +9,8 @@ use crate::{
     ext::{std::path::PathExt as _, tokio::path::PathExt as _},
     package::{
         Packageable as _,
+        pipelined::PipelinedCask,
         prepared::{CommonStanza, PreparedCask, Stanzas},
-        streamed::StreamedCask,
     },
     placeholder::Placeholder,
 };
@@ -25,7 +25,7 @@ pub(super) struct CaskLinker {
 
 impl Linkerer for CaskLinker {
     type PreparedPackage = PreparedCask;
-    type StreamedPackage = StreamedCask;
+    type PipelinedPackage = PipelinedCask;
 
     async fn is_installed(&self, prepared_package: &PreparedCask) -> anyhow::Result<bool> {
         let prepared_cask = prepared_package;
@@ -75,16 +75,16 @@ impl Linkerer for CaskLinker {
         Ok(false)
     }
 
-    async fn link(&self, streamed_package: &StreamedCask) -> anyhow::Result<()> {
-        let streamed_cask = streamed_package;
+    async fn link(&self, pipelined_package: &PipelinedCask) -> anyhow::Result<()> {
+        let pipelined_cask = pipelined_package;
 
-        let id = streamed_cask.id();
+        let id = pipelined_cask.id();
 
-        let version = streamed_cask.version();
+        let version = pipelined_cask.version();
 
         let staged_dir_path = self.context.homebrew_dirs.staged_dir(id, version);
 
-        let stanzas = &streamed_cask.stanzas();
+        let stanzas = &pipelined_cask.stanzas();
 
         self.link_commons(stanzas, &staged_dir_path).await?;
 

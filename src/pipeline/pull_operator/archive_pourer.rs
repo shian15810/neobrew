@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::anyhow;
+use anyhow::{Context as _, anyhow};
 use async_compression::tokio::bufread::GzipDecoder;
 use async_zip::base::read::stream::ZipFileReader;
 use futures::future;
@@ -23,7 +23,7 @@ use crate::{
     util::ArchiveFormat,
 };
 
-pub(crate) struct TempPourer {
+pub(crate) struct ArchivePourer {
     temp_dir: TempDir,
 
     dest_dir_path: PathBuf,
@@ -32,7 +32,7 @@ pub(crate) struct TempPourer {
     archive_format: Option<ArchiveFormat>,
 }
 
-impl TempPourer {
+impl ArchivePourer {
     pub(crate) async fn try_init(
         dest_dir_path: PathBuf,
         symlink_paths: Vec<PathBuf>,
@@ -114,8 +114,8 @@ impl TempPourer {
     }
 }
 
-impl PullOperator for TempPourer {
-    type Output = TempPourerOutput;
+impl PullOperator for ArchivePourer {
+    type Output = ArchivePourerOutput;
 
     async fn from_reader(&self, reader: impl AsyncRead + Unpin + Send) -> anyhow::Result<()> {
         let mut buf_reader = BufReader::new(reader);
@@ -151,6 +151,10 @@ impl PullOperator for TempPourer {
         channels: Arc<Channels>,
         _context: Arc<Context>,
     ) -> anyhow::Result<Self::Output> {
+        let dest_dir_path = self.dest_dir_path.clone();
+
+        let symlink_paths = self.symlink_paths.clone();
+
         let mut is_verified_rx = channels.is_verified_rx.clone();
 
         let is_verified = *is_verified_rx.wait_for(Option::is_some).await?;
@@ -163,13 +167,9 @@ impl PullOperator for TempPourer {
             return Err(err);
         }
 
-        let dest_dir_path = self.dest_dir_path.clone();
-
-        let symlink_paths = self.symlink_paths.clone();
-
         self.persist().await?;
 
-        let output = TempPourerOutput {
+        let output = ArchivePourerOutput {
             dest_dir_path,
             symlink_paths,
         };
@@ -205,7 +205,14 @@ impl PullOperator for TempPourer {
                 fs::remove_dir_all(&dest_dir_path).await?;
             }
 
-            fs::rename(src_dir_path, dest_dir_path).await?;
+            fs::rename(&src_dir_path, &dest_dir_path)
+                .await
+                .with_context(|| {
+                    let src_dir_path = src_dir_path.display();
+                    let dest_dir_path = dest_dir_path.display();
+
+                    format!(r#"Failed to rename "{src_dir_path}" to "{dest_dir_path}""#)
+                })?;
         }
 
         self.temp_dir.close()?;
@@ -228,7 +235,7 @@ impl PullOperator for TempPourer {
     }
 }
 
-pub(crate) struct TempPourerOutput {
+pub(crate) struct ArchivePourerOutput {
     dest_dir_path: PathBuf,
     symlink_paths: Vec<PathBuf>,
 }
