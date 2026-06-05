@@ -1,27 +1,25 @@
 use std::{
     path::{Component, Path, PathBuf},
     process::Stdio,
-    sync::Arc,
 };
 
 use anyhow::{Context as _, anyhow};
+use async_trait::async_trait;
 use async_walkdir::WalkDir;
 use futures::{
     future::{self, TryFutureExt as _},
     stream::StreamExt as _,
 };
-use indicatif::ProgressBar;
 use path_clean::PathClean as _;
 use plist::Value;
 use tempfile::{NamedTempFile, TempDir};
 use tokio::{fs, io::AsyncWriteExt as _, process::Command};
 
 use super::{
-    super::{channels::PipelineChannels as Channels, push_operator::file_writer::FileWriterOutput},
-    PipedOperator,
+    super::state_store::{PouredOutput, Stage, WrittenOutput},
+    ActionOperator,
 };
 use crate::{
-    context::Context,
     ext::{std::path::PathExt as _, tokio::path::PathExt as _},
     util::ArchiveFormat,
 };
@@ -30,283 +28,72 @@ pub(crate) struct DmgPourer {
     temp_dir: TempDir,
 
     dest_dir_path: PathBuf,
-
     archive_format: Option<ArchiveFormat>,
-
-    pb: ProgressBar,
 }
 
-impl PipedOperator for DmgPourer {
-    type Input = FileWriterOutput;
-    type Output = ();
+#[async_trait]
+impl ActionOperator for DmgPourer {
+    type Input = WrittenOutput;
+    type Staging = ();
+    type Output = PouredOutput;
 
-    async fn proceed(
-        self,
-        input: Self::Input,
-        _channels: Arc<Channels>,
-        _context: Arc<Context>,
-    ) -> anyhow::Result<Self::Output> {
-        let pb = &self.pb;
+    async fn should_run(&self, input: &Self::Input) -> anyhow::Result<bool> {
+        let is_dmg = self.is_dmg(&input.dest_file_path).await?;
 
-        pb.set_prefix("Pouring");
+        Ok(is_dmg)
+    }
 
+    fn on_skip_run(self) -> anyhow::Result<Self::Output> {
+        let dest_dir_path = self.dest_dir_path.clone();
+
+        self.cleanup()?;
+
+        let output = PouredOutput {
+            dest_dir_path,
+            archive_format: ArchiveFormat::Dmg,
+        };
+
+        Ok(output)
+    }
+
+    fn running_prefix(&self) -> Option<&'static str> {
+        Some("Pouring")
+    }
+
+    async fn execute(&self, input: &Self::Input) -> anyhow::Result<Self::Staging> {
         self.pour(&input.dest_file_path).await?;
 
         Ok(())
     }
+
+    fn on_final_run(self, _staging: Self::Staging) -> anyhow::Result<Self::Output> {
+        let dest_dir_path = self.dest_dir_path.clone();
+
+        self.cleanup()?;
+
+        let output = PouredOutput {
+            dest_dir_path,
+            archive_format: ArchiveFormat::Dmg,
+        };
+
+        Ok(output)
+    }
+
+    fn cleanup(self) -> anyhow::Result<()> {
+        self.temp_dir.close()?;
+
+        Ok(())
+    }
+
+    fn passed_stage(&self, should_run: bool) -> Option<Stage> {
+        should_run.then_some(Stage::Poured)
+    }
 }
 
 impl DmgPourer {
-    const SYSTEM_DIRS: &[&str] = &[
-        "/",
-        "/Applications",
-        "/Applications/Utilities",
-        "/Incompatible Software",
-        "/Library",
-        "/Library/Application Support",
-        "/Library/Audio",
-        "/Library/Caches",
-        "/Library/ColorPickers",
-        "/Library/ColorSync",
-        "/Library/Components",
-        "/Library/Compositions",
-        "/Library/Contextual Menu Items",
-        "/Library/CoreMediaIO",
-        "/Library/Desktop Pictures",
-        "/Library/Developer",
-        "/Library/Dictionaries",
-        "/Library/DirectoryServices",
-        "/Library/Documentation",
-        "/Library/Extensions",
-        "/Library/Filesystems",
-        "/Library/Fonts",
-        "/Library/Frameworks",
-        "/Library/Graphics",
-        "/Library/Image Capture",
-        "/Library/Input Methods",
-        "/Library/Internet Plug-Ins",
-        "/Library/Java",
-        "/Library/Java/Extensions",
-        "/Library/Java/JavaVirtualMachines",
-        "/Library/Keyboard Layouts",
-        "/Library/Keychains",
-        "/Library/LaunchAgents",
-        "/Library/LaunchDaemons",
-        "/Library/Logs",
-        "/Library/Messages",
-        "/Library/Modem Scripts",
-        "/Library/OpenDirectory",
-        "/Library/PDF Services",
-        "/Library/Perl",
-        "/Library/PreferencePanes",
-        "/Library/Preferences",
-        "/Library/Printers",
-        "/Library/PrivilegedHelperTools",
-        "/Library/Python",
-        "/Library/QuickLook",
-        "/Library/QuickTime",
-        "/Library/Receipts",
-        "/Library/Ruby",
-        "/Library/Sandbox",
-        "/Library/Screen Savers",
-        "/Library/ScriptingAdditions",
-        "/Library/Scripts",
-        "/Library/Security",
-        "/Library/Speech",
-        "/Library/Spelling",
-        "/Library/Spotlight",
-        "/Library/StartupItems",
-        "/Library/SystemProfiler",
-        "/Library/Updates",
-        "/Library/User Pictures",
-        "/Library/Video",
-        "/Library/WebServer",
-        "/Library/Widgets",
-        "/Library/iTunes",
-        "/Network",
-        "/System",
-        "/System/Library",
-        "/System/Library/Accessibility",
-        "/System/Library/Accounts",
-        "/System/Library/Address Book Plug-Ins",
-        "/System/Library/Assistant",
-        "/System/Library/Automator",
-        "/System/Library/BridgeSupport",
-        "/System/Library/Caches",
-        "/System/Library/ColorPickers",
-        "/System/Library/ColorSync",
-        "/System/Library/Colors",
-        "/System/Library/Components",
-        "/System/Library/Compositions",
-        "/System/Library/CoreServices",
-        "/System/Library/DTDs",
-        "/System/Library/DirectoryServices",
-        "/System/Library/Displays",
-        "/System/Library/Extensions",
-        "/System/Library/Filesystems",
-        "/System/Library/Filters",
-        "/System/Library/Fonts",
-        "/System/Library/Frameworks",
-        "/System/Library/Graphics",
-        "/System/Library/IdentityServices",
-        "/System/Library/Image Capture",
-        "/System/Library/Input Methods",
-        "/System/Library/InternetAccounts",
-        "/System/Library/Java",
-        "/System/Library/KerberosPlugins",
-        "/System/Library/Keyboard Layouts",
-        "/System/Library/Keychains",
-        "/System/Library/LaunchAgents",
-        "/System/Library/LaunchDaemons",
-        "/System/Library/LinguisticData",
-        "/System/Library/LocationBundles",
-        "/System/Library/LoginPlugins",
-        "/System/Library/Messages",
-        "/System/Library/Metadata",
-        "/System/Library/MonitorPanels",
-        "/System/Library/OpenDirectory",
-        "/System/Library/OpenSSL",
-        "/System/Library/Password Server Filters",
-        "/System/Library/PerformanceMetrics",
-        "/System/Library/Perl",
-        "/System/Library/PreferencePanes",
-        "/System/Library/Printers",
-        "/System/Library/PrivateFrameworks",
-        "/System/Library/QuickLook",
-        "/System/Library/QuickTime",
-        "/System/Library/QuickTimeJava",
-        "/System/Library/Recents",
-        "/System/Library/SDKSettingsPlist",
-        "/System/Library/Sandbox",
-        "/System/Library/Screen Savers",
-        "/System/Library/ScreenReader",
-        "/System/Library/ScriptingAdditions",
-        "/System/Library/ScriptingDefinitions",
-        "/System/Library/Security",
-        "/System/Library/Services",
-        "/System/Library/Sounds",
-        "/System/Library/Speech",
-        "/System/Library/Spelling",
-        "/System/Library/Spotlight",
-        "/System/Library/StartupItems",
-        "/System/Library/SyncServices",
-        "/System/Library/SystemConfiguration",
-        "/System/Library/SystemProfiler",
-        "/System/Library/Tcl",
-        "/System/Library/TextEncodings",
-        "/System/Library/User Template",
-        "/System/Library/UserEventPlugins",
-        "/System/Library/Video",
-        "/System/Library/WidgetResources",
-        "/User Information",
-        "/Users",
-        "/Volumes",
-        "/bin",
-        "/boot",
-        "/cores",
-        "/dev",
-        "/etc",
-        "/etc/X11",
-        "/etc/opt",
-        "/etc/sgml",
-        "/etc/xml",
-        "/home",
-        "/libexec",
-        "/lost+found",
-        "/media",
-        "/mnt",
-        "/net",
-        "/opt",
-        "/private",
-        "/private/etc",
-        "/private/tftpboot",
-        "/private/tmp",
-        "/private/var",
-        "/proc",
-        "/root",
-        "/sbin",
-        "/srv",
-        "/tmp",
-        "/usr",
-        "/usr/X11R6",
-        "/usr/bin",
-        "/usr/etc",
-        "/usr/include",
-        "/usr/lib",
-        "/usr/libexec",
-        "/usr/libexec/cups",
-        "/usr/local",
-        "/usr/local/Cellar",
-        "/usr/local/Frameworks",
-        "/usr/local/Library",
-        "/usr/local/bin",
-        "/usr/local/etc",
-        "/usr/local/include",
-        "/usr/local/lib",
-        "/usr/local/libexec",
-        "/usr/local/opt",
-        "/usr/local/share",
-        "/usr/local/share/man",
-        "/usr/local/share/man/man1",
-        "/usr/local/share/man/man2",
-        "/usr/local/share/man/man3",
-        "/usr/local/share/man/man4",
-        "/usr/local/share/man/man5",
-        "/usr/local/share/man/man6",
-        "/usr/local/share/man/man7",
-        "/usr/local/share/man/man8",
-        "/usr/local/share/man/man9",
-        "/usr/local/share/man/mann",
-        "/usr/local/var",
-        "/usr/local/var/lib",
-        "/usr/local/var/lock",
-        "/usr/local/var/run",
-        "/usr/sbin",
-        "/usr/share",
-        "/usr/share/man",
-        "/usr/share/man/man1",
-        "/usr/share/man/man2",
-        "/usr/share/man/man3",
-        "/usr/share/man/man4",
-        "/usr/share/man/man5",
-        "/usr/share/man/man6",
-        "/usr/share/man/man7",
-        "/usr/share/man/man8",
-        "/usr/share/man/man9",
-        "/usr/share/man/mann",
-        "/usr/src",
-        "/var",
-        "/var/cache",
-        "/var/lib",
-        "/var/lock",
-        "/var/log",
-        "/var/mail",
-        "/var/run",
-        "/var/spool",
-        "/var/spool/mail",
-        "/var/tmp",
-    ];
-
-    const DMG_METADATA: &[&str] = &[
-        ".background",
-        ".com.apple.timemachine.donotpresent",
-        ".com.apple.timemachine.supported",
-        ".DocumentRevisions-V100",
-        ".DS_Store",
-        ".fseventsd",
-        ".MobileBackups",
-        ".Spotlight-V100",
-        ".TemporaryItems",
-        ".Trashes",
-        ".VolumeIcon.icns",
-        ".HFS+ Private Directory Data\r",
-        ".HFS+ Private Data\r",
-    ];
-
     pub(crate) async fn try_init(
         dest_dir_path: PathBuf,
         archive_format: Option<ArchiveFormat>,
-        pb: ProgressBar,
     ) -> anyhow::Result<Self> {
         let dest_base_path = &dest_dir_path;
 
@@ -318,20 +105,23 @@ impl DmgPourer {
             temp_dir,
 
             dest_dir_path,
-
             archive_format,
-
-            pb,
         };
 
         Ok(this)
     }
 
-    async fn pour(self, src_file_path: &Path) -> anyhow::Result<()> {
-        if !self.is_dmg(src_file_path).await? {
-            return Ok(());
-        }
+    async fn is_dmg(&self, src_file_path: &Path) -> anyhow::Result<bool> {
+        let is_dmg = if let Some(archive_format) = &self.archive_format {
+            matches!(archive_format, ArchiveFormat::Dmg)
+        } else {
+            ArchiveFormat::is_dmg(src_file_path).await?
+        };
 
+        Ok(is_dmg)
+    }
+
+    async fn pour(&self, src_file_path: &Path) -> anyhow::Result<()> {
         let mount_points = self.mount(src_file_path).await?;
 
         if mount_points.is_empty() {
@@ -357,19 +147,7 @@ impl DmgPourer {
 
         extract_mount_point_res.and(eject_mount_point_res)?;
 
-        self.temp_dir.close()?;
-
         Ok(())
-    }
-
-    async fn is_dmg(&self, src_file_path: &Path) -> anyhow::Result<bool> {
-        let is_dmg = if let Some(archive_format) = &self.archive_format {
-            matches!(archive_format, ArchiveFormat::Dmg)
-        } else {
-            ArchiveFormat::is_dmg(src_file_path).await?
-        };
-
-        Ok(is_dmg)
     }
 
     async fn mount(&self, src_file_path: &Path) -> anyhow::Result<Vec<PathBuf>> {
@@ -582,7 +360,7 @@ impl DmgPourer {
                 continue;
             }
 
-            if dest_item_path.is_symlink_exists_nofollow().await? {
+            if dest_item_path.is_link_exists_nofollow().await? {
                 continue;
             }
 
@@ -604,7 +382,7 @@ impl DmgPourer {
 
             let mount_point_entry_path = mount_point_entry.path();
 
-            if self.is_system_dir_symlink(&mount_point_entry_path).await? {
+            if self.is_system_dir_link(&mount_point_entry_path).await? {
                 continue;
             }
 
@@ -640,27 +418,27 @@ impl DmgPourer {
         Ok(bom)
     }
 
-    async fn is_system_dir_symlink(&self, path: &Path) -> anyhow::Result<bool> {
-        if !path.is_symlink_exists_nofollow().await? {
+    async fn is_system_dir_link(&self, path: &Path) -> anyhow::Result<bool> {
+        if !path.is_link_exists_nofollow().await? {
             return Ok(false);
         }
 
-        let symlink_path = fs::read_link(path).await?;
-        let symlink_path = if symlink_path.is_relative() {
-            let symlink_base_path = path.base()?;
+        let link_path = fs::read_link(path).await?;
+        let link_path = if link_path.is_relative() {
+            let link_base_path = path.base()?;
 
-            symlink_base_path.join(symlink_path)
+            link_base_path.join(link_path)
         } else {
-            symlink_path
+            link_path
         };
-        let symlink_path = symlink_path.clean();
+        let link_path = link_path.clean();
 
-        let symlink_pstr = symlink_path.to_string_lossy();
-        let symlink_pstr = symlink_pstr.as_ref();
+        let link_pstr = link_path.to_string_lossy();
+        let link_pstr = link_pstr.as_ref();
 
-        let is_system_dir_symlink = Self::SYSTEM_DIRS.contains(&symlink_pstr);
+        let is_system_dir_link = Self::SYSTEM_DIRS.contains(&link_pstr);
 
-        Ok(is_system_dir_symlink)
+        Ok(is_system_dir_link)
     }
 
     #[expect(clippy::unused_self)]
@@ -775,4 +553,250 @@ impl DmgPourer {
 
         Ok(())
     }
+
+    const SYSTEM_DIRS: &[&str] = &[
+        "/",
+        "/Applications",
+        "/Applications/Utilities",
+        "/Incompatible Software",
+        "/Library",
+        "/Library/Application Support",
+        "/Library/Audio",
+        "/Library/Caches",
+        "/Library/ColorPickers",
+        "/Library/ColorSync",
+        "/Library/Components",
+        "/Library/Compositions",
+        "/Library/Contextual Menu Items",
+        "/Library/CoreMediaIO",
+        "/Library/Desktop Pictures",
+        "/Library/Developer",
+        "/Library/Dictionaries",
+        "/Library/DirectoryServices",
+        "/Library/Documentation",
+        "/Library/Extensions",
+        "/Library/Filesystems",
+        "/Library/Fonts",
+        "/Library/Frameworks",
+        "/Library/Graphics",
+        "/Library/Image Capture",
+        "/Library/Input Methods",
+        "/Library/Internet Plug-Ins",
+        "/Library/Java",
+        "/Library/Java/Extensions",
+        "/Library/Java/JavaVirtualMachines",
+        "/Library/Keyboard Layouts",
+        "/Library/Keychains",
+        "/Library/LaunchAgents",
+        "/Library/LaunchDaemons",
+        "/Library/Logs",
+        "/Library/Messages",
+        "/Library/Modem Scripts",
+        "/Library/OpenDirectory",
+        "/Library/PDF Services",
+        "/Library/Perl",
+        "/Library/PreferencePanes",
+        "/Library/Preferences",
+        "/Library/Printers",
+        "/Library/PrivilegedHelperTools",
+        "/Library/Python",
+        "/Library/QuickLook",
+        "/Library/QuickTime",
+        "/Library/Receipts",
+        "/Library/Ruby",
+        "/Library/Sandbox",
+        "/Library/Screen Savers",
+        "/Library/ScriptingAdditions",
+        "/Library/Scripts",
+        "/Library/Security",
+        "/Library/Speech",
+        "/Library/Spelling",
+        "/Library/Spotlight",
+        "/Library/StartupItems",
+        "/Library/SystemProfiler",
+        "/Library/Updates",
+        "/Library/User Pictures",
+        "/Library/Video",
+        "/Library/WebServer",
+        "/Library/Widgets",
+        "/Library/iTunes",
+        "/Network",
+        "/System",
+        "/System/Library",
+        "/System/Library/Accessibility",
+        "/System/Library/Accounts",
+        "/System/Library/Address Book Plug-Ins",
+        "/System/Library/Toolbox",
+        "/System/Library/Automator",
+        "/System/Library/BridgeSupport",
+        "/System/Library/Caches",
+        "/System/Library/ColorPickers",
+        "/System/Library/ColorSync",
+        "/System/Library/Colors",
+        "/System/Library/Components",
+        "/System/Library/Compositions",
+        "/System/Library/CoreServices",
+        "/System/Library/DTDs",
+        "/System/Library/DirectoryServices",
+        "/System/Library/Displays",
+        "/System/Library/Extensions",
+        "/System/Library/Filesystems",
+        "/System/Library/Filters",
+        "/System/Library/Fonts",
+        "/System/Library/Frameworks",
+        "/System/Library/Graphics",
+        "/System/Library/IdentityServices",
+        "/System/Library/Image Capture",
+        "/System/Library/Input Methods",
+        "/System/Library/InternetAccounts",
+        "/System/Library/Java",
+        "/System/Library/KerberosPlugins",
+        "/System/Library/Keyboard Layouts",
+        "/System/Library/Keychains",
+        "/System/Library/LaunchAgents",
+        "/System/Library/LaunchDaemons",
+        "/System/Library/LinguisticData",
+        "/System/Library/LocationBundles",
+        "/System/Library/LoginPlugins",
+        "/System/Library/Messages",
+        "/System/Library/Metadata",
+        "/System/Library/MonitorPanels",
+        "/System/Library/OpenDirectory",
+        "/System/Library/OpenSSL",
+        "/System/Library/Password Server Filters",
+        "/System/Library/PerformanceMetrics",
+        "/System/Library/Perl",
+        "/System/Library/PreferencePanes",
+        "/System/Library/Printers",
+        "/System/Library/PrivateFrameworks",
+        "/System/Library/QuickLook",
+        "/System/Library/QuickTime",
+        "/System/Library/QuickTimeJava",
+        "/System/Library/Recents",
+        "/System/Library/SDKSettingsPlist",
+        "/System/Library/Sandbox",
+        "/System/Library/Screen Savers",
+        "/System/Library/ScreenReader",
+        "/System/Library/ScriptingAdditions",
+        "/System/Library/ScriptingDefinitions",
+        "/System/Library/Security",
+        "/System/Library/Services",
+        "/System/Library/Sounds",
+        "/System/Library/Speech",
+        "/System/Library/Spelling",
+        "/System/Library/Spotlight",
+        "/System/Library/StartupItems",
+        "/System/Library/SyncServices",
+        "/System/Library/SystemConfiguration",
+        "/System/Library/SystemProfiler",
+        "/System/Library/Tcl",
+        "/System/Library/TextEncodings",
+        "/System/Library/User Template",
+        "/System/Library/UserEventPlugins",
+        "/System/Library/Video",
+        "/System/Library/WidgetResources",
+        "/User Information",
+        "/Users",
+        "/Volumes",
+        "/bin",
+        "/boot",
+        "/cores",
+        "/dev",
+        "/etc",
+        "/etc/X11",
+        "/etc/opt",
+        "/etc/sgml",
+        "/etc/xml",
+        "/home",
+        "/libexec",
+        "/lost+found",
+        "/media",
+        "/mnt",
+        "/net",
+        "/opt",
+        "/private",
+        "/private/etc",
+        "/private/tftpboot",
+        "/private/tmp",
+        "/private/var",
+        "/proc",
+        "/root",
+        "/sbin",
+        "/srv",
+        "/tmp",
+        "/usr",
+        "/usr/X11R6",
+        "/usr/bin",
+        "/usr/etc",
+        "/usr/include",
+        "/usr/lib",
+        "/usr/libexec",
+        "/usr/libexec/cups",
+        "/usr/local",
+        "/usr/local/Cellar",
+        "/usr/local/Frameworks",
+        "/usr/local/Library",
+        "/usr/local/bin",
+        "/usr/local/etc",
+        "/usr/local/include",
+        "/usr/local/lib",
+        "/usr/local/libexec",
+        "/usr/local/opt",
+        "/usr/local/share",
+        "/usr/local/share/man",
+        "/usr/local/share/man/man1",
+        "/usr/local/share/man/man2",
+        "/usr/local/share/man/man3",
+        "/usr/local/share/man/man4",
+        "/usr/local/share/man/man5",
+        "/usr/local/share/man/man6",
+        "/usr/local/share/man/man7",
+        "/usr/local/share/man/man8",
+        "/usr/local/share/man/man9",
+        "/usr/local/share/man/mann",
+        "/usr/local/var",
+        "/usr/local/var/lib",
+        "/usr/local/var/lock",
+        "/usr/local/var/run",
+        "/usr/sbin",
+        "/usr/share",
+        "/usr/share/man",
+        "/usr/share/man/man1",
+        "/usr/share/man/man2",
+        "/usr/share/man/man3",
+        "/usr/share/man/man4",
+        "/usr/share/man/man5",
+        "/usr/share/man/man6",
+        "/usr/share/man/man7",
+        "/usr/share/man/man8",
+        "/usr/share/man/man9",
+        "/usr/share/man/mann",
+        "/usr/src",
+        "/var",
+        "/var/cache",
+        "/var/lib",
+        "/var/lock",
+        "/var/log",
+        "/var/mail",
+        "/var/run",
+        "/var/spool",
+        "/var/spool/mail",
+        "/var/tmp",
+    ];
+
+    const DMG_METADATA: &[&str] = &[
+        ".background",
+        ".com.apple.timemachine.donotpresent",
+        ".com.apple.timemachine.supported",
+        ".DocumentRevisions-V100",
+        ".DS_Store",
+        ".fseventsd",
+        ".MobileBackups",
+        ".Spotlight-V100",
+        ".TemporaryItems",
+        ".Trashes",
+        ".VolumeIcon.icns",
+        ".HFS+ Private Directory Data\r",
+        ".HFS+ Private Data\r",
+    ];
 }

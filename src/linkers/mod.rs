@@ -78,7 +78,7 @@ impl Linkers {
     }
 }
 
-trait Linkerer: Sized {
+trait Linkerer {
     type PreparedPackage;
     type PipelinedPackage;
 

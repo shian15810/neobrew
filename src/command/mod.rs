@@ -92,7 +92,7 @@ impl Commands {
             Self::Internal(internal) => {
                 let context = Arc::new(context);
 
-                let result = internal.run_concurrent(context).await;
+                let result = internal.run_parallelly(context).await;
 
                 result.with_code(proc_exit::sysexits::SOFTWARE_ERR)?;
 
@@ -115,7 +115,6 @@ impl Commands {
                     _ => {},
                 }
 
-                #[expect(clippy::match_wildcard_for_single_variants)]
                 match context.config.color_choice {
                     ColorChoice::Never => {
                         brew.env("HOMEBREW_NO_COLOR", "1");
@@ -123,7 +122,7 @@ impl Commands {
                     ColorChoice::Always => {
                         brew.env("HOMEBREW_COLOR", "1");
                     },
-                    _ => {},
+                    ColorChoice::Auto => {},
                 }
 
                 let brew = brew.status().await;
@@ -147,5 +146,5 @@ enum Internal {
 
 #[enum_dispatch(Internal)]
 trait Runner {
-    async fn run_concurrent(self, context: Arc<Context>) -> anyhow::Result<()>;
+    async fn run_parallelly(self, context: Arc<Context>) -> anyhow::Result<()>;
 }

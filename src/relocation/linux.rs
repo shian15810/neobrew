@@ -56,12 +56,14 @@ impl RelocatorInner for Relocation {
 
         let this = self.clone();
 
-        let cloned_bytes = Arc::clone(&bytes);
+        let handle = task::spawn_blocking({
+            let bytes = Arc::clone(&bytes);
 
-        let handle = task::spawn_blocking(move || {
-            let replaced_bytes = this.replace_bytes(&cloned_bytes)?;
+            move || {
+                let replaced_bytes = this.replace_bytes(&bytes)?;
 
-            anyhow::Ok(replaced_bytes)
+                anyhow::Ok(replaced_bytes)
+            }
         });
         let handle = AbortOnDropHandle::new(handle);
 

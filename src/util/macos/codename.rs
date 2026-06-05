@@ -3,6 +3,7 @@ use std::str::FromStr;
 use anyhow::anyhow;
 use os_info::Version;
 use serde_with::DeserializeFromStr;
+use thiserror::Error;
 
 use super::super::semver::Semver;
 use crate::context::INFO;
@@ -80,7 +81,7 @@ impl FromStr for Codename {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, Error)]
 pub(crate) enum CodenameError {
     #[error("Unsupported macOS codename detected")]
     Unsupported,

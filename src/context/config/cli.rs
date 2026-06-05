@@ -15,7 +15,7 @@ pub(super) struct CliConfig {
 
 impl CliConfig {
     pub(super) fn from_arg_matches(matches: &ArgMatches) -> Self {
-        let is_from_cli = |id| matches.value_source(id) == Some(ValueSource::CommandLine);
+        let is_from_cli = |id| matches!(matches.value_source(id), Some(ValueSource::CommandLine));
 
         let is_verbosity_from_cli = is_from_cli("verbose") || is_from_cli("quiet");
 

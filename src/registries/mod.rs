@@ -123,16 +123,18 @@ impl Registries {
         };
         let resolved_cask_fut = resolved_cask_fut.boxed();
 
-        #[expect(clippy::manual_let_else, clippy::single_match_else)]
-        let resolved_package =
-            match future::select_ok([resolved_formula_fut, resolved_cask_fut]).await {
-                Ok((resolved_package, _)) => resolved_package,
-                Err(_) => {
-                    let err = anyhow!(r#"Package "{package}" not found"#);
+        let resolved_package_res =
+            future::select_ok([resolved_formula_fut, resolved_cask_fut]).await;
 
-                    return Err(err);
-                },
-            };
+        #[expect(clippy::manual_let_else, clippy::single_match_else)]
+        let resolved_package = match resolved_package_res {
+            Ok((resolved_package, _)) => resolved_package,
+            Err(_) => {
+                let err = anyhow!(r#"Package "{package}" not found"#);
+
+                return Err(err);
+            },
+        };
 
         Ok(resolved_package)
     }

@@ -13,7 +13,7 @@ pub(super) struct Uninstall {
 }
 
 impl Runner for Uninstall {
-    async fn run_concurrent(self, context: Arc<Context>) -> anyhow::Result<()> {
+    async fn run_parallelly(self, context: Arc<Context>) -> anyhow::Result<()> {
         if self.packages.is_empty() {
             return Ok(());
         }

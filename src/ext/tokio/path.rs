@@ -25,11 +25,11 @@ pub(crate) trait PathExt {
 
     async fn is_file_exists_nofollow(&self) -> io::Result<bool>;
 
-    async fn is_symlink_exists_nofollow(&self) -> io::Result<bool>;
+    async fn is_link_exists_nofollow(&self) -> io::Result<bool>;
 
-    async fn create_relative_symlink_atomically_at(
+    async fn create_relative_link_atomically_at(
         &self,
-        symlink_path: impl AsRef<Self>,
+        link_path: impl AsRef<Self>,
     ) -> io::Result<PathBuf>;
 }
 
@@ -112,7 +112,7 @@ impl PathExt for Path {
         Ok(is_file)
     }
 
-    async fn is_symlink_exists_nofollow(&self) -> io::Result<bool> {
+    async fn is_link_exists_nofollow(&self) -> io::Result<bool> {
         let metadata = match fs::symlink_metadata(self).await {
             Ok(metadata) => metadata,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(false),
@@ -121,31 +121,31 @@ impl PathExt for Path {
 
         let file_type = metadata.file_type();
 
-        let is_symlink = file_type.is_symlink();
+        let is_link = file_type.is_symlink();
 
-        Ok(is_symlink)
+        Ok(is_link)
     }
 
-    async fn create_relative_symlink_atomically_at(
+    async fn create_relative_link_atomically_at(
         &self,
-        symlink_path: impl AsRef<Self>,
+        link_path: impl AsRef<Self>,
     ) -> io::Result<PathBuf> {
-        let symlink_path = symlink_path.as_ref();
+        let link_path = link_path.as_ref();
 
-        let symlink_base_path = symlink_path.base();
-        let symlink_base_path = symlink_base_path.map_err(io::Error::other)?;
+        let link_base_path = link_path.base();
+        let link_base_path = link_base_path.map_err(io::Error::other)?;
 
-        let symlink_diff_path = diff_paths(self, symlink_base_path)
+        let link_diff_path = diff_paths(self, link_base_path)
             .ok_or_else(|| io::Error::other("Failed to diff paths"))?;
 
-        let symlink_tmp_path = symlink_path.with_added_extension("tmp");
+        let link_tmp_path = link_path.with_added_extension("tmp");
 
-        fs::symlink(symlink_diff_path, &symlink_tmp_path).await?;
+        fs::symlink(link_diff_path, &link_tmp_path).await?;
 
-        fs::rename(symlink_tmp_path, symlink_path).await?;
+        fs::rename(link_tmp_path, link_path).await?;
 
-        let symlink_path = symlink_path.to_owned();
+        let link_path = link_path.to_owned();
 
-        Ok(symlink_path)
+        Ok(link_path)
     }
 }

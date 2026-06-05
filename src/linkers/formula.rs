@@ -135,10 +135,10 @@ impl FormulaLinker {
 
         let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version_revision);
 
-        let opt_prefix_symlink_path = self.context.homebrew_dirs.opt_prefix_symlink(id);
+        let opt_prefix_link_path = self.context.homebrew_dirs.opt_prefix_link(id);
 
         keg_dir_path
-            .create_relative_symlink_atomically_at(opt_prefix_symlink_path)
+            .create_relative_link_atomically_at(opt_prefix_link_path)
             .await?;
 
         Ok(())
@@ -153,8 +153,7 @@ impl FormulaLinker {
 
         let prefix_dir_path = self.context.homebrew_dirs.prefix_dir();
 
-        let linked_keg_prefix_symlink_path =
-            self.context.homebrew_dirs.linked_keg_prefix_symlink(id);
+        let linked_keg_prefix_link_path = self.context.homebrew_dirs.linked_keg_prefix_link(id);
 
         let keg_link_dir_name_futs = KEG_LINK_DIR_NAMES.iter().map(async |keg_link_dir_name| {
             let keg_link_dir_path = keg_dir_path.join(keg_link_dir_name);
@@ -176,7 +175,7 @@ impl FormulaLinker {
         future::try_join_all(keg_link_dir_name_futs).await?;
 
         keg_dir_path
-            .create_relative_symlink_atomically_at(linked_keg_prefix_symlink_path)
+            .create_relative_link_atomically_at(linked_keg_prefix_link_path)
             .await?;
 
         Ok(())
@@ -213,7 +212,7 @@ impl FormulaLinker {
             }
 
             src_file_path
-                .create_relative_symlink_atomically_at(dest_file_path)
+                .create_relative_link_atomically_at(dest_file_path)
                 .await?;
         }
 
@@ -247,16 +246,16 @@ impl FormulaLinker {
 
         let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version_revision);
 
-        let opt_prefix_symlink_path = self.context.homebrew_dirs.opt_prefix_symlink(id);
+        let opt_prefix_link_path = self.context.homebrew_dirs.opt_prefix_link(id);
 
         let is_opt_dir_exists = keg_dir_path.is_dir_exists_nofollow().await?;
 
-        let is_opt_symlink_exists = opt_prefix_symlink_path.is_symlink_exists_nofollow().await?;
+        let is_opt_link_exists = opt_prefix_link_path.is_link_exists_nofollow().await?;
 
-        let is_opt_symlink_valid = keg_dir_path.realpath_or_none().await?
-            == opt_prefix_symlink_path.realpath_or_none().await?;
+        let is_opt_link_valid = keg_dir_path.realpath_or_none().await?
+            == opt_prefix_link_path.realpath_or_none().await?;
 
-        let is_opt_linked = is_opt_dir_exists && is_opt_symlink_exists && is_opt_symlink_valid;
+        let is_opt_linked = is_opt_dir_exists && is_opt_link_exists && is_opt_link_valid;
 
         Ok(is_opt_linked)
     }
@@ -268,19 +267,18 @@ impl FormulaLinker {
 
         let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version_revision);
 
-        let linked_keg_prefix_symlink_path =
-            self.context.homebrew_dirs.linked_keg_prefix_symlink(id);
+        let linked_keg_prefix_link_path = self.context.homebrew_dirs.linked_keg_prefix_link(id);
 
         let is_keg_dir_exists = keg_dir_path.is_dir_exists_nofollow().await?;
 
-        let is_keg_symlink_exists = linked_keg_prefix_symlink_path
-            .is_symlink_exists_nofollow()
+        let is_keg_link_exists = linked_keg_prefix_link_path
+            .is_link_exists_nofollow()
             .await?;
 
-        let is_keg_symlink_valid = keg_dir_path.realpath_or_none().await?
-            == linked_keg_prefix_symlink_path.realpath_or_none().await?;
+        let is_keg_link_valid = keg_dir_path.realpath_or_none().await?
+            == linked_keg_prefix_link_path.realpath_or_none().await?;
 
-        let is_keg_linked = is_keg_dir_exists && is_keg_symlink_exists && is_keg_symlink_valid;
+        let is_keg_linked = is_keg_dir_exists && is_keg_link_exists && is_keg_link_valid;
 
         Ok(is_keg_linked)
     }

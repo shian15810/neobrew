@@ -10,14 +10,16 @@ impl Codesign {
     pub(crate) async fn in_place(target_path: &Path) -> anyhow::Result<()> {
         let target_path = target_path.to_owned();
 
-        let handle = task::spawn_blocking(|| {
-            let settings = SigningSettings::default();
+        let handle = task::spawn_blocking({
+            || {
+                let settings = SigningSettings::default();
 
-            let signer = UnifiedSigner::new(settings);
+                let signer = UnifiedSigner::new(settings);
 
-            signer.sign_path_in_place(target_path)?;
+                signer.sign_path_in_place(target_path)?;
 
-            anyhow::Ok(())
+                anyhow::Ok(())
+            }
         });
         let handle = AbortOnDropHandle::new(handle);
 

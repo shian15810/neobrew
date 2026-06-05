@@ -21,7 +21,7 @@ use crate::{
 
 pub(crate) struct Download {
     pub(crate) archive_format: Option<ArchiveFormat>,
-    pub(crate) symlink_path: PathBuf,
+    pub(crate) link_path: PathBuf,
     pub(crate) file_path: PathBuf,
     pub(crate) is_verified: bool,
 }
@@ -70,9 +70,9 @@ trait Downloadable {
 
     fn new(context: Arc<Context>) -> Self;
 
-    fn archive_format(&self, symlink_path: &Path) -> anyhow::Result<Option<ArchiveFormat>>;
+    fn archive_format(&self, link_path: &Path) -> anyhow::Result<Option<ArchiveFormat>>;
 
-    async fn symlink_path_file_path(
+    async fn link_path_file_path(
         &self,
         prepared_package: &Self::PreparedPackage,
     ) -> anyhow::Result<(PathBuf, PathBuf)>;
@@ -97,22 +97,21 @@ trait Downloadable {
 
     async fn verify(
         &self,
-        symlink_path: &Path,
+        link_path: &Path,
         file_path: &Path,
         file_sha256: &str,
         expected_sha256: &str,
     ) -> anyhow::Result<bool> {
         let is_file_exists = file_path.is_file_exists_nofollow().await?;
 
-        let is_symlink_exists = symlink_path.is_symlink_exists_nofollow().await?;
+        let is_link_exists = link_path.is_link_exists_nofollow().await?;
 
-        let is_symlink_valid =
-            symlink_path.realpath_or_none().await? == file_path.realpath_or_none().await?;
+        let is_link_valid =
+            link_path.realpath_or_none().await? == file_path.realpath_or_none().await?;
 
         let is_sha256_equal = file_sha256 == expected_sha256;
 
-        let is_verified =
-            is_file_exists && is_symlink_exists && is_symlink_valid && is_sha256_equal;
+        let is_verified = is_file_exists && is_link_exists && is_link_valid && is_sha256_equal;
 
         Ok(is_verified)
     }
@@ -122,14 +121,14 @@ trait Downloadable {
         prepared_package: &Self::PreparedPackage,
         expected_sha256: &str,
     ) -> anyhow::Result<Download> {
-        let (symlink_path, file_path) = self.symlink_path_file_path(prepared_package).await?;
+        let (link_path, file_path) = self.link_path_file_path(prepared_package).await?;
 
-        let archive_format = self.archive_format(&symlink_path)?;
+        let archive_format = self.archive_format(&link_path)?;
 
         let Some(file_sha256) = self.sha256(&file_path).await? else {
             let download = Download {
                 archive_format,
-                symlink_path,
+                link_path,
                 file_path,
                 is_verified: false,
             };
@@ -138,12 +137,12 @@ trait Downloadable {
         };
 
         let is_verified = self
-            .verify(&symlink_path, &file_path, &file_sha256, expected_sha256)
+            .verify(&link_path, &file_path, &file_sha256, expected_sha256)
             .await?;
 
         let download = Download {
             archive_format,
-            symlink_path,
+            link_path,
             file_path,
             is_verified,
         };

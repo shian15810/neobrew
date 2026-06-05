@@ -205,7 +205,7 @@ impl CaskLinker {
             fs::create_dir_all(dest_base_path).await?;
 
             src_item_path
-                .create_relative_symlink_atomically_at(dest_item_path)
+                .create_relative_link_atomically_at(dest_item_path)
                 .await?;
 
             if let Some(permissions_mode) = permissions_mode {

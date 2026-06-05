@@ -93,7 +93,7 @@ impl HomebrewDirs {
         prefix_dir.join("opt")
     }
 
-    pub(crate) fn opt_prefix_symlink(&self, id: &str) -> PathBuf {
+    pub(crate) fn opt_prefix_link(&self, id: &str) -> PathBuf {
         let opt_dir = self.opt_dir();
 
         opt_dir.join(id)
@@ -123,7 +123,7 @@ impl HomebrewDirs {
         prefix_dir.join("var/homebrew/linked")
     }
 
-    pub(crate) fn linked_keg_prefix_symlink(&self, id: &str) -> PathBuf {
+    pub(crate) fn linked_keg_prefix_link(&self, id: &str) -> PathBuf {
         let linked_keg_dir = self.linked_keg_dir();
 
         linked_keg_dir.join(id)

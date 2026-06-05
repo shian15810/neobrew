@@ -22,6 +22,8 @@ OBJCXX
 overcaptures
 Packageable
 peekable
+progressor
+Progressor
 pstr
 recv
 Relocator

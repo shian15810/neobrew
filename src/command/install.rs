@@ -20,7 +20,13 @@ use crate::{
         prepared::{PreparedPackage, PreparedPackageable as _},
         resolved::ResolvedPackage,
     },
-    pipeline::{Operator as _, Pipeline, piped_operator, pull_operator, push_operator},
+    pipeline::{
+        Connector as _,
+        Pipeline,
+        action_operator::DmgPourer,
+        pull_connector::Pourer,
+        push_connector::{Hasher, Progressor, Writer},
+    },
     placeholder::Placeholder,
     registries::Registries,
     relocation::{Relocation, Relocator as _},
@@ -34,7 +40,7 @@ pub(super) struct Install {
 }
 
 impl Runner for Install {
-    async fn run_concurrent(self, context: Arc<Context>) -> anyhow::Result<()> {
+    async fn run_parallelly(self, context: Arc<Context>) -> anyhow::Result<()> {
         let installation = Installation::prepare(self.packages, context).await?;
 
         installation.start().await?;
@@ -95,9 +101,7 @@ impl Installation {
             return Ok(());
         }
 
-        let this = Arc::clone(&self);
-
-        this.run_many().await?;
+        self.run_many().await?;
 
         Ok(())
     }
@@ -121,7 +125,7 @@ impl Installation {
         let pbs = resolved_packages
             .iter()
             .map(|resolved_package| {
-                let pb = push_operator::PbUpdater::create(
+                let pb = Progressor::create(
                     &self.multi_pb,
                     resolved_package.id(),
                     resolved_package.version(),
@@ -139,7 +143,7 @@ impl Installation {
         let pbs = resolved_packages
             .iter()
             .map(|resolved_package| {
-                let pb = push_operator::PbUpdater::create(
+                let pb = Progressor::create(
                     &self.multi_pb,
                     resolved_package.id(),
                     resolved_package.version(),
@@ -209,10 +213,12 @@ impl Installation {
 
             let this = Arc::clone(&self);
 
-            set.spawn(async move {
-                this.run_one(prepared_package, pb).await?;
+            set.spawn({
+                async move {
+                    this.run_one(prepared_package, pb).await?;
 
-                anyhow::Ok(())
+                    anyhow::Ok(())
+                }
             });
         }
 
@@ -253,14 +259,25 @@ impl Installation {
             .retrieve(&prepared_package, expected_sha256)
             .await?;
 
-        let (stream, content_length) = if download.is_verified {
-            let (stream, content_length) = self.streams.download(&download.file_path).await?;
+        let is_verified = download.is_verified;
+
+        let write_file_path = download.file_path;
+
+        let write_link_path = download.link_path;
+
+        let archive_format = download.archive_format;
+
+        let pour_dir_path = match prepared_package {
+            PreparedPackage::Formula(_) => self.context.homebrew_dirs.cellar_dir(),
+            PreparedPackage::Cask(_) => self.context.homebrew_dirs.staged_dir(id, version),
+        };
+
+        let (stream, content_length) = if is_verified {
+            let (stream, content_length) = self.streams.download(&write_file_path).await?;
 
             let stream = stream.left_stream();
 
-            let content_length = Some(content_length);
-
-            (stream, content_length)
+            (stream, Some(content_length))
         } else {
             let (stream, content_length) = self.streams.oci_or_url(&prepared_package).await?;
 
@@ -269,42 +286,25 @@ impl Installation {
             (stream, content_length)
         };
 
-        let sha256_hasher =
-            push_operator::Sha256Hasher::new(expected_sha256.to_owned(), !download.is_verified);
+        let hasher = Hasher::new(expected_sha256.to_owned(), !is_verified);
 
-        let pour_dir_path = match prepared_package {
-            PreparedPackage::Formula(_) => self.context.homebrew_dirs.cellar_dir(),
-            PreparedPackage::Cask(_) => self.context.homebrew_dirs.staged_dir(id, version),
-        };
+        let writer = Writer::try_init(write_file_path, write_link_path, !is_verified).await?;
 
-        let file_writer = push_operator::FileWriter::try_init(
-            download.file_path,
-            vec![download.symlink_path],
-            !download.is_verified,
-        )
-        .await?;
+        let pourer = Pourer::try_init(pour_dir_path.clone(), archive_format).await?;
 
-        let dmg_pourer = piped_operator::DmgPourer::try_init(
-            pour_dir_path.clone(),
-            download.archive_format.clone(),
-            pb.clone(),
-        )
-        .await?;
+        let dmg_pourer = DmgPourer::try_init(pour_dir_path, archive_format).await?;
 
-        let file_writer = file_writer.pipe(dmg_pourer);
-
-        let archive_pourer =
-            pull_operator::ArchivePourer::try_init(pour_dir_path, vec![], download.archive_format)
-                .await?;
-
-        let pb_updater = push_operator::PbUpdater::try_new(pb, content_length)?;
-
-        let hlist_pat![_, _, _, pb] = Pipeline::build(stream, Arc::clone(&self.context))
-            .fanout(sha256_hasher)
-            .fanout(file_writer)
-            .fanout(archive_pourer)
-            .fanout(pb_updater)
-            .run_parallel()
+        let hlist_pat![
+            _progressor_output,
+            _hasher_output,
+            hlist_pat![_writer_output, _dmg_pourer_output],
+            _pourer_output
+        ] = Pipeline::build(stream, pb.clone(), Arc::clone(&self.context))
+            .with_progressor(content_length)?
+            .fanout(hasher)
+            .fanout(writer.fanout(dmg_pourer))
+            .fanout(pourer)
+            .run_concurrently()
             .await?;
 
         let pipelined_package = PipelinedPackage::from(prepared_package);

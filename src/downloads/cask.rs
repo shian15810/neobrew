@@ -32,8 +32,8 @@ impl Downloadable for CaskDownload {
         }
     }
 
-    fn archive_format(&self, symlink_path: &Path) -> anyhow::Result<Option<ArchiveFormat>> {
-        let archive_format = match ArchiveFormat::try_from(symlink_path) {
+    fn archive_format(&self, link_path: &Path) -> anyhow::Result<Option<ArchiveFormat>> {
+        let archive_format = match ArchiveFormat::try_from(link_path) {
             Ok(archive_format) => archive_format,
             Err(Some(err)) => return Err(err),
             Err(None) => return Ok(None),
@@ -42,7 +42,7 @@ impl Downloadable for CaskDownload {
         Ok(Some(archive_format))
     }
 
-    async fn symlink_path_file_path(
+    async fn link_path_file_path(
         &self,
         prepared_package: &PreparedCask,
     ) -> anyhow::Result<(PathBuf, PathBuf)> {
@@ -70,7 +70,7 @@ impl Downloadable for CaskDownload {
 
         let url_compound_extension = url_path.compound_extension();
 
-        let symlink_name = match url_compound_extension {
+        let link_name = match url_compound_extension {
             Some(url_compound_extension) => {
                 let url_compound_extension = url_compound_extension
                     .to_str()
@@ -85,12 +85,12 @@ impl Downloadable for CaskDownload {
 
         let cache_dir_path = self.context.homebrew_dirs.cache_dir();
 
-        let symlink_path = cache_dir_path.join("Cask").join(symlink_name);
+        let link_path = cache_dir_path.join("Cask").join(link_name);
 
         let file_path = cache_dir_path.join("downloads").join(file_name);
 
-        let symlink_path_file_path = (symlink_path, file_path);
+        let link_path_file_path = (link_path, file_path);
 
-        Ok(symlink_path_file_path)
+        Ok(link_path_file_path)
     }
 }

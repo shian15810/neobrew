@@ -1,41 +1,40 @@
 use std::{
     io::Cursor,
     path::{Component, Path, PathBuf},
-    sync::Arc,
 };
 
 use anyhow::{Context as _, anyhow};
 use async_compression::tokio::bufread::GzipDecoder;
+use async_trait::async_trait;
 use async_zip::base::read::stream::ZipFileReader;
-use futures::future;
 use tempfile::TempDir;
 use tokio::{
     fs::{self, File},
     io::{self, AsyncBufRead, AsyncRead, AsyncReadExt as _, BufReader},
+    sync::watch,
 };
 use tokio_tar::Archive;
 use tokio_util::compat::FuturesAsyncReadCompatExt as _;
 
-use super::{super::channels::PipelineChannels as Channels, PullOperator};
+use super::{
+    super::state_store::{PouredOutput, Stage, StateStore},
+    PullConnector,
+};
 use crate::{
-    context::Context,
     ext::{std::path::PathExt as _, tokio::path::PathExt as _},
     util::ArchiveFormat,
 };
 
-pub(crate) struct ArchivePourer {
+pub(crate) struct Pourer {
     temp_dir: TempDir,
 
     dest_dir_path: PathBuf,
-    symlink_paths: Vec<PathBuf>,
-
     archive_format: Option<ArchiveFormat>,
 }
 
-impl ArchivePourer {
+impl Pourer {
     pub(crate) async fn try_init(
         dest_dir_path: PathBuf,
-        symlink_paths: Vec<PathBuf>,
         archive_format: Option<ArchiveFormat>,
     ) -> anyhow::Result<Self> {
         let dest_base_path = &dest_dir_path;
@@ -48,8 +47,6 @@ impl ArchivePourer {
             temp_dir,
 
             dest_dir_path,
-            symlink_paths,
-
             archive_format,
         };
 
@@ -59,17 +56,17 @@ impl ArchivePourer {
     async fn extract(
         &self,
         archive_format: &ArchiveFormat,
-        dir: &TempDir,
-        buf_reader: impl AsyncBufRead + Unpin + Send,
+        buf_reader: impl AsyncBufRead + Unpin,
     ) -> anyhow::Result<()> {
+        let dest_base_path = self.temp_dir.path();
+
         match archive_format {
-            ArchiveFormat::Dmg => {},
             ArchiveFormat::TarGz => {
                 let gz_decoder = GzipDecoder::new(buf_reader);
 
                 let mut archive = Archive::new(gz_decoder);
 
-                archive.unpack(dir.path()).await?;
+                archive.unpack(dest_base_path).await?;
             },
             ArchiveFormat::Zip => {
                 let mut zip_reader = ZipFileReader::with_tokio(buf_reader);
@@ -92,13 +89,11 @@ impl ArchivePourer {
                     if src_file_pstr.ends_with('/') {
                         zip_reader = entry_reader.skip().await?;
                     } else {
-                        let dest_base_path = dir.path();
-
                         let dest_file_path = dest_base_path.join(src_file_path);
 
-                        let dest_base_path = dest_file_path.base()?;
+                        let dest_file_base_path = dest_file_path.base()?;
 
-                        fs::create_dir_all(dest_base_path).await?;
+                        fs::create_dir_all(dest_file_base_path).await?;
 
                         let mut dest_file = File::create(dest_file_path).await?;
 
@@ -108,28 +103,67 @@ impl ArchivePourer {
                     }
                 }
             },
+            ArchiveFormat::Dmg => {},
         }
 
         Ok(())
     }
 }
 
-impl PullOperator for ArchivePourer {
-    type Output = ArchivePourerOutput;
+#[async_trait]
+impl PullConnector for Pourer {
+    type Staging = ArchiveFormat;
+    type Output = PouredOutput;
 
-    async fn from_reader(&self, reader: impl AsyncRead + Unpin + Send) -> anyhow::Result<()> {
+    fn should_run(&self) -> bool {
+        let Some(archive_format) = &self.archive_format else {
+            return true;
+        };
+
+        match archive_format {
+            ArchiveFormat::TarGz | ArchiveFormat::Zip => true,
+            ArchiveFormat::Dmg => false,
+        }
+    }
+
+    async fn on_skip_run(
+        mut self,
+        state_store_rx: &mut watch::Receiver<StateStore>,
+    ) -> anyhow::Result<Self::Output> {
+        state_store_rx
+            .wait_for(|state_store| state_store.stage >= Stage::Hashed)
+            .await?;
+
+        let dest_dir_path = self.dest_dir_path.clone();
+
+        let Some(archive_format) = self.archive_format.take() else {
+            self.cleanup()?;
+
+            let err = anyhow!("Archive format is empty");
+
+            return Err(err);
+        };
+
+        self.cleanup()?;
+
+        let output = PouredOutput {
+            dest_dir_path,
+            archive_format,
+        };
+
+        Ok(output)
+    }
+
+    async fn from_reader(
+        &self,
+        reader: &mut (impl AsyncRead + Unpin + Send),
+    ) -> anyhow::Result<Self::Staging> {
         let mut buf_reader = BufReader::new(reader);
 
-        if let Some(archive_format) = &self.archive_format {
-            match archive_format {
-                ArchiveFormat::Dmg => {
-                    io::copy(&mut buf_reader, &mut io::sink()).await?;
-                },
-                _ => {
-                    self.extract(archive_format, &self.temp_dir, buf_reader)
-                        .await?;
-                },
-            }
+        let archive_format = if let Some(archive_format) = &self.archive_format {
+            self.extract(archive_format, buf_reader).await?;
+
+            archive_format.to_owned()
         } else {
             let mut peek_buf = [0_u8; ArchiveFormat::PEEK_SIZE];
 
@@ -139,48 +173,35 @@ impl PullOperator for ArchivePourer {
 
             let chained_buf_reader = Cursor::new(peek_buf).chain(buf_reader);
 
-            self.extract(&archive_format, &self.temp_dir, chained_buf_reader)
-                .await?;
-        }
+            self.extract(&archive_format, chained_buf_reader).await?;
 
-        Ok(())
+            archive_format
+        };
+
+        Ok(archive_format)
     }
 
-    async fn after_drain(
+    async fn on_final_run(
         self,
-        channels: Arc<Channels>,
-        _context: Arc<Context>,
+        staging: Self::Staging,
+        state_store_rx: &mut watch::Receiver<StateStore>,
     ) -> anyhow::Result<Self::Output> {
+        let archive_format = staging;
+
+        state_store_rx
+            .wait_for(|state_store| state_store.stage >= Stage::Hashed)
+            .await?;
+
         let dest_dir_path = self.dest_dir_path.clone();
-
-        let symlink_paths = self.symlink_paths.clone();
-
-        let mut is_verified_rx = channels.is_verified_rx.clone();
-
-        let is_verified = *is_verified_rx.wait_for(Option::is_some).await?;
-
-        if matches!(is_verified, Some(false)) {
-            self.cleanup()?;
-
-            let err = anyhow!("Pourer failed due to SHA-256 mismatch");
-
-            return Err(err);
-        }
 
         self.persist().await?;
 
-        let output = ArchivePourerOutput {
+        let output = PouredOutput {
             dest_dir_path,
-            symlink_paths,
+            archive_format,
         };
 
         Ok(output)
-    }
-
-    fn cleanup(self) -> anyhow::Result<()> {
-        self.temp_dir.close()?;
-
-        Ok(())
     }
 
     async fn persist(self) -> anyhow::Result<()> {
@@ -209,6 +230,7 @@ impl PullOperator for ArchivePourer {
                 .await
                 .with_context(|| {
                     let src_dir_path = src_dir_path.display();
+
                     let dest_dir_path = dest_dir_path.display();
 
                     format!(r#"Failed to rename "{src_dir_path}" to "{dest_dir_path}""#)
@@ -217,25 +239,16 @@ impl PullOperator for ArchivePourer {
 
         self.temp_dir.close()?;
 
-        let symlink_path_futs = self.symlink_paths.into_iter().map(async |symlink_path| {
-            let symlink_base_path = symlink_path.base()?;
+        Ok(())
+    }
 
-            fs::create_dir_all(symlink_base_path).await?;
-
-            dest_base_path
-                .create_relative_symlink_atomically_at(symlink_path)
-                .await?;
-
-            anyhow::Ok(())
-        });
-
-        future::try_join_all(symlink_path_futs).await?;
+    fn cleanup(self) -> anyhow::Result<()> {
+        self.temp_dir.close()?;
 
         Ok(())
     }
-}
 
-pub(crate) struct ArchivePourerOutput {
-    dest_dir_path: PathBuf,
-    symlink_paths: Vec<PathBuf>,
+    fn passed_stage(&self, should_run: bool) -> Option<Stage> {
+        should_run.then_some(Stage::Poured)
+    }
 }

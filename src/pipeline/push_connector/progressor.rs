@@ -1,17 +1,20 @@
-use std::{fmt::Write as _, sync::Arc, time::Duration};
+use std::{fmt::Write as _, time::Duration};
 
-use anyhow::anyhow;
+use async_trait::async_trait;
 use bytes::Bytes;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use tokio::sync::watch;
 
-use super::{super::channels::PipelineChannels as Channels, PushOperator};
-use crate::context::Context;
+use super::{
+    super::state_store::{ProgressedOutput, Stage, StateStore},
+    PushConnector,
+};
 
-pub(crate) struct PbUpdater {
+pub(crate) struct Progressor {
     pb: ProgressBar,
 }
 
-impl PbUpdater {
+impl Progressor {
     const TEMPLATE_PREFIX: &str = "{spinner} {prefix:<12} {msg}";
 
     pub(crate) fn create(
@@ -58,7 +61,10 @@ impl PbUpdater {
         Ok(pb)
     }
 
-    pub(crate) fn try_new(pb: ProgressBar, content_length: Option<u64>) -> anyhow::Result<Self> {
+    pub(in super::super) fn try_new(
+        pb: ProgressBar,
+        content_length: Option<u64>,
+    ) -> anyhow::Result<Self> {
         let mut template = Self::TEMPLATE_PREFIX.to_owned();
 
         template.push(' ');
@@ -89,8 +95,6 @@ impl PbUpdater {
 
         pb.set_style(style);
 
-        pb.set_prefix("Streaming");
-
         if let Some(content_length) = content_length {
             pb.set_length(content_length);
         }
@@ -103,11 +107,16 @@ impl PbUpdater {
     }
 }
 
-impl PushOperator for PbUpdater {
+#[async_trait]
+impl PushConnector for Progressor {
     type Item = Bytes;
-    type Output = ProgressBar;
+    type Staging = ();
+    type Output = ProgressedOutput;
 
-    #[expect(clippy::unused_async_trait_impl)]
+    fn running_prefix(&self) -> Option<&'static str> {
+        Some("Streaming")
+    }
+
     async fn feed(&mut self, chunk: Self::Item) -> anyhow::Result<()> {
         let pb = &self.pb;
 
@@ -119,44 +128,28 @@ impl PushOperator for PbUpdater {
         Ok(())
     }
 
-    async fn flush(
+    async fn flush(&mut self) -> anyhow::Result<Self::Staging> {
+        Ok(())
+    }
+
+    async fn on_final_run(
         self,
-        channels: Arc<Channels>,
-        _context: Arc<Context>,
+        _staging: Self::Staging,
+        _state_store_rx: &mut watch::Receiver<StateStore>,
     ) -> anyhow::Result<Self::Output> {
-        let pb = self.pb.clone();
+        let pb = self.pb;
 
-        let mut is_verified_rx = channels.is_verified_rx.clone();
-
-        let is_verified = *is_verified_rx.wait_for(Option::is_some).await?;
-
-        if matches!(is_verified, Some(false)) {
-            self.cleanup()?;
-
-            let err = anyhow!("Progress bar updater failed due to SHA-256 mismatch");
-
-            return Err(err);
-        }
-
-        self.persist().await?;
-
-        let output = pb;
+        let output = ProgressedOutput {
+            position: pb.position(),
+            length: pb.length(),
+            per_sec: pb.per_sec(),
+            elapsed: pb.elapsed(),
+        };
 
         Ok(output)
     }
 
-    fn cleanup(self) -> anyhow::Result<()> {
-        let pb = self.pb;
-
-        pb.set_prefix("Mismatched");
-
-        pb.finish();
-
-        Ok(())
-    }
-
-    #[expect(clippy::unused_async_trait_impl)]
-    async fn persist(self) -> anyhow::Result<()> {
-        Ok(())
+    fn passed_stage(&self, _should_run: bool) -> Option<Stage> {
+        Some(Stage::Progressed)
     }
 }

@@ -36,7 +36,7 @@ impl Downloadable for FormulaDownload {
     }
 
     #[expect(clippy::unused_async_trait_impl)]
-    async fn symlink_path_file_path(
+    async fn link_path_file_path(
         &self,
         prepared_package: &PreparedFormula,
     ) -> anyhow::Result<(PathBuf, PathBuf)> {
@@ -56,7 +56,7 @@ impl Downloadable for FormulaDownload {
         let url_hash = HexDisplay(&url_hash);
         let url_hash = format!("{url_hash:x}");
 
-        let symlink_name = format!("{id}--{version_revision}");
+        let link_name = format!("{id}--{version_revision}");
 
         let file_name = format!("{url_hash}--{id}--{version_revision}.{bottle_tag}.bottle");
         let file_name = match bottle_rebuild {
@@ -66,12 +66,12 @@ impl Downloadable for FormulaDownload {
 
         let cache_dir_path = self.context.homebrew_dirs.cache_dir();
 
-        let symlink_path = cache_dir_path.join(symlink_name);
+        let link_path = cache_dir_path.join(link_name);
 
         let file_path = cache_dir_path.join("downloads").join(file_name);
 
-        let symlink_path_file_path = (symlink_path, file_path);
+        let link_path_file_path = (link_path, file_path);
 
-        Ok(symlink_path_file_path)
+        Ok(link_path_file_path)
     }
 }

@@ -29,6 +29,7 @@ arwen = "0.0.5"
 astral-tokio-tar = "0.6.2"
 async-compression = { version = "0.4.42", features = ["gzip", "tokio"] }
 async-recursion = "1.1.1"
+async-trait = "0.1.89"
 async-walkdir = "2.1.0"
 async_zip = { version = "0.0.18", features = ["deflate", "tokio"] }
 base16ct = "1.0.0"
@@ -70,7 +71,6 @@ tokio = {
 tokio-stream = "0.1.18"
 tokio-util = { version = "0.7.18", features = ["io-util", "rt"] }
 tracing-subscriber = "0.3.23"
-trait-variant = "0.1.2"
 url = "2.5.8"
 visibility = "0.1.1"
 

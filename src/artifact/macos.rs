@@ -167,13 +167,14 @@ impl Artifact {
                 .await
                 .with_context(|| {
                     let src_item_path = src_item_path.display();
+
                     let dest_item_path = dest_item_path.display();
 
                     format!(r#"Failed to rename "{src_item_path}" to "{dest_item_path}""#)
                 })?;
 
             dest_item_path
-                .create_relative_symlink_atomically_at(src_item_path)
+                .create_relative_link_atomically_at(src_item_path)
                 .await?;
 
             anyhow::Ok(())

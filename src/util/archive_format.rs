@@ -9,7 +9,7 @@ use tokio::{
 
 use crate::ext::std::path::PathExt as _;
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub(crate) enum ArchiveFormat {
     Dmg,
     TarGz,
