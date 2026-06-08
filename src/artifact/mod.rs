@@ -9,10 +9,10 @@ use std::sync::Arc;
 pub(crate) use self::linux::Artifact;
 #[cfg(target_os = "macos")]
 pub(crate) use self::macos::Artifact;
-use crate::{context::Context, package::pipelined::PipelinedCask, placeholder::Placeholder};
+use crate::{context::Context, package::prepared::PreparedCask, placeholder::Placeholder};
 
 pub(crate) trait Artifactable {
     fn new(placeholder: Arc<Placeholder>, context: Arc<Context>) -> Self;
 
-    async fn relocate(&self, pipelined_cask: &PipelinedCask) -> anyhow::Result<()>;
+    async fn relocate(&self, prepared_cask: &PreparedCask) -> anyhow::Result<()>;
 }

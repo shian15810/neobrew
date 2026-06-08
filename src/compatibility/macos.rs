@@ -1,4 +1,4 @@
-use super::{Compatibilizer, CompatibilizerInner};
+use super::{Compatible, CompatibleInner};
 use crate::{
     package::raw::{DependsOnLinux, DependsOnMaximumMacos, DependsOnMinimumMacos},
     util::macos,
@@ -8,7 +8,7 @@ pub(crate) struct Compatibility {
     codename: macos::Codename,
 }
 
-impl Compatibilizer for Compatibility {
+impl Compatible for Compatibility {
     fn try_new() -> anyhow::Result<Self> {
         let this = Self {
             codename: macos::Codename::try_default()?,
@@ -18,7 +18,7 @@ impl Compatibilizer for Compatibility {
     }
 }
 
-impl CompatibilizerInner for Compatibility {
+impl CompatibleInner for Compatibility {
     fn check_os(
         &self,
         minimum_macos: Option<&DependsOnMinimumMacos>,

@@ -1,4 +1,4 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, path::Path};
 
 use anyhow::Context as _;
 
@@ -14,13 +14,13 @@ use super::{
 pub(crate) struct PreparedFormula {
     pub(in super::super) name: String,
     pub(in super::super) version: String,
-    pub(in super::super) version_revision: String,
+    version_revision: String,
     bottle_rebuild: u64,
     bottle_tag: String,
-    pub(in super::super) bottle_cellar: BottleStableFileCellar,
+    bottle_cellar: BottleStableFileCellar,
     bottle_url: String,
     bottle_sha256: String,
-    pub(in super::super) keg_only: bool,
+    keg_only: bool,
     pub(in super::super) is_requested: bool,
 }
 
@@ -87,6 +87,16 @@ impl PreparedFormula {
 
     pub(crate) fn bottle_tag(&self) -> &str {
         &self.bottle_tag
+    }
+
+    pub(crate) fn should_relocate(&self, cellar_dir_path: &Path) -> bool {
+        match &self.bottle_cellar {
+            BottleStableFileCellar::Any => true,
+            BottleStableFileCellar::AnySkipRelocator => false,
+            BottleStableFileCellar::Path(bottle_cellar_path) => {
+                bottle_cellar_path == cellar_dir_path
+            },
+        }
     }
 
     pub(crate) fn should_link_keg(&self) -> bool {

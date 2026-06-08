@@ -59,7 +59,7 @@ pub(in super::super) struct BottleStableFile {
 #[derive(DeserializeFromStr)]
 pub(in super::super) enum BottleStableFileCellar {
     Any,
-    AnySkipRelocation,
+    AnySkipRelocator,
     Path(PathBuf),
 }
 
@@ -76,7 +76,7 @@ impl FromStr for BottleStableFileCellar {
     fn from_str(bottle_cellar: &str) -> Result<Self, Self::Err> {
         let bottle_cellar = match bottle_cellar {
             "any" => Self::Any,
-            "any_skip_relocation" => Self::AnySkipRelocation,
+            "any_skip_relocation" => Self::AnySkipRelocator,
             bottle_cellar_pstr => {
                 let bottle_cellar_path = PathBuf::from(bottle_cellar_pstr);
 

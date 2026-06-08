@@ -4,12 +4,47 @@ use std::{
     time::Duration,
 };
 
+use indicatif::ProgressBar;
 use tokio::sync::watch;
 
-use crate::{ext::std::sync::OnceLockExt as _, util::ArchiveFormat};
+use crate::{
+    context::Context,
+    ext::std::sync::OnceLockExt as _,
+    package::prepared::PreparedPackage,
+    util::ArchiveFormat,
+};
 
 #[derive(Clone)]
-pub(crate) struct Channel {
+pub(crate) struct Session {
+    pub(super) channel: Channel,
+
+    pub(super) prepared_package: Arc<PreparedPackage>,
+
+    pub(super) pb: ProgressBar,
+
+    pub(super) context: Arc<Context>,
+}
+
+impl Session {
+    pub(super) fn new(
+        prepared_package: PreparedPackage,
+        pb: ProgressBar,
+        context: Arc<Context>,
+    ) -> Self {
+        Self {
+            channel: Channel::new(),
+
+            prepared_package: Arc::new(prepared_package),
+
+            pb,
+
+            context,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(super) struct Channel {
     pub(super) state_store_tx: watch::Sender<StateStore>,
     pub(super) state_store_rx: watch::Receiver<StateStore>,
 }
@@ -30,7 +65,7 @@ impl Channel {
 #[derive(Default)]
 pub(crate) struct StateStore {
     pub(super) stage: Stage,
-    pub(super) outputs: Arc<Outputs>,
+    pub(super) payloads: Arc<Payloads>,
 }
 
 #[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -44,7 +79,7 @@ pub(crate) enum Stage {
 }
 
 #[derive(Default)]
-pub(super) struct Outputs {
+pub(super) struct Payloads {
     streaming: (),
     pub(super) progressed: OnceLock<ProgressedOutput>,
     pub(super) hashed: OnceLock<HashedOutput>,
@@ -52,8 +87,12 @@ pub(super) struct Outputs {
     pub(super) poured: OnceLock<PouredOutput>,
 }
 
-pub(super) trait Publish {
-    fn publish(&self, outputs: &Outputs) -> anyhow::Result<()>;
+pub(super) trait Publish<Output> {
+    fn publish(&self, output: &Output) -> anyhow::Result<()>;
+}
+
+pub(super) trait Subscribe<Payload> {
+    fn subscribe(&self) -> anyhow::Result<&Payload>;
 }
 
 #[derive(Clone)]
@@ -64,11 +103,19 @@ pub(crate) struct ProgressedOutput {
     pub(super) elapsed: Duration,
 }
 
-impl Publish for ProgressedOutput {
-    fn publish(&self, outputs: &Outputs) -> anyhow::Result<()> {
-        outputs.progressed.try_set(self.clone())?;
+impl Publish<ProgressedOutput> for Payloads {
+    fn publish(&self, output: &ProgressedOutput) -> anyhow::Result<()> {
+        self.progressed.try_set(output.clone())?;
 
         Ok(())
+    }
+}
+
+impl Subscribe<ProgressedOutput> for Payloads {
+    fn subscribe(&self) -> anyhow::Result<&ProgressedOutput> {
+        let payload = self.progressed.try_get()?;
+
+        Ok(payload)
     }
 }
 
@@ -80,11 +127,19 @@ pub(crate) struct HashedOutput {
     pub(super) expected_sha256: String,
 }
 
-impl Publish for HashedOutput {
-    fn publish(&self, outputs: &Outputs) -> anyhow::Result<()> {
-        outputs.hashed.try_set(self.clone())?;
+impl Publish<HashedOutput> for Payloads {
+    fn publish(&self, output: &HashedOutput) -> anyhow::Result<()> {
+        self.hashed.try_set(output.clone())?;
 
         Ok(())
+    }
+}
+
+impl Subscribe<HashedOutput> for Payloads {
+    fn subscribe(&self) -> anyhow::Result<&HashedOutput> {
+        let payload = self.hashed.try_get()?;
+
+        Ok(payload)
     }
 }
 
@@ -94,11 +149,19 @@ pub(crate) struct WrittenOutput {
     pub(super) dest_link_path: PathBuf,
 }
 
-impl Publish for WrittenOutput {
-    fn publish(&self, outputs: &Outputs) -> anyhow::Result<()> {
-        outputs.written.try_set(self.clone())?;
+impl Publish<WrittenOutput> for Payloads {
+    fn publish(&self, output: &WrittenOutput) -> anyhow::Result<()> {
+        self.written.try_set(output.clone())?;
 
         Ok(())
+    }
+}
+
+impl Subscribe<WrittenOutput> for Payloads {
+    fn subscribe(&self) -> anyhow::Result<&WrittenOutput> {
+        let payload = self.written.try_get()?;
+
+        Ok(payload)
     }
 }
 
@@ -108,10 +171,18 @@ pub(crate) struct PouredOutput {
     pub(super) archive_format: ArchiveFormat,
 }
 
-impl Publish for PouredOutput {
-    fn publish(&self, outputs: &Outputs) -> anyhow::Result<()> {
-        outputs.poured.try_set(self.clone())?;
+impl Publish<PouredOutput> for Payloads {
+    fn publish(&self, output: &PouredOutput) -> anyhow::Result<()> {
+        self.poured.try_set(output.clone())?;
 
         Ok(())
+    }
+}
+
+impl Subscribe<PouredOutput> for Payloads {
+    fn subscribe(&self) -> anyhow::Result<&PouredOutput> {
+        let payload = self.poured.try_get()?;
+
+        Ok(payload)
     }
 }

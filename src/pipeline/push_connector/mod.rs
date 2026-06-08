@@ -2,7 +2,7 @@ mod hasher;
 mod progressor;
 pub(super) mod writer;
 
-use std::{fmt::Debug, sync::Arc};
+use std::fmt::Debug;
 
 use anyhow::anyhow;
 use async_trait::async_trait;
@@ -10,7 +10,6 @@ use futures::{
     future::Either::{self, Left, Right},
     sink::{self, SinkExt as _},
 };
-use indicatif::ProgressBar;
 use tokio::{
     sync::{mpsc, watch},
     task,
@@ -20,9 +19,9 @@ use tokio_util::{sync::PollSender, task::AbortOnDropHandle};
 pub(crate) use self::{hasher::Hasher, progressor::Progressor, writer::Writer};
 use super::{
     Connector,
-    state_store::{Channel, Publish, Stage, StateStore},
+    state_committer::StateCommitter,
+    state_store::{Payloads, Publish, Session, Stage, StateStore},
 };
-use crate::context::Context;
 
 pub(crate) struct _PushConnectorMarker;
 
@@ -80,9 +79,11 @@ pub(crate) trait PushConnector: Sized {
 
 impl<
     Item: Debug + Send + Sync + 'static,
-    Output: Publish + Send + 'static,
+    Output: Send + 'static,
     PushConn: PushConnector<Item = Item, Output = Output> + Send + 'static,
 > Connector<Item, _PushConnectorMarker> for PushConn
+where
+    Payloads: Publish<PushConn::Output>,
 {
     type Sink = Either<
         sink::SinkErrInto<sink::Drain<Item>, Item, anyhow::Error>,
@@ -92,10 +93,10 @@ impl<
 
     fn launch(
         mut self,
-        pb: ProgressBar,
-        mut channel: Channel,
-        context: Arc<Context>,
+        mut session: Session,
     ) -> (Self::Sink, AbortOnDropHandle<anyhow::Result<Self::Output>>) {
+        let context = &session.context;
+
         let should_run = self.should_run();
 
         if !should_run {
@@ -103,7 +104,9 @@ impl<
             let sink = sink.sink_err_into();
 
             let handle = task::spawn(async move {
-                let push_runner = PushRunner {
+                let channel = &mut session.channel;
+
+                let state_committer = StateCommitter {
                     passed_stage: self.passed_stage(should_run),
 
                     passed_prefix: self.passed_prefix(should_run),
@@ -111,7 +114,7 @@ impl<
                 };
 
                 let output = self.on_skip_run(&mut channel.state_store_rx).await;
-                let output = push_runner.finalize(output, &pb, &channel)?;
+                let output = state_committer.finalize(output, &session)?;
 
                 anyhow::Ok(output)
             });
@@ -126,6 +129,10 @@ impl<
         let sink = sink.sink_err_into();
 
         let handle = task::spawn(async move {
+            let channel = &mut session.channel;
+
+            let pb = &session.pb;
+
             if let Some(running_prefix) = self.running_prefix() {
                 pb.set_prefix(running_prefix);
             }
@@ -136,7 +143,7 @@ impl<
 
             let staging = self.flush().await?;
 
-            let push_runner = PushRunner {
+            let state_committer = StateCommitter {
                 passed_stage: self.passed_stage(should_run),
 
                 passed_prefix: self.passed_prefix(should_run),
@@ -146,67 +153,12 @@ impl<
             let output = self
                 .on_final_run(staging, &mut channel.state_store_rx)
                 .await;
-            let output = push_runner.finalize(output, &pb, &channel)?;
+            let output = state_committer.finalize(output, &session)?;
 
             anyhow::Ok(output)
         });
         let handle = AbortOnDropHandle::new(handle);
 
         (Right(sink), handle)
-    }
-}
-
-struct PushRunner {
-    passed_stage: Option<Stage>,
-
-    passed_prefix: Option<&'static str>,
-    failed_prefix: Option<&'static str>,
-}
-
-impl PushRunner {
-    fn finalize<Output: Publish>(
-        self,
-        output: anyhow::Result<Output>,
-        pb: &ProgressBar,
-        channel: &Channel,
-    ) -> anyhow::Result<Output> {
-        let output = match output {
-            Ok(output) => {
-                if let Some(passed_prefix) = self.passed_prefix {
-                    pb.set_prefix(passed_prefix);
-                }
-
-                output
-            },
-            Err(err) => {
-                if let Some(failed_prefix) = self.failed_prefix {
-                    pb.set_prefix(failed_prefix);
-                }
-
-                pb.finish();
-
-                return Err(err);
-            },
-        };
-
-        if let Some(passed_stage) = self.passed_stage {
-            let outputs = {
-                let state_store = channel.state_store_rx.borrow();
-
-                Arc::clone(&state_store.outputs)
-            };
-
-            output.publish(&outputs)?;
-
-            channel.state_store_tx.send_if_modified(|state_store| {
-                passed_stage > state_store.stage && {
-                    state_store.stage = passed_stage;
-
-                    true
-                }
-            });
-        }
-
-        Ok(output)
     }
 }

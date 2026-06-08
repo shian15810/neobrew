@@ -9,7 +9,7 @@ use tokio::{
 };
 use tokio_util::task::AbortOnDropHandle;
 
-use super::{Relocator, RelocatorInner};
+use super::{Relocate, RelocateInner};
 use crate::{
     context::Context,
     ext::{std::path::PathExt as _, tokio::fs::FileExt as _},
@@ -17,13 +17,13 @@ use crate::{
 };
 
 #[derive(Clone)]
-pub(crate) struct Relocation {
+pub(crate) struct Relocator {
     replacement_pairs: [(&'static str, String); 4],
 
     context: Arc<Context>,
 }
 
-impl From<([(&'static str, String); 4], Arc<Context>)> for Relocation {
+impl From<([(&'static str, String); 4], Arc<Context>)> for Relocator {
     fn from((replacement_pairs, context): ([(&'static str, String); 4], Arc<Context>)) -> Self {
         Self {
             replacement_pairs,
@@ -33,9 +33,9 @@ impl From<([(&'static str, String); 4], Arc<Context>)> for Relocation {
     }
 }
 
-impl Relocator for Relocation {}
+impl Relocate for Relocator {}
 
-impl RelocatorInner for Relocation {
+impl RelocateInner for Relocator {
     fn replacement_pairs(&self) -> &[(&'static str, String); 4] {
         &self.replacement_pairs
     }

@@ -7,11 +7,11 @@ use async_recursion::async_recursion;
 use futures::future;
 use tokio::fs;
 
-use super::Linkerer;
+use super::Link;
 use crate::{
     context::Context,
     ext::tokio::path::PathExt as _,
-    package::{Packageable as _, pipelined::PipelinedFormula, prepared::PreparedFormula},
+    package::{Packageable as _, prepared::PreparedFormula},
 };
 
 const KEG_LINK_DIR_NAMES: &[&str] = &["bin", "etc", "include", "lib", "sbin", "share", "var"];
@@ -39,9 +39,8 @@ pub(super) struct FormulaLinker {
     context: Arc<Context>,
 }
 
-impl Linkerer for FormulaLinker {
+impl Link for FormulaLinker {
     type PreparedPackage = PreparedFormula;
-    type PipelinedPackage = PipelinedFormula;
 
     async fn is_installed(&self, prepared_package: &PreparedFormula) -> anyhow::Result<bool> {
         let prepared_formula = prepared_package;
@@ -91,13 +90,13 @@ impl Linkerer for FormulaLinker {
         Ok(false)
     }
 
-    async fn link(&self, pipelined_package: &PipelinedFormula) -> anyhow::Result<()> {
-        let pipelined_formula = pipelined_package;
+    async fn link(&self, prepared_package: &PreparedFormula) -> anyhow::Result<()> {
+        let prepared_formula = prepared_package;
 
-        self.link_opt(pipelined_formula).await?;
+        self.link_opt(prepared_formula).await?;
 
-        if pipelined_formula.should_link_keg() {
-            self.link_keg(pipelined_formula).await?;
+        if prepared_formula.should_link_keg() {
+            self.link_keg(prepared_formula).await?;
         }
 
         Ok(())
@@ -128,10 +127,10 @@ impl FormulaLinker {
         Ok(this)
     }
 
-    async fn link_opt(&self, pipelined_formula: &PipelinedFormula) -> anyhow::Result<()> {
-        let id = pipelined_formula.id();
+    async fn link_opt(&self, prepared_formula: &PreparedFormula) -> anyhow::Result<()> {
+        let id = prepared_formula.id();
 
-        let version_revision = pipelined_formula.version_revision();
+        let version_revision = prepared_formula.version_revision();
 
         let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version_revision);
 
@@ -144,10 +143,10 @@ impl FormulaLinker {
         Ok(())
     }
 
-    async fn link_keg(&self, pipelined_formula: &PipelinedFormula) -> anyhow::Result<()> {
-        let id = pipelined_formula.id();
+    async fn link_keg(&self, prepared_formula: &PreparedFormula) -> anyhow::Result<()> {
+        let id = prepared_formula.id();
 
-        let version_revision = pipelined_formula.version_revision();
+        let version_revision = prepared_formula.version_revision();
 
         let keg_dir_path = self.context.homebrew_dirs.keg_dir(id, version_revision);
 

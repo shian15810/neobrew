@@ -52,7 +52,7 @@ mod pipeline;
 mod placeholder;
 mod receipt;
 mod registries;
-mod relocation;
+mod relocator;
 mod streams;
 mod util;
 

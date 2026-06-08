@@ -14,7 +14,7 @@ pub(crate) struct PreparedCask {
     variation_tag: Option<String>,
     variation_url: String,
     variation_sha256: String,
-    pub(in super::super) variation_stanzas: Stanzas,
+    variation_stanzas: Stanzas,
     pub(in super::super) is_requested: bool,
 }
 
@@ -59,6 +59,12 @@ impl PreparedPackageable for PreparedCask {
 
     fn expected_sha256(&self) -> &str {
         &self.variation_sha256
+    }
+}
+
+impl PreparedCask {
+    pub(crate) fn stanzas(&self) -> &Stanzas {
+        &self.variation_stanzas
     }
 }
 

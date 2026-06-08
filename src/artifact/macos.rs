@@ -10,8 +10,7 @@ use crate::{
     ext::{std::path::PathExt as _, tokio::path::PathExt as _},
     package::{
         Packageable as _,
-        pipelined::PipelinedCask,
-        prepared::{CommonStanza, Stanzas},
+        prepared::{CommonStanza, PreparedCask, Stanzas},
     },
     placeholder::Placeholder,
 };
@@ -31,14 +30,14 @@ impl Artifactable for Artifact {
         }
     }
 
-    async fn relocate(&self, pipelined_cask: &PipelinedCask) -> anyhow::Result<()> {
-        let id = pipelined_cask.id();
+    async fn relocate(&self, prepared_cask: &PreparedCask) -> anyhow::Result<()> {
+        let id = prepared_cask.id();
 
-        let version = pipelined_cask.version();
+        let version = prepared_cask.version();
 
         let staged_dir_path = self.context.homebrew_dirs.staged_dir(id, version);
 
-        let stanzas = pipelined_cask.stanzas();
+        let stanzas = prepared_cask.stanzas();
 
         self.relocate_commons(stanzas, &staged_dir_path).await?;
 

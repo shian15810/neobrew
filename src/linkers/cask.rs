@@ -3,13 +3,12 @@ use std::{path::Path, sync::Arc};
 use futures::future;
 use tokio::fs;
 
-use super::Linkerer;
+use super::Link;
 use crate::{
     context::Context,
     ext::{std::path::PathExt as _, tokio::path::PathExt as _},
     package::{
         Packageable as _,
-        pipelined::PipelinedCask,
         prepared::{CommonStanza, PreparedCask, Stanzas},
     },
     placeholder::Placeholder,
@@ -23,9 +22,8 @@ pub(super) struct CaskLinker {
     context: Arc<Context>,
 }
 
-impl Linkerer for CaskLinker {
+impl Link for CaskLinker {
     type PreparedPackage = PreparedCask;
-    type PipelinedPackage = PipelinedCask;
 
     async fn is_installed(&self, prepared_package: &PreparedCask) -> anyhow::Result<bool> {
         let prepared_cask = prepared_package;
@@ -75,16 +73,16 @@ impl Linkerer for CaskLinker {
         Ok(false)
     }
 
-    async fn link(&self, pipelined_package: &PipelinedCask) -> anyhow::Result<()> {
-        let pipelined_cask = pipelined_package;
+    async fn link(&self, prepared_package: &PreparedCask) -> anyhow::Result<()> {
+        let prepared_cask = prepared_package;
 
-        let id = pipelined_cask.id();
+        let id = prepared_cask.id();
 
-        let version = pipelined_cask.version();
+        let version = prepared_cask.version();
 
         let staged_dir_path = self.context.homebrew_dirs.staged_dir(id, version);
 
-        let stanzas = &pipelined_cask.stanzas();
+        let stanzas = &prepared_cask.stanzas();
 
         self.link_commons(stanzas, &staged_dir_path).await?;
 

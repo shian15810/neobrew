@@ -3,6 +3,7 @@ mod formula;
 
 use std::{path::Path, sync::Arc};
 
+use anyhow::Context as _;
 use bytes::Bytes;
 use futures::stream::{self, StreamExt as _, TryStreamExt as _};
 use oci_client::secrets::RegistryAuth;
@@ -61,7 +62,7 @@ impl Streams {
                 let (reference, descriptor) = self
                     .formula_stream
                     .oci(prepared_formula)
-                    .ok_or_else(|| anyhow::anyhow!("No OCI reference for formula"))?;
+                    .context("OCI reference for formula not found")?;
 
                 self.context
                     .oci_client

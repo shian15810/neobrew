@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use super::Artifactable;
-use crate::{context::Context, package::pipelined::PipelinedCask, placeholder::Placeholder};
+use crate::{context::Context, package::prepared::PreparedCask, placeholder::Placeholder};
 
 pub(crate) struct Artifact {
     placeholder: Arc<Placeholder>,
@@ -19,7 +19,7 @@ impl Artifactable for Artifact {
     }
 
     #[expect(clippy::unused_async_trait_impl)]
-    async fn relocate(&self, _pipelined_cask: &PipelinedCask) -> anyhow::Result<()> {
+    async fn relocate(&self, _prepared_cask: &PreparedCask) -> anyhow::Result<()> {
         Ok(())
     }
 }

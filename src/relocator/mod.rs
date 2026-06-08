@@ -9,17 +9,17 @@ use async_walkdir::WalkDir;
 use futures::stream::StreamExt as _;
 
 #[cfg(target_os = "linux")]
-pub(crate) use self::linux::Relocation;
+pub(crate) use self::linux::Relocator;
 #[cfg(target_os = "macos")]
-pub(crate) use self::macos::Relocation;
+pub(crate) use self::macos::Relocator;
 use crate::{
     context::Context,
     ext::tokio::path::PathExt as _,
-    package::{Packageable as _, pipelined::PipelinedFormula},
+    package::{Packageable as _, prepared::PreparedFormula},
 };
 
 #[expect(private_bounds)]
-pub(crate) trait Relocator: RelocatorInner {
+pub(crate) trait Relocate: RelocateInner {
     fn new(context: Arc<Context>) -> Self {
         let homebrew_dirs = &context.homebrew_dirs;
 
@@ -41,14 +41,14 @@ pub(crate) trait Relocator: RelocatorInner {
         Self::from((replacement_pairs, context))
     }
 
-    async fn patch(&self, pipelined_formula: &PipelinedFormula) -> anyhow::Result<()> {
-        let id = pipelined_formula.id();
+    async fn patch(&self, prepared_formula: &PreparedFormula) -> anyhow::Result<()> {
+        let id = prepared_formula.id();
 
-        let version_revision = pipelined_formula.version_revision();
+        let version_revision = prepared_formula.version_revision();
 
         let cellar_dir_path = self.context().homebrew_dirs.cellar_dir();
 
-        if pipelined_formula.should_relocate(&cellar_dir_path) {
+        if prepared_formula.should_relocate(&cellar_dir_path) {
             let keg_dir_path = self.context().homebrew_dirs.keg_dir(id, version_revision);
 
             self.patch_keg(&keg_dir_path).await?;
@@ -58,7 +58,7 @@ pub(crate) trait Relocator: RelocatorInner {
     }
 }
 
-trait RelocatorInner: From<([(&'static str, String); 4], Arc<Context>)> {
+trait RelocateInner: From<([(&'static str, String); 4], Arc<Context>)> {
     const PREFIX_PLACEHOLDER: &str = "@@HOMEBREW_PREFIX@@";
     const CELLAR_PLACEHOLDER: &str = "@@HOMEBREW_CELLAR@@";
     const REPOSITORY_PLACEHOLDER: &str = "@@HOMEBREW_REPOSITORY@@";

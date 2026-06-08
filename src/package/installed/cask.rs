@@ -1,5 +1,5 @@
 use super::{
-    super::{Packageable, pipelined::PipelinedCask},
+    super::{Packageable, prepared::PreparedCask},
     InstalledPackageable,
 };
 
@@ -9,12 +9,12 @@ pub(crate) struct InstalledCask {
     is_requested: bool,
 }
 
-impl From<PipelinedCask> for InstalledCask {
-    fn from(pipelined_cask: PipelinedCask) -> Self {
+impl From<PreparedCask> for InstalledCask {
+    fn from(prepared_cask: PreparedCask) -> Self {
         Self {
-            token: pipelined_cask.token,
-            version: pipelined_cask.version,
-            is_requested: pipelined_cask.is_requested,
+            token: prepared_cask.token,
+            version: prepared_cask.version,
+            is_requested: prepared_cask.is_requested,
         }
     }
 }

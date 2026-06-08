@@ -1,5 +1,4 @@
 pub(crate) mod installed;
-pub(crate) mod pipelined;
 pub(crate) mod prepared;
 pub(crate) mod raw;
 pub(crate) mod resolved;
@@ -10,18 +9,17 @@ use enum_dispatch::enum_dispatch;
 
 use self::{
     installed::InstalledPackage,
-    pipelined::PipelinedPackage,
     prepared::PreparedPackage,
     raw::RawPackage,
     resolved::ResolvedPackage,
 };
 
+#[expect(clippy::large_enum_variant)]
 #[enum_dispatch]
 enum Package {
     Raw(RawPackage),
     Resolved(ResolvedPackage),
     Prepared(PreparedPackage),
-    Pipelined(PipelinedPackage),
     Installed(InstalledPackage),
 }
 
@@ -30,7 +28,6 @@ enum Package {
     RawPackage,
     ResolvedPackage,
     PreparedPackage,
-    PipelinedPackage,
     InstalledPackage
 )]
 pub(crate) trait Packageable {

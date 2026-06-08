@@ -9,14 +9,13 @@ use tokio::task::JoinSet;
 use super::Runner;
 use crate::{
     artifact::{Artifact, Artifactable as _},
-    compatibility::{Compatibility, Compatibilizer as _},
+    compatibility::{Compatibility, Compatible as _},
     context::Context,
     downloads::Downloads,
     ext::core::result::ResultExt as _,
     linkers::Linkers,
     package::{
         Packageable as _,
-        pipelined::PipelinedPackage,
         prepared::{PreparedPackage, PreparedPackageable as _},
         resolved::ResolvedPackage,
     },
@@ -29,7 +28,7 @@ use crate::{
     },
     placeholder::Placeholder,
     registries::Registries,
-    relocation::{Relocation, Relocator as _},
+    relocator::{Relocate as _, Relocator},
     streams::Streams,
 };
 
@@ -59,7 +58,7 @@ struct Installation {
     downloads: Downloads,
     streams: Streams,
 
-    relocation: Relocation,
+    relocator: Relocator,
     artifact: Artifact,
     linkers: Linkers,
 
@@ -83,7 +82,7 @@ impl Installation {
             downloads: Downloads::new(Arc::clone(&context)),
             streams: Streams::new(Arc::clone(&context)),
 
-            relocation: Relocation::new(Arc::clone(&context)),
+            relocator: Relocator::new(Arc::clone(&context)),
             artifact: Artifact::new(Arc::clone(&placeholder), Arc::clone(&context)),
             linkers: Linkers::try_init(Arc::clone(&placeholder), Arc::clone(&context)).await?,
 
@@ -181,7 +180,7 @@ impl Installation {
             .into_iter()
             .unzip::<_, _, Vec<_>, Vec<_>>();
 
-        let is_requesteds = resolved_packages
+        let are_requested = resolved_packages
             .iter()
             .map(|resolved_package| requested_package_ids.contains(resolved_package.id()))
             .collect::<Vec<_>>();
@@ -189,7 +188,7 @@ impl Installation {
         #[cfg(debug_assertions)]
         let prepared_packages = resolved_packages
             .into_iter()
-            .zip(is_requesteds)
+            .zip(are_requested)
             .map(PreparedPackage::try_from)
             .filter_map(Result::transpose_err)
             .try_collect::<Vec<_>>()?;
@@ -197,7 +196,7 @@ impl Installation {
         #[cfg(not(debug_assertions))]
         let prepared_packages = resolved_packages
             .into_iter()
-            .zip(is_requesteds)
+            .zip(are_requested)
             .map(PreparedPackage::try_from)
             .filter_map(Result::transpose_err)
             .collect::<anyhow::Result<Vec<_>>>()?;
@@ -295,23 +294,22 @@ impl Installation {
         let dmg_pourer = DmgPourer::try_init(pour_dir_path, archive_format).await?;
 
         let hlist_pat![
-            _progressor_output,
-            _hasher_output,
-            hlist_pat![_writer_output, _dmg_pourer_output],
-            _pourer_output
-        ] = Pipeline::build(stream, pb.clone(), Arc::clone(&self.context))
+            prepared_package,
+            _progressed_output,
+            _hashed_output,
+            hlist_pat![_written_output, _dmg_poured_output],
+            _poured_output
+        ] = Pipeline::build(prepared_package, pb.clone(), Arc::clone(&self.context))
             .with_progressor(content_length)?
             .fanout(hasher)
             .fanout(writer.fanout(dmg_pourer))
             .fanout(pourer)
-            .run_concurrently()
+            .run_concurrently(stream)
             .await?;
 
-        let pipelined_package = PipelinedPackage::from(prepared_package);
+        self.relocate(&prepared_package, &pb).await?;
 
-        self.relocate(&pipelined_package, &pb).await?;
-
-        self.link(&pipelined_package, &pb).await?;
+        self.link(&prepared_package, &pb).await?;
 
         if is_installed && !is_up_to_date {
             pb.set_prefix("Upgraded");
@@ -326,17 +324,17 @@ impl Installation {
 
     async fn relocate(
         &self,
-        pipelined_package: &PipelinedPackage,
+        prepared_package: &PreparedPackage,
         pb: &ProgressBar,
     ) -> anyhow::Result<()> {
         pb.set_prefix("Relocating");
 
-        match pipelined_package {
-            PipelinedPackage::Formula(pipelined_formula) => {
-                self.relocation.patch(pipelined_formula).await?;
+        match prepared_package {
+            PreparedPackage::Formula(prepared_formula) => {
+                self.relocator.patch(prepared_formula).await?;
             },
-            PipelinedPackage::Cask(pipelined_cask) => {
-                self.artifact.relocate(pipelined_cask).await?;
+            PreparedPackage::Cask(prepared_cask) => {
+                self.artifact.relocate(prepared_cask).await?;
             },
         }
 
@@ -345,12 +343,12 @@ impl Installation {
 
     async fn link(
         &self,
-        pipelined_package: &PipelinedPackage,
+        prepared_package: &PreparedPackage,
         pb: &ProgressBar,
     ) -> anyhow::Result<()> {
         pb.set_prefix("Linking");
 
-        self.linkers.link(pipelined_package).await?;
+        self.linkers.link(prepared_package).await?;
 
         Ok(())
     }

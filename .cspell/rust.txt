@@ -4,7 +4,6 @@ ascii
 bufread
 cfgs
 CLIPPYFLAGS
-Compatibilizer
 doctest
 fanout
 Fanout
@@ -12,7 +11,6 @@ futs
 hlist
 idents
 incompat
-Linkerer
 miri
 nextest
 Nextest
@@ -26,6 +24,7 @@ progressor
 Progressor
 pstr
 recv
+relocator
 Relocator
 rescope
 rustdocflags
