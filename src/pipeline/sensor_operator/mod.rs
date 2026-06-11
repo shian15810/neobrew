@@ -1,30 +1,34 @@
+mod artifactor;
+mod relocator;
+
 use std::sync::Arc;
 
-use anyhow::anyhow;
+use async_trait::async_trait;
 use tokio::task;
 use tokio_util::task::AbortOnDropHandle;
 
+pub(crate) use self::{artifactor::Artifactor, relocator::Relocator};
 use super::{
     Operator,
     state_committer::StateCommitter,
     state_store::{Payloads, Publish, Session, Stage, Subscribe},
 };
+use crate::{context::Context, package::prepared::PreparedPackage};
 
-struct _SensorOperatorMarker;
+pub(crate) struct _SensorOperatorMarker;
 
-trait SensorOperator: Sized {
+#[async_trait]
+pub(crate) trait SensorOperator: Sized {
     type Payload;
     type Staging;
     type Output;
 
-    fn should_run(&self) -> bool {
+    fn should_run(&self, _prepared_package: &PreparedPackage, _context: &Context) -> bool {
         true
     }
 
-    fn on_skip_run(self) -> anyhow::Result<Self::Output> {
-        let err = anyhow!("Implement `on_skip_run` when `should_run` returns `false`");
-
-        Err(err)
+    fn on_skip_run(self) -> anyhow::Result<Option<Self::Output>> {
+        Ok(None)
     }
 
     fn running_prefix(&self) -> Option<&'static str> {
@@ -33,7 +37,12 @@ trait SensorOperator: Sized {
 
     fn poke_stage(&self) -> Stage;
 
-    fn execute(&self, payload: &Self::Payload) -> anyhow::Result<Self::Staging>;
+    async fn execute(
+        &self,
+        payload: &Self::Payload,
+        prepared_package: &PreparedPackage,
+        context: &Context,
+    ) -> anyhow::Result<Self::Staging>;
 
     fn on_final_run(self, staging: Self::Staging) -> anyhow::Result<Self::Output>;
 
@@ -45,15 +54,15 @@ trait SensorOperator: Sized {
         Ok(())
     }
 
-    fn passed_prefix(&self, _should_run: bool) -> Option<&'static str> {
+    fn passed_prefix(&self) -> Option<&'static str> {
         None
     }
 
-    fn failed_prefix(&self, _should_run: bool) -> Option<&'static str> {
+    fn failed_prefix(&self) -> Option<&'static str> {
         None
     }
 
-    fn passed_stage(&self, should_run: bool) -> Option<Stage>;
+    fn passed_stage(&self, should_run: bool, prepared_package: &PreparedPackage) -> Option<Stage>;
 }
 
 impl<SensorOp: SensorOperator<Output: Send> + Send + 'static> Operator<_SensorOperatorMarker>
@@ -61,27 +70,27 @@ impl<SensorOp: SensorOperator<Output: Send> + Send + 'static> Operator<_SensorOp
 where
     Payloads: Subscribe<SensorOp::Payload> + Publish<SensorOp::Output>,
 {
-    type Input = ();
+    type Input = SensorOp::Payload;
     type Output = SensorOp::Output;
 
     #[expect(clippy::let_and_return)]
     fn proceed(
         self,
-        (): Self::Input,
+        _: Option<Self::Input>,
         mut session: Session,
-    ) -> AbortOnDropHandle<anyhow::Result<Self::Output>> {
+    ) -> AbortOnDropHandle<anyhow::Result<Option<Self::Output>>> {
         let handle = task::spawn(async move {
             let channel = &mut session.channel;
 
             let pb = &session.pb;
 
-            let should_run = self.should_run();
+            let should_run = self.should_run(&session.prepared_package, &session.context);
 
             let state_committer = StateCommitter {
-                passed_stage: self.passed_stage(should_run),
+                passed_prefix: self.passed_prefix(),
+                failed_prefix: self.failed_prefix(),
 
-                passed_prefix: self.passed_prefix(should_run),
-                failed_prefix: self.failed_prefix(should_run),
+                passed_stage: self.passed_stage(should_run, &session.prepared_package),
             };
 
             if !should_run {
@@ -108,9 +117,12 @@ where
                 pb.set_prefix(running_prefix);
             }
 
-            let staging = self.execute(payload)?;
+            let staging = self
+                .execute(payload, &session.prepared_package, &session.context)
+                .await?;
 
             let output = self.on_final_run(staging);
+            let output = output.map(Some);
             let output = state_committer.finalize(output, &session)?;
 
             anyhow::Ok(output)

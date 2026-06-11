@@ -1,3 +1,7 @@
+use std::{io::ErrorKind, path::Path};
+
+use tokio::{fs::File, io::AsyncReadExt as _};
+
 pub(crate) struct MachO;
 
 impl MachO {
@@ -27,25 +31,33 @@ impl MachO {
 }
 
 impl MachO {
-    pub(crate) fn has_magic(bytes: &[u8]) -> bool {
-        let &[b0, b1, b2, b3, ..] = bytes else {
-            return false;
-        };
+    pub(crate) async fn has_magic(path: &Path) -> anyhow::Result<bool> {
+        let mut file = File::open(path).await?;
 
-        let peek_bytes = &[b0, b1, b2, b3];
+        let mut peek_buf = [0_u8; 4];
 
-        let peek_magic = u32::from_be_bytes(*peek_bytes);
+        match file.read_exact(&mut peek_buf).await {
+            Ok(_) => {},
+            Err(err) if err.kind() == ErrorKind::UnexpectedEof => return Ok(false),
+            Err(err) => {
+                let err = anyhow::Error::from(err);
+
+                return Err(err);
+            },
+        }
+
+        let peek_magic = u32::from_be_bytes(peek_buf);
 
         if Self::BE_MAGICS.contains(&peek_magic) {
-            return true;
+            return Ok(true);
         }
 
-        let peek_magic = u32::from_le_bytes(*peek_bytes);
+        let peek_magic = u32::from_le_bytes(peek_buf);
 
         if Self::LE_MAGICS.contains(&peek_magic) {
-            return true;
+            return Ok(true);
         }
 
-        false
+        Ok(false)
     }
 }

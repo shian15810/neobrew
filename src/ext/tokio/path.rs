@@ -59,15 +59,15 @@ impl PathExt for Path {
     }
 
     async fn is_dir_empty(&self) -> io::Result<bool> {
-        let mut entries = match fs::read_dir(self).await {
-            Ok(entries) => entries,
+        let mut dir_entries = match fs::read_dir(self).await {
+            Ok(dir_entries) => dir_entries,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(true),
             Err(err) => return Err(err),
         };
 
-        let entry = entries.next_entry().await?;
+        let dir_entry = dir_entries.next_entry().await?;
 
-        let is_dir_empty = entry.is_none();
+        let is_dir_empty = dir_entry.is_none();
 
         Ok(is_dir_empty)
     }

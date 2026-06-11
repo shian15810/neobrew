@@ -87,7 +87,7 @@ impl HomebrewDirs {
         PathBuf::from(HomebrewEnvConfig::DEFAULT_PREFIX)
     }
 
-    pub(crate) fn opt_dir(&self) -> PathBuf {
+    fn opt_dir(&self) -> PathBuf {
         let prefix_dir = self.prefix_dir();
 
         prefix_dir.join("opt")
@@ -117,7 +117,7 @@ impl HomebrewDirs {
         rack_dir.join(version)
     }
 
-    pub(crate) fn linked_keg_dir(&self) -> PathBuf {
+    fn linked_keg_dir(&self) -> PathBuf {
         let prefix_dir = self.prefix_dir();
 
         prefix_dir.join("var/homebrew/linked")
@@ -129,7 +129,7 @@ impl HomebrewDirs {
         linked_keg_dir.join(id)
     }
 
-    pub(crate) fn caskroom_dir(&self) -> PathBuf {
+    fn caskroom_dir(&self) -> PathBuf {
         let prefix_dir = self.prefix_dir();
 
         prefix_dir.join("Caskroom")

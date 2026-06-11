@@ -13,6 +13,7 @@ pub(crate) use self::{
     formula::PreparedFormula,
 };
 use super::{Packageable, resolved::ResolvedPackage};
+use crate::context::Context;
 
 #[expect(clippy::large_enum_variant)]
 #[enum_dispatch]
@@ -55,4 +56,8 @@ pub(crate) trait PreparedPackageable: Packageable {
     fn download_url(&self) -> &str;
 
     fn expected_sha256(&self) -> &str;
+
+    async fn is_installed(&self, context: &Context) -> anyhow::Result<bool>;
+
+    async fn is_up_to_date(&self, context: &Context) -> anyhow::Result<bool>;
 }

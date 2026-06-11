@@ -3,10 +3,9 @@ use async_trait::async_trait;
 use base16ct::HexDisplay;
 use bytes::Bytes;
 use sha2::{Digest as _, Sha256};
-use tokio::sync::watch;
 
 use super::{
-    super::state_store::{HashedOutput, Stage, StateStore},
+    super::state_store::{HashedOutput, Stage},
     PushConnector,
 };
 
@@ -32,7 +31,6 @@ impl Hasher {
 
 #[async_trait]
 impl PushConnector for Hasher {
-    type Item = Bytes;
     type Staging = String;
     type Output = HashedOutput;
 
@@ -40,10 +38,7 @@ impl PushConnector for Hasher {
         self.should_run
     }
 
-    async fn on_skip_run(
-        self,
-        _state_store_rx: &mut watch::Receiver<StateStore>,
-    ) -> anyhow::Result<Self::Output> {
+    async fn on_skip_run(self) -> anyhow::Result<Option<Self::Output>> {
         let output = HashedOutput {
             is_verified: true,
 
@@ -51,10 +46,10 @@ impl PushConnector for Hasher {
             expected_sha256: self.expected_sha256,
         };
 
-        Ok(output)
+        Ok(Some(output))
     }
 
-    async fn feed(&mut self, chunk: Self::Item) -> anyhow::Result<()> {
+    async fn feed(&mut self, chunk: Bytes) -> anyhow::Result<()> {
         self.sha256_digest.update(chunk);
 
         Ok(())
@@ -70,11 +65,7 @@ impl PushConnector for Hasher {
         Ok(actual_sha256)
     }
 
-    async fn on_final_run(
-        self,
-        staging: Self::Staging,
-        _state_store_rx: &mut watch::Receiver<StateStore>,
-    ) -> anyhow::Result<Self::Output> {
+    async fn on_final_run(self, staging: Self::Staging) -> anyhow::Result<Self::Output> {
         let actual_sha256 = staging;
 
         let is_verified = actual_sha256 == self.expected_sha256;
@@ -95,11 +86,11 @@ impl PushConnector for Hasher {
         Ok(output)
     }
 
-    fn passed_prefix(&self, _should_run: bool) -> Option<&'static str> {
+    fn passed_prefix(&self) -> Option<&'static str> {
         Some("Verified")
     }
 
-    fn failed_prefix(&self, _should_run: bool) -> Option<&'static str> {
+    fn failed_prefix(&self) -> Option<&'static str> {
         Some("Mismatched")
     }
 

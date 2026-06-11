@@ -1,13 +1,14 @@
 pub(crate) mod action_operator;
 pub(crate) mod pull_connector;
 pub(crate) mod push_connector;
-mod sensor_operator;
+pub(crate) mod sensor_operator;
 mod state_committer;
 mod state_store;
 
-use std::{marker::PhantomData, sync::Arc};
+use std::sync::Arc;
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use frunk::{
     hlist::{HCons, HNil},
     traits::IntoReverse,
@@ -27,16 +28,14 @@ use self::{
 };
 use crate::{context::Context, package::prepared::PreparedPackage};
 
-pub(crate) struct Pipeline<Item, Si, Handles> {
+pub(crate) struct Pipeline<Si, Handles> {
     sink: Si,
     handles: Handles,
 
     session: Session,
-
-    _marker: PhantomData<Item>,
 }
 
-impl<Item> Pipeline<Item, sink::SinkErrInto<sink::Drain<Item>, Item, anyhow::Error>, HNil> {
+impl Pipeline<sink::SinkErrInto<sink::Drain<Bytes>, Bytes, anyhow::Error>, HNil> {
     pub(crate) fn build(
         prepared_package: PreparedPackage,
         pb: ProgressBar,
@@ -52,17 +51,14 @@ impl<Item> Pipeline<Item, sink::SinkErrInto<sink::Drain<Item>, Item, anyhow::Err
             handles: HNil,
 
             session,
-
-            _marker: PhantomData,
         }
     }
 }
 
 impl<
-    Item: Clone + Send,
-    Si: sink::Sink<Item, Error = anyhow::Error> + Send + 'static,
+    Si: sink::Sink<Bytes, Error = anyhow::Error> + Send + 'static,
     Handles: IntoReverse<Output: Collect>,
-> Pipeline<Item, Si, Handles>
+> Pipeline<Si, Handles>
 {
     #[expect(clippy::type_complexity)]
     pub(crate) fn with_progressor<_ConnMarker>(
@@ -70,16 +66,14 @@ impl<
         content_length: Option<u64>,
     ) -> anyhow::Result<
         Pipeline<
-            Item,
-            sink::Fanout<Si, <Progressor as Connector<Item, _ConnMarker>>::Sink>,
-            HCons<AbortOnDropHandle<anyhow::Result<ProgressedOutput>>, Handles>,
+            sink::Fanout<Si, <Progressor as Connector<_ConnMarker>>::Sink>,
+            HCons<AbortOnDropHandle<anyhow::Result<Option<ProgressedOutput>>>, Handles>,
         >,
     >
     where
         Progressor: Connector<
-                Item,
                 _ConnMarker,
-                Sink: sink::Sink<Item, Error = anyhow::Error>,
+                Sink: sink::Sink<Bytes, Error = anyhow::Error>,
                 Output = ProgressedOutput,
             >,
     {
@@ -94,15 +88,14 @@ impl<
 
     #[expect(clippy::type_complexity)]
     pub(crate) fn fanout<
-        Conn: Connector<Item, _ConnMarker, Sink: sink::Sink<Item, Error = anyhow::Error>>,
+        Conn: Connector<_ConnMarker, Sink: sink::Sink<Bytes, Error = anyhow::Error>>,
         _ConnMarker,
     >(
         self,
         connector: Conn,
     ) -> Pipeline<
-        Item,
         sink::Fanout<Si, Conn::Sink>,
-        HCons<AbortOnDropHandle<anyhow::Result<Conn::Output>>, Handles>,
+        HCons<AbortOnDropHandle<anyhow::Result<Option<Conn::Output>>>, Handles>,
     > {
         let (sink, handle) = connector.launch(self.session.clone());
 
@@ -116,15 +109,13 @@ impl<
             },
 
             session: self.session,
-
-            _marker: PhantomData,
         }
     }
 
     pub(crate) async fn run_concurrently(
         self,
-        stream: impl stream::TryStream<Ok = Item, Error = anyhow::Error> + Send + 'static,
-    ) -> anyhow::Result<HCons<Arc<PreparedPackage>, <Handles::Output as Collect>::Outputs>> {
+        stream: impl stream::TryStream<Ok = Bytes, Error = anyhow::Error> + Send + 'static,
+    ) -> anyhow::Result<<Handles::Output as Collect>::Outputs> {
         let handle = task::spawn(async {
             let stream = stream.err_into();
 
@@ -144,29 +135,26 @@ impl<
 
         result?;
 
-        let prepared_package = self.session.prepared_package;
-
-        let output = HCons {
-            head: prepared_package,
-            tail: outputs,
-        };
-
-        Ok(output)
+        Ok(outputs)
     }
 }
 
-pub(crate) trait Connector<Item, _ConnMarker>: Sized {
+#[expect(clippy::type_complexity)]
+pub(crate) trait Connector<_ConnMarker>: Sized {
     type Sink;
     type Output;
 
     fn launch(
         self,
         session: Session,
-    ) -> (Self::Sink, AbortOnDropHandle<anyhow::Result<Self::Output>>);
+    ) -> (
+        Self::Sink,
+        AbortOnDropHandle<anyhow::Result<Option<Self::Output>>>,
+    );
 
-    fn fanout<Op>(self, operator: Op) -> FanoutOperator<Self, HCons<Op, HNil>> {
-        FanoutOperator {
-            connector: self,
+    fn fanout<Op>(self, operator: Op) -> Fanout<Self, HCons<Op, HNil>> {
+        Fanout {
+            source: self,
             operators: HCons {
                 head: operator,
                 tail: HNil,
@@ -175,27 +163,37 @@ pub(crate) trait Connector<Item, _ConnMarker>: Sized {
     }
 }
 
-pub(crate) trait Operator<_OpMarker> {
+pub(crate) trait Operator<_OpMarker>: Sized {
     type Input;
     type Output;
 
     fn proceed(
         self,
-        input: Self::Input,
+        input: Option<Self::Input>,
         session: Session,
-    ) -> AbortOnDropHandle<anyhow::Result<Self::Output>>;
+    ) -> AbortOnDropHandle<anyhow::Result<Option<Self::Output>>>;
+
+    fn fanout<Op>(self, operator: Op) -> Fanout<Self, HCons<Op, HNil>> {
+        Fanout {
+            source: self,
+            operators: HCons {
+                head: operator,
+                tail: HNil,
+            },
+        }
+    }
 }
 
-pub(crate) trait Operators<Input, _OpMarker> {
+pub(crate) trait Operators<Input, _OpsMarker> {
     type Handles;
 
-    fn proceed_all(self, input: Input, session: Session) -> Self::Handles;
+    fn proceed_all(self, input: Option<Input>, session: Session) -> Self::Handles;
 }
 
-impl<Input, _OpMarker> Operators<Input, _OpMarker> for HNil {
+impl<Input> Operators<Input, ()> for HNil {
     type Handles = Self;
 
-    fn proceed_all(self, _input: Input, _session: Session) -> Self::Handles {
+    fn proceed_all(self, _input: Option<Input>, _session: Session) -> Self::Handles {
         Self
     }
 }
@@ -203,13 +201,14 @@ impl<Input, _OpMarker> Operators<Input, _OpMarker> for HNil {
 impl<
     Input: Clone,
     Op: Operator<_OpMarker, Input = Input>,
-    Ops: Operators<Input, _OpMarker>,
+    Ops: Operators<Input, _OpsMarker>,
     _OpMarker,
-> Operators<Input, _OpMarker> for HCons<Op, Ops>
+    _OpsMarker,
+> Operators<Input, (_OpMarker, _OpsMarker)> for HCons<Op, Ops>
 {
-    type Handles = HCons<AbortOnDropHandle<anyhow::Result<Op::Output>>, Ops::Handles>;
+    type Handles = HCons<AbortOnDropHandle<anyhow::Result<Option<Op::Output>>>, Ops::Handles>;
 
-    fn proceed_all(self, input: Input, session: Session) -> Self::Handles {
+    fn proceed_all(self, input: Option<Input>, session: Session) -> Self::Handles {
         let handle = self.head.proceed(input.clone(), session.clone());
 
         let handles = self.tail.proceed_all(input, session);
@@ -221,15 +220,15 @@ impl<
     }
 }
 
-pub(crate) struct FanoutOperator<Conn, Ops> {
-    connector: Conn,
+pub(crate) struct Fanout<Src, Ops> {
+    source: Src,
     operators: Ops,
 }
 
-impl<Conn, Ops> FanoutOperator<Conn, Ops> {
-    fn fanout<Op>(self, operator: Op) -> FanoutOperator<Conn, HCons<Op, Ops>> {
-        FanoutOperator {
-            connector: self.connector,
+impl<Src, Ops> Fanout<Src, Ops> {
+    pub(crate) fn fanout<Op>(self, operator: Op) -> Fanout<Src, HCons<Op, Ops>> {
+        Fanout {
+            source: self.source,
             operators: HCons {
                 head: operator,
                 tail: self.operators,
@@ -248,21 +247,24 @@ trait ReversedCollect: IntoReverse<Output: Collect<Outputs: Send + 'static>> {}
 impl<Handles: IntoReverse<Output: Collect<Outputs: Send + 'static>>> ReversedCollect for Handles {}
 
 impl<
-    Item,
-    Conn: Connector<Item, _ConnMarker, Output: Clone + Send + 'static>,
-    Ops: Operators<Conn::Output, _OpMarker, Handles: ReversedCollect> + Send + 'static,
+    Conn: Connector<_ConnMarker, Output: Clone + Send + 'static>,
+    Ops: Operators<Conn::Output, _OpsMarker, Handles: ReversedCollect> + Send + 'static,
     _ConnMarker,
-    _OpMarker,
-> Connector<Item, (_ConnMarker, _OpMarker)> for FanoutOperator<Conn, Ops>
+    _OpsMarker,
+> Connector<(_ConnMarker, _OpsMarker)> for Fanout<Conn, Ops>
 {
     type Sink = Conn::Sink;
-    type Output = HCons<Conn::Output, <<Ops::Handles as IntoReverse>::Output as Collect>::Outputs>;
+    type Output =
+        HCons<Option<Conn::Output>, <<Ops::Handles as IntoReverse>::Output as Collect>::Outputs>;
 
     fn launch(
         self,
         session: Session,
-    ) -> (Self::Sink, AbortOnDropHandle<anyhow::Result<Self::Output>>) {
-        let (sink, handle) = self.connector.launch(session.clone());
+    ) -> (
+        Self::Sink,
+        AbortOnDropHandle<anyhow::Result<Option<Self::Output>>>,
+    ) {
+        let (sink, handle) = self.source.launch(session.clone());
 
         let handle = task::spawn(async {
             let connector_output = handle.await??;
@@ -279,11 +281,53 @@ impl<
                 tail: operators_outputs,
             };
 
-            anyhow::Ok(output)
+            anyhow::Ok(Some(output))
         });
         let handle = AbortOnDropHandle::new(handle);
 
         (sink, handle)
+    }
+}
+
+impl<
+    Op: Operator<_OpMarker, Output: Clone + Send + 'static>,
+    Ops: Operators<Op::Output, _OpsMarker, Handles: ReversedCollect> + Send + 'static,
+    _OpMarker,
+    _OpsMarker,
+> Operator<(_OpMarker, _OpsMarker)> for Fanout<Op, Ops>
+{
+    type Input = Op::Input;
+    type Output =
+        HCons<Option<Op::Output>, <<Ops::Handles as IntoReverse>::Output as Collect>::Outputs>;
+
+    #[expect(clippy::let_and_return)]
+    fn proceed(
+        self,
+        input: Option<Self::Input>,
+        session: Session,
+    ) -> AbortOnDropHandle<anyhow::Result<Option<Self::Output>>> {
+        let handle = self.source.proceed(input, session.clone());
+
+        let handle = task::spawn(async {
+            let operator_output = handle.await??;
+
+            let operators_input = operator_output.clone();
+
+            let handles = self.operators.proceed_all(operators_input, session);
+            let handles = handles.into_reverse();
+
+            let operators_outputs = handles.collect().await?;
+
+            let output = HCons {
+                head: operator_output,
+                tail: operators_outputs,
+            };
+
+            anyhow::Ok(Some(output))
+        });
+        let handle = AbortOnDropHandle::new(handle);
+
+        handle
     }
 }
 
@@ -306,10 +350,10 @@ impl Collect for HNil {
 }
 
 #[async_trait]
-impl<Item: Send, Handles: Collect<Outputs: Send> + Send> Collect
-    for HCons<AbortOnDropHandle<anyhow::Result<Item>>, Handles>
+impl<Output: Send, Handles: Collect<Outputs: Send> + Send> Collect
+    for HCons<AbortOnDropHandle<anyhow::Result<Output>>, Handles>
 {
-    type Outputs = HCons<Item, Handles::Outputs>;
+    type Outputs = HCons<Output, Handles::Outputs>;
 
     async fn collect(self) -> anyhow::Result<Self::Outputs> {
         let head = self.head.err_into();

@@ -1,19 +1,16 @@
 use std::sync::Arc;
 
 use clap::Args;
-use frunk::hlist_pat;
 use futures::stream::StreamExt as _;
 use indicatif::{MultiProgress, ProgressBar};
 use tokio::task::JoinSet;
 
 use super::Runner;
 use crate::{
-    artifact::{Artifact, Artifactable as _},
     compatibility::{Compatibility, Compatible as _},
     context::Context,
     downloads::Downloads,
     ext::core::result::ResultExt as _,
-    linkers::Linkers,
     package::{
         Packageable as _,
         prepared::{PreparedPackage, PreparedPackageable as _},
@@ -21,14 +18,14 @@ use crate::{
     },
     pipeline::{
         Connector as _,
+        Operator as _,
         Pipeline,
-        action_operator::DmgPourer,
+        action_operator::{DmgPourer, Linker},
         pull_connector::Pourer,
         push_connector::{Hasher, Progressor, Writer},
+        sensor_operator::{Artifactor, Relocator},
     },
-    placeholder::Placeholder,
     registries::Registries,
-    relocator::{Relocate as _, Relocator},
     streams::Streams,
 };
 
@@ -40,7 +37,7 @@ pub(super) struct Install {
 
 impl Runner for Install {
     async fn run_parallelly(self, context: Arc<Context>) -> anyhow::Result<()> {
-        let installation = Installation::prepare(self.packages, context).await?;
+        let installation = Installation::prepare(self.packages, context)?;
 
         installation.start().await?;
 
@@ -58,20 +55,11 @@ struct Installation {
     downloads: Downloads,
     streams: Streams,
 
-    relocator: Relocator,
-    artifact: Artifact,
-    linkers: Linkers,
-
-    placeholder: Arc<Placeholder>,
-
     context: Arc<Context>,
 }
 
 impl Installation {
-    async fn prepare(packages: Vec<String>, context: Arc<Context>) -> anyhow::Result<Arc<Self>> {
-        let placeholder = Placeholder::new(Arc::clone(&context));
-        let placeholder = Arc::new(placeholder);
-
+    fn prepare(packages: Vec<String>, context: Arc<Context>) -> anyhow::Result<Arc<Self>> {
         let this = Self {
             packages,
 
@@ -81,12 +69,6 @@ impl Installation {
 
             downloads: Downloads::new(Arc::clone(&context)),
             streams: Streams::new(Arc::clone(&context)),
-
-            relocator: Relocator::new(Arc::clone(&context)),
-            artifact: Artifact::new(Arc::clone(&placeholder), Arc::clone(&context)),
-            linkers: Linkers::try_init(Arc::clone(&placeholder), Arc::clone(&context)).await?,
-
-            placeholder,
 
             context,
         };
@@ -233,9 +215,9 @@ impl Installation {
         prepared_package: PreparedPackage,
         pb: ProgressBar,
     ) -> anyhow::Result<()> {
-        let is_installed = self.linkers.is_installed(&prepared_package).await?;
+        let is_installed = prepared_package.is_installed(&self.context).await?;
 
-        let is_up_to_date = self.linkers.is_up_to_date(&prepared_package).await?;
+        let is_up_to_date = prepared_package.is_up_to_date(&self.context).await?;
 
         if is_installed && is_up_to_date {
             pb.set_prefix("Up-to-date");
@@ -293,23 +275,19 @@ impl Installation {
 
         let dmg_pourer = DmgPourer::try_init(pour_dir_path, archive_format).await?;
 
-        let hlist_pat![
-            prepared_package,
-            _progressed_output,
-            _hashed_output,
-            hlist_pat![_written_output, _dmg_poured_output],
-            _poured_output
-        ] = Pipeline::build(prepared_package, pb.clone(), Arc::clone(&self.context))
+        let relocator = Relocator::new(&self.context);
+
+        let linker = Linker::new();
+
+        let artifactor = Artifactor::new(&self.context);
+
+        Pipeline::build(prepared_package, pb.clone(), Arc::clone(&self.context))
             .with_progressor(content_length)?
             .fanout(hasher)
             .fanout(writer.fanout(dmg_pourer))
-            .fanout(pourer)
+            .fanout(pourer.fanout(relocator.fanout(linker)).fanout(artifactor))
             .run_concurrently(stream)
             .await?;
-
-        self.relocate(&prepared_package, &pb).await?;
-
-        self.link(&prepared_package, &pb).await?;
 
         if is_installed && !is_up_to_date {
             pb.set_prefix("Upgraded");
@@ -318,37 +296,6 @@ impl Installation {
         }
 
         pb.finish();
-
-        Ok(())
-    }
-
-    async fn relocate(
-        &self,
-        prepared_package: &PreparedPackage,
-        pb: &ProgressBar,
-    ) -> anyhow::Result<()> {
-        pb.set_prefix("Relocating");
-
-        match prepared_package {
-            PreparedPackage::Formula(prepared_formula) => {
-                self.relocator.patch(prepared_formula).await?;
-            },
-            PreparedPackage::Cask(prepared_cask) => {
-                self.artifact.relocate(prepared_cask).await?;
-            },
-        }
-
-        Ok(())
-    }
-
-    async fn link(
-        &self,
-        prepared_package: &PreparedPackage,
-        pb: &ProgressBar,
-    ) -> anyhow::Result<()> {
-        pb.set_prefix("Linking");
-
-        self.linkers.link(prepared_package).await?;
 
         Ok(())
     }

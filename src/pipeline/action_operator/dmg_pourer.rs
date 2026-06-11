@@ -20,7 +20,9 @@ use super::{
     ActionOperator,
 };
 use crate::{
+    context::Context,
     ext::{std::path::PathExt as _, tokio::path::PathExt as _},
+    package::prepared::PreparedPackage,
     util::ArchiveFormat,
 };
 
@@ -37,30 +39,42 @@ impl ActionOperator for DmgPourer {
     type Staging = ();
     type Output = PouredOutput;
 
-    async fn should_run(&self, input: &Self::Input) -> anyhow::Result<bool> {
+    async fn should_run(
+        &self,
+        input: Option<&Self::Input>,
+        _prepared_package: &PreparedPackage,
+    ) -> anyhow::Result<bool> {
+        let Some(input) = input else {
+            return Ok(false);
+        };
+
         let is_dmg = self.is_dmg(&input.dest_file_path).await?;
 
         Ok(is_dmg)
     }
 
-    fn on_skip_run(self) -> anyhow::Result<Self::Output> {
-        let dest_dir_path = self.dest_dir_path.clone();
-
+    fn on_skip_run(self) -> anyhow::Result<Option<Self::Output>> {
         self.cleanup()?;
 
-        let output = PouredOutput {
-            dest_dir_path,
-            archive_format: ArchiveFormat::Dmg,
-        };
-
-        Ok(output)
+        Ok(None)
     }
 
     fn running_prefix(&self) -> Option<&'static str> {
         Some("Pouring")
     }
 
-    async fn execute(&self, input: &Self::Input) -> anyhow::Result<Self::Staging> {
+    async fn execute(
+        &self,
+        input: Option<&Self::Input>,
+        _prepared_package: &PreparedPackage,
+        _context: &Context,
+    ) -> anyhow::Result<Self::Staging> {
+        let Some(input) = input else {
+            let err = anyhow!("`Input` is supposed to be defined");
+
+            return Err(err);
+        };
+
         self.pour(&input.dest_file_path).await?;
 
         Ok(())
@@ -85,7 +99,7 @@ impl ActionOperator for DmgPourer {
         Ok(())
     }
 
-    fn passed_stage(&self, should_run: bool) -> Option<Stage> {
+    fn passed_stage(&self, should_run: bool, _prepared_package: &PreparedPackage) -> Option<Stage> {
         should_run.then_some(Stage::Poured)
     }
 }
@@ -125,7 +139,7 @@ impl DmgPourer {
         let mount_points = self.mount(src_file_path).await?;
 
         if mount_points.is_empty() {
-            let err = anyhow!("No mount points found in DMG");
+            let err = anyhow!("No mount point found in DMG");
 
             return Err(err);
         }

@@ -60,7 +60,7 @@ impl HomebrewEnvConfig {
         }
 
         let err = anyhow!(formatdoc! {r#"
-            Unsupported `HOMEBREW_PREFIX` value detected: "{prefix}"
+            Unsupported `HOMEBREW_PREFIX` detected: "{prefix}"
 
             Neobrew requires the default prefix to use pre-compiled bottles and casks:
 

@@ -42,7 +42,9 @@ impl Streams {
     )> {
         let file = File::open(file_path).await?;
 
-        let content_length = file.metadata().await?.len();
+        let metadata = file.metadata().await?;
+
+        let content_length = metadata.len();
 
         let stream = ReaderStream::new(file);
         let stream = stream.err_into();

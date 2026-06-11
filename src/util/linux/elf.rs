@@ -1,3 +1,7 @@
+use std::{io::ErrorKind, path::Path};
+
+use tokio::{fs::File, io::AsyncReadExt as _};
+
 pub(crate) struct Elf;
 
 impl Elf {
@@ -5,13 +9,23 @@ impl Elf {
 }
 
 impl Elf {
-    pub(crate) fn has_magic(bytes: &[u8]) -> bool {
-        let &[b0, b1, b2, b3, ..] = bytes else {
-            return false;
+    pub(crate) async fn has_magic(path: &Path) -> anyhow::Result<bool> {
+        let mut file = File::open(path).await?;
+
+        let mut peek_buf = [0_u8; 4];
+
+        match file.read_exact(&mut peek_buf).await {
+            Ok(_) => {},
+            Err(err) if err.kind() == ErrorKind::UnexpectedEof => return Ok(false),
+            Err(err) => {
+                let err = anyhow::Error::from(err);
+
+                return Err(err);
+            },
         };
 
-        let peek_bytes = &[b0, b1, b2, b3];
+        let has_magic = &peek_buf == Self::ELF_MAGIC;
 
-        peek_bytes == Self::ELF_MAGIC
+        Ok(has_magic)
     }
 }

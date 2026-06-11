@@ -1,3 +1,5 @@
+use tokio::fs;
+
 use super::{
     super::{
         Packageable,
@@ -7,6 +9,7 @@ use super::{
     PreparedPackageable,
     cask_stanza::Stanzas,
 };
+use crate::{context::Context, ext::tokio::path::PathExt as _};
 
 pub(crate) struct PreparedCask {
     pub(in super::super) token: String,
@@ -59,6 +62,50 @@ impl PreparedPackageable for PreparedCask {
 
     fn expected_sha256(&self) -> &str {
         &self.variation_sha256
+    }
+
+    async fn is_installed(&self, context: &Context) -> anyhow::Result<bool> {
+        let id = self.id();
+
+        let cask_dir_path = context.homebrew_dirs.cask_dir(id);
+
+        if !cask_dir_path.is_dir_exists_nofollow().await? {
+            return Ok(false);
+        }
+
+        let mut cask_dir_entries = fs::read_dir(cask_dir_path).await?;
+
+        while let Some(cask_dir_entry) = cask_dir_entries.next_entry().await? {
+            let cask_dir_entry_path = cask_dir_entry.path();
+
+            let is_cask_dir_entry_exists = cask_dir_entry_path.is_dir_exists_nofollow().await?;
+
+            let is_cask_dir_entry_not_empty = !cask_dir_entry_path.is_dir_empty().await?;
+
+            if is_cask_dir_entry_exists && is_cask_dir_entry_not_empty {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    async fn is_up_to_date(&self, context: &Context) -> anyhow::Result<bool> {
+        let id = self.id();
+
+        let version = self.version();
+
+        let staged_dir_path = context.homebrew_dirs.staged_dir(id, version);
+
+        let is_staged_dir_exists = staged_dir_path.is_dir_exists_nofollow().await?;
+
+        let is_staged_dir_not_empty = !staged_dir_path.is_dir_empty().await?;
+
+        if is_staged_dir_exists && is_staged_dir_not_empty {
+            return Ok(true);
+        }
+
+        Ok(false)
     }
 }
 

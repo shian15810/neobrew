@@ -76,6 +76,9 @@ pub(crate) enum Stage {
     Hashed,
     Written,
     Poured,
+    Relocated,
+    Linked,
+    Artifacted,
 }
 
 #[derive(Default)]
@@ -85,6 +88,9 @@ pub(super) struct Payloads {
     pub(super) hashed: OnceLock<HashedOutput>,
     pub(super) written: OnceLock<WrittenOutput>,
     pub(super) poured: OnceLock<PouredOutput>,
+    pub(super) relocated: OnceLock<RelocatedOutput>,
+    pub(super) linked: OnceLock<LinkedOutput>,
+    pub(super) artifacted: OnceLock<ArtifactedOutput>,
 }
 
 pub(super) trait Publish<Output> {
@@ -182,6 +188,70 @@ impl Publish<PouredOutput> for Payloads {
 impl Subscribe<PouredOutput> for Payloads {
     fn subscribe(&self) -> anyhow::Result<&PouredOutput> {
         let payload = self.poured.try_get()?;
+
+        Ok(payload)
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct RelocatedOutput {
+    pub(super) keg_dir_path: PathBuf,
+}
+
+impl Publish<RelocatedOutput> for Payloads {
+    fn publish(&self, output: &RelocatedOutput) -> anyhow::Result<()> {
+        self.relocated.try_set(output.clone())?;
+
+        Ok(())
+    }
+}
+
+impl Subscribe<RelocatedOutput> for Payloads {
+    fn subscribe(&self) -> anyhow::Result<&RelocatedOutput> {
+        let payload = self.relocated.try_get()?;
+
+        Ok(payload)
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct LinkedOutput {
+    pub(super) opt_prefix_link_path: PathBuf,
+    pub(super) linked_keg_prefix_link_path: Option<PathBuf>,
+}
+
+impl Publish<LinkedOutput> for Payloads {
+    fn publish(&self, output: &LinkedOutput) -> anyhow::Result<()> {
+        self.linked.try_set(output.clone())?;
+
+        Ok(())
+    }
+}
+
+impl Subscribe<LinkedOutput> for Payloads {
+    fn subscribe(&self) -> anyhow::Result<&LinkedOutput> {
+        let payload = self.linked.try_get()?;
+
+        Ok(payload)
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct ArtifactedOutput {
+    pub(super) staged_dir_path: PathBuf,
+}
+
+impl Publish<ArtifactedOutput> for Payloads {
+    fn publish(&self, output: &ArtifactedOutput) -> anyhow::Result<()> {
+        self.artifacted.try_set(output.clone())?;
+
+        Ok(())
+    }
+}
+
+impl Subscribe<ArtifactedOutput> for Payloads {
+    fn subscribe(&self) -> anyhow::Result<&ArtifactedOutput> {
+        let payload = self.artifacted.try_get()?;
 
         Ok(payload)
     }

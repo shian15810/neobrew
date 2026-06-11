@@ -3,10 +3,9 @@ use std::{fmt::Write as _, time::Duration};
 use async_trait::async_trait;
 use bytes::Bytes;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use tokio::sync::watch;
 
 use super::{
-    super::state_store::{ProgressedOutput, Stage, StateStore},
+    super::state_store::{ProgressedOutput, Stage},
     PushConnector,
 };
 
@@ -109,7 +108,6 @@ impl Progressor {
 
 #[async_trait]
 impl PushConnector for Progressor {
-    type Item = Bytes;
     type Staging = ();
     type Output = ProgressedOutput;
 
@@ -117,7 +115,7 @@ impl PushConnector for Progressor {
         Some("Streaming")
     }
 
-    async fn feed(&mut self, chunk: Self::Item) -> anyhow::Result<()> {
+    async fn feed(&mut self, chunk: Bytes) -> anyhow::Result<()> {
         let pb = &self.pb;
 
         let content_length = chunk.len();
@@ -132,11 +130,7 @@ impl PushConnector for Progressor {
         Ok(())
     }
 
-    async fn on_final_run(
-        self,
-        _staging: Self::Staging,
-        _state_store_rx: &mut watch::Receiver<StateStore>,
-    ) -> anyhow::Result<Self::Output> {
+    async fn on_final_run(self, _staging: Self::Staging) -> anyhow::Result<Self::Output> {
         let pb = self.pb;
 
         let output = ProgressedOutput {

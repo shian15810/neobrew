@@ -39,20 +39,16 @@
 #![doc(test(attr(warn(unused), deny(warnings))))]
 #![expect(rustdoc::missing_crate_level_docs)]
 
-mod artifact;
 pub mod command;
 mod compatibility;
 pub mod context;
 mod downloads;
 mod ext;
-mod linkers;
 mod macros;
 mod package;
 mod pipeline;
-mod placeholder;
 mod receipt;
 mod registries;
-mod relocator;
 mod streams;
 mod util;
 

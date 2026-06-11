@@ -1,40 +1,48 @@
 mod dmg_pourer;
+mod linker;
 
-use anyhow::anyhow;
 use async_trait::async_trait;
 use tokio::task;
 use tokio_util::task::AbortOnDropHandle;
 
-pub(crate) use self::dmg_pourer::DmgPourer;
+pub(crate) use self::{dmg_pourer::DmgPourer, linker::Linker};
 use super::{
     Operator,
     state_committer::StateCommitter,
     state_store::{Payloads, Publish, Session, Stage},
 };
+use crate::{context::Context, package::prepared::PreparedPackage};
 
 pub(crate) struct _ActionOperatorMarker;
 
 #[async_trait]
 pub(crate) trait ActionOperator: Sized {
-    type Input;
+    type Input: Sync;
     type Staging;
     type Output;
 
-    async fn should_run(&self, _input: &Self::Input) -> anyhow::Result<bool> {
+    async fn should_run(
+        &self,
+        _input: Option<&Self::Input>,
+        _prepared_package: &PreparedPackage,
+    ) -> anyhow::Result<bool> {
         Ok(true)
     }
 
-    fn on_skip_run(self) -> anyhow::Result<Self::Output> {
-        let err = anyhow!("Implement `on_skip_run` when `should_run` returns `false`");
-
-        Err(err)
+    fn on_skip_run(self) -> anyhow::Result<Option<Self::Output>> {
+        Ok(None)
     }
 
     fn running_prefix(&self) -> Option<&'static str> {
         None
     }
 
-    async fn execute(&self, input: &Self::Input) -> anyhow::Result<Self::Staging>;
+    async fn execute(
+        &self,
+        input: Option<&Self::Input>,
+        prepared_package: &PreparedPackage,
+        context: &Context,
+    ) -> anyhow::Result<Self::Staging>;
 
     fn on_final_run(self, staging: Self::Staging) -> anyhow::Result<Self::Output>;
 
@@ -46,15 +54,15 @@ pub(crate) trait ActionOperator: Sized {
         Ok(())
     }
 
-    fn passed_prefix(&self, _should_run: bool) -> Option<&'static str> {
+    fn passed_prefix(&self) -> Option<&'static str> {
         None
     }
 
-    fn failed_prefix(&self, _should_run: bool) -> Option<&'static str> {
+    fn failed_prefix(&self) -> Option<&'static str> {
         None
     }
 
-    fn passed_stage(&self, should_run: bool) -> Option<Stage>;
+    fn passed_stage(&self, should_run: bool, prepared_package: &PreparedPackage) -> Option<Stage>;
 }
 
 impl<ActionOp: ActionOperator<Input: Send, Output: Send> + Send + Sync + 'static>
@@ -68,19 +76,21 @@ where
     #[expect(clippy::let_and_return)]
     fn proceed(
         self,
-        input: Self::Input,
+        input: Option<Self::Input>,
         session: Session,
-    ) -> AbortOnDropHandle<anyhow::Result<Self::Output>> {
+    ) -> AbortOnDropHandle<anyhow::Result<Option<Self::Output>>> {
         let handle = task::spawn(async move {
             let pb = &session.pb;
 
-            let should_run = self.should_run(&input).await?;
+            let should_run = self
+                .should_run(input.as_ref(), &session.prepared_package)
+                .await?;
 
             let state_committer = StateCommitter {
-                passed_stage: self.passed_stage(should_run),
+                passed_prefix: self.passed_prefix(),
+                failed_prefix: self.failed_prefix(),
 
-                passed_prefix: self.passed_prefix(should_run),
-                failed_prefix: self.failed_prefix(should_run),
+                passed_stage: self.passed_stage(should_run, &session.prepared_package),
             };
 
             if !should_run {
@@ -94,9 +104,12 @@ where
                 pb.set_prefix(running_prefix);
             }
 
-            let staging = self.execute(&input).await?;
+            let staging = self
+                .execute(input.as_ref(), &session.prepared_package, &session.context)
+                .await?;
 
             let output = self.on_final_run(staging);
+            let output = output.map(Some);
             let output = state_committer.finalize(output, &session)?;
 
             anyhow::Ok(output)

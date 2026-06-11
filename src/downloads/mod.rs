@@ -84,7 +84,7 @@ trait Downloadable {
 
         let mut digest = Sha256::new();
 
-        let mut sink = InspectWriter::new(io::sink(), |bytes| digest.update(bytes));
+        let mut sink = InspectWriter::new(io::sink(), |chunk| digest.update(chunk));
 
         io::copy(&mut file, &mut sink).await?;
 

@@ -11,13 +11,12 @@ use tempfile::TempDir;
 use tokio::{
     fs::{self, File},
     io::{self, AsyncBufRead, AsyncRead, AsyncReadExt as _, BufReader},
-    sync::watch,
 };
 use tokio_tar::Archive;
 use tokio_util::compat::FuturesAsyncReadCompatExt as _;
 
 use super::{
-    super::state_store::{PouredOutput, Stage, StateStore},
+    super::state_store::{PouredOutput, Stage},
     PullConnector,
 };
 use crate::{
@@ -81,7 +80,7 @@ impl Pourer {
                         .all(|component| matches!(component, Component::Normal(_)));
 
                     if !is_src_file_path_safe {
-                        let err = anyhow!(r#"Unsafe ZIP entry: "{src_file_pstr}""#);
+                        let err = anyhow!(r#"Unsafe ZIP entry detected: "{src_file_pstr}""#);
 
                         return Err(err);
                     }
@@ -126,32 +125,10 @@ impl PullConnector for Pourer {
         }
     }
 
-    async fn on_skip_run(
-        mut self,
-        state_store_rx: &mut watch::Receiver<StateStore>,
-    ) -> anyhow::Result<Self::Output> {
-        state_store_rx
-            .wait_for(|state_store| state_store.stage >= Stage::Hashed)
-            .await?;
-
-        let dest_dir_path = self.dest_dir_path.clone();
-
-        let Some(archive_format) = self.archive_format.take() else {
-            self.cleanup()?;
-
-            let err = anyhow!("Archive format is empty");
-
-            return Err(err);
-        };
-
+    fn on_skip_run(self) -> anyhow::Result<Option<Self::Output>> {
         self.cleanup()?;
 
-        let output = PouredOutput {
-            dest_dir_path,
-            archive_format,
-        };
-
-        Ok(output)
+        Ok(None)
     }
 
     async fn from_reader(
@@ -165,11 +142,7 @@ impl PullConnector for Pourer {
 
             archive_format.to_owned()
         } else {
-            let mut peek_buf = [0_u8; ArchiveFormat::PEEK_SIZE];
-
-            buf_reader.read_exact(&mut peek_buf).await?;
-
-            let archive_format = ArchiveFormat::detect(&peek_buf).await?;
+            let (archive_format, peek_buf) = ArchiveFormat::peek(&mut buf_reader).await?;
 
             let chained_buf_reader = Cursor::new(peek_buf).chain(buf_reader);
 
@@ -181,16 +154,12 @@ impl PullConnector for Pourer {
         Ok(archive_format)
     }
 
-    async fn on_final_run(
-        self,
-        staging: Self::Staging,
-        state_store_rx: &mut watch::Receiver<StateStore>,
-    ) -> anyhow::Result<Self::Output> {
-        let archive_format = staging;
+    fn wait_stage(&self) -> Option<Stage> {
+        Some(Stage::Hashed)
+    }
 
-        state_store_rx
-            .wait_for(|state_store| state_store.stage >= Stage::Hashed)
-            .await?;
+    async fn on_final_run(self, staging: Self::Staging) -> anyhow::Result<Self::Output> {
+        let archive_format = staging;
 
         let dest_dir_path = self.dest_dir_path.clone();
 

@@ -6,11 +6,10 @@ use tempfile::NamedTempFile;
 use tokio::{
     fs::{self, File},
     io::{AsyncWriteExt as _, BufWriter},
-    sync::watch,
 };
 
 use super::{
-    super::state_store::{Stage, StateStore, WrittenOutput},
+    super::state_store::{Stage, WrittenOutput},
     PushConnector,
 };
 use crate::ext::{
@@ -60,7 +59,6 @@ impl Writer {
 
 #[async_trait]
 impl PushConnector for Writer {
-    type Item = Bytes;
     type Staging = ();
     type Output = WrittenOutput;
 
@@ -68,15 +66,8 @@ impl PushConnector for Writer {
         self.should_run
     }
 
-    async fn on_skip_run(
-        mut self,
-        state_store_rx: &mut watch::Receiver<StateStore>,
-    ) -> anyhow::Result<Self::Output> {
+    async fn on_skip_run(mut self) -> anyhow::Result<Option<Self::Output>> {
         self.flush().await?;
-
-        state_store_rx
-            .wait_for(|state_store| state_store.stage >= Stage::Hashed)
-            .await?;
 
         let dest_file_path = self.dest_file_path.clone();
 
@@ -89,10 +80,10 @@ impl PushConnector for Writer {
             dest_link_path,
         };
 
-        Ok(output)
+        Ok(Some(output))
     }
 
-    async fn feed(&mut self, chunk: Self::Item) -> anyhow::Result<()> {
+    async fn feed(&mut self, chunk: Bytes) -> anyhow::Result<()> {
         self.buf_async_temp_file.write_all(&chunk).await?;
 
         Ok(())
@@ -108,15 +99,7 @@ impl PushConnector for Writer {
         Ok(())
     }
 
-    async fn on_final_run(
-        self,
-        _staging: Self::Staging,
-        state_store_rx: &mut watch::Receiver<StateStore>,
-    ) -> anyhow::Result<Self::Output> {
-        state_store_rx
-            .wait_for(|state_store| state_store.stage >= Stage::Hashed)
-            .await?;
-
+    async fn on_final_run(self, _staging: Self::Staging) -> anyhow::Result<Self::Output> {
         let dest_file_path = self.dest_file_path.clone();
 
         let dest_link_path = self.dest_link_path.clone();

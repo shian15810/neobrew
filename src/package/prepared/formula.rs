@@ -1,6 +1,7 @@
 use std::{borrow::Cow, path::Path};
 
 use anyhow::Context as _;
+use tokio::fs;
 
 use super::{
     super::{
@@ -10,6 +11,7 @@ use super::{
     },
     PreparedPackageable,
 };
+use crate::{context::Context, ext::tokio::path::PathExt as _};
 
 pub(crate) struct PreparedFormula {
     pub(in super::super) name: String,
@@ -73,6 +75,50 @@ impl PreparedPackageable for PreparedFormula {
 
     fn expected_sha256(&self) -> &str {
         &self.bottle_sha256
+    }
+
+    async fn is_installed(&self, context: &Context) -> anyhow::Result<bool> {
+        let id = self.id();
+
+        let rack_dir_path = context.homebrew_dirs.rack_dir(id);
+
+        if !rack_dir_path.is_dir_exists_nofollow().await? {
+            return Ok(false);
+        }
+
+        let mut rack_dir_entries = fs::read_dir(rack_dir_path).await?;
+
+        while let Some(rack_dir_entry) = rack_dir_entries.next_entry().await? {
+            let rack_dir_entry_path = rack_dir_entry.path();
+
+            let is_rack_dir_entry_exists = rack_dir_entry_path.is_dir_exists_nofollow().await?;
+
+            let is_rack_dir_entry_not_empty = !rack_dir_entry_path.is_dir_empty().await?;
+
+            if is_rack_dir_entry_exists && is_rack_dir_entry_not_empty {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    async fn is_up_to_date(&self, context: &Context) -> anyhow::Result<bool> {
+        let id = self.id();
+
+        let version_revision = self.version_revision();
+
+        let keg_dir_path = context.homebrew_dirs.keg_dir(id, version_revision);
+
+        let is_keg_dir_exists = keg_dir_path.is_dir_exists_nofollow().await?;
+
+        let is_keg_dir_not_empty = !keg_dir_path.is_dir_empty().await?;
+
+        if is_keg_dir_exists && is_keg_dir_not_empty {
+            return Ok(true);
+        }
+
+        Ok(false)
     }
 }
 

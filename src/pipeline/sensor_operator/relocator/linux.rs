@@ -1,6 +1,7 @@
-use std::{borrow::Cow, collections::HashMap, path::Path, sync::Arc};
+use std::{borrow::Cow, collections::HashMap, path::Path};
 
 use arwen::elf::rewriter::Writer;
+use bytes::Bytes;
 use tempfile::NamedTempFile;
 use tokio::{
     fs::{self, File},
@@ -9,55 +10,27 @@ use tokio::{
 };
 use tokio_util::task::AbortOnDropHandle;
 
-use super::{Relocate, RelocateInner};
+use super::{Relocator, Relocatory};
 use crate::{
-    context::Context,
     ext::{std::path::PathExt as _, tokio::fs::FileExt as _},
     util::linux,
 };
 
-#[derive(Clone)]
-pub(crate) struct Relocator {
-    replacement_pairs: [(&'static str, String); 4],
-
-    context: Arc<Context>,
-}
-
-impl From<([(&'static str, String); 4], Arc<Context>)> for Relocator {
-    fn from((replacement_pairs, context): ([(&'static str, String); 4], Arc<Context>)) -> Self {
-        Self {
-            replacement_pairs,
-
-            context,
-        }
-    }
-}
-
-impl Relocate for Relocator {}
-
-impl RelocateInner for Relocator {
-    fn replacement_pairs(&self) -> &[(&'static str, String); 4] {
-        &self.replacement_pairs
-    }
-
-    fn context(&self) -> &Context {
-        &self.context
-    }
-
+impl Relocatory for Relocator {
     async fn patch_file(&self, dest_file_path: &Path) -> anyhow::Result<()> {
-        let bytes = fs::read(dest_file_path).await?;
-        let bytes = Arc::from(bytes);
-
-        let has_magic = linux::Elf::has_magic(&bytes);
+        let has_magic = linux::Elf::has_magic(dest_file_path).await?;
 
         if !has_magic {
             return Ok(());
         }
 
+        let bytes = fs::read(dest_file_path).await?;
+        let bytes = Bytes::from(bytes);
+
         let this = self.clone();
 
         let handle = task::spawn_blocking({
-            let bytes = Arc::clone(&bytes);
+            let bytes = bytes.clone();
 
             move || {
                 let replaced_bytes = this.replace_bytes(&bytes)?;
@@ -94,7 +67,7 @@ impl RelocateInner for Relocator {
         Ok(())
     }
 
-    fn replace_bytes(&self, bytes: &[u8]) -> anyhow::Result<Vec<u8>> {
+    fn replace_bytes(&self, bytes: &Bytes) -> anyhow::Result<Vec<u8>> {
         let mut rewriter = Writer::read(bytes)?;
 
         if let Some(runpath) = rewriter.elf_runpath() {
@@ -140,10 +113,10 @@ impl RelocateInner for Relocator {
             rewriter.elf_replace_needed(&new_needed)?;
         }
 
-        let mut data = Vec::new();
+        let mut replaced_bytes = Vec::new();
 
-        rewriter.write(&mut data)?;
+        rewriter.write(&mut replaced_bytes)?;
 
-        Ok(data)
+        Ok(replaced_bytes)
     }
 }

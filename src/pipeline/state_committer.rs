@@ -3,18 +3,18 @@ use std::sync::Arc;
 use super::state_store::{Payloads, Publish, Session, Stage};
 
 pub(super) struct StateCommitter {
-    pub(super) passed_stage: Option<Stage>,
-
     pub(super) passed_prefix: Option<&'static str>,
     pub(super) failed_prefix: Option<&'static str>,
+
+    pub(super) passed_stage: Option<Stage>,
 }
 
 impl StateCommitter {
     pub(super) fn finalize<Output>(
         self,
-        output: anyhow::Result<Output>,
+        output: anyhow::Result<Option<Output>>,
         session: &Session,
-    ) -> anyhow::Result<Output>
+    ) -> anyhow::Result<Option<Output>>
     where
         Payloads: Publish<Output>,
     {
@@ -48,7 +48,9 @@ impl StateCommitter {
                 Arc::clone(&state_store.payloads)
             };
 
-            payloads.publish(&output)?;
+            if let Some(output) = &output {
+                payloads.publish(output)?;
+            }
 
             channel.state_store_tx.send_if_modified(|state_store| {
                 passed_stage > state_store.stage && {

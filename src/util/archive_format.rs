@@ -4,7 +4,7 @@ use anyhow::{Context as _, anyhow};
 use async_compression::tokio::bufread::GzipDecoder;
 use tokio::{
     fs::File,
-    io::{AsyncReadExt as _, AsyncSeekExt as _, BufReader},
+    io::{AsyncBufRead, AsyncReadExt as _, AsyncSeekExt as _, BufReader},
 };
 
 use crate::ext::std::path::PathExt as _;
@@ -39,15 +39,21 @@ impl TryFrom<&Path> for ArchiveFormat {
 }
 
 impl ArchiveFormat {
-    pub(crate) const PEEK_SIZE: usize = 262;
+    const PEEK_SIZE: usize = 262;
 
-    pub(crate) async fn detect(bytes: &[u8]) -> anyhow::Result<Self> {
-        let kind = infer::get(bytes).context("Failed to detect archive format from magic bytes")?;
+    pub(crate) async fn peek(
+        buf_reader: &mut (impl AsyncBufRead + Unpin),
+    ) -> anyhow::Result<(Self, [u8; Self::PEEK_SIZE])> {
+        let mut peek_buf = [0_u8; Self::PEEK_SIZE];
+
+        buf_reader.read_exact(&mut peek_buf).await?;
+
+        let kind = infer::get(&peek_buf).context("Failed to detect archive format")?;
 
         let archive_format = match kind.extension() {
             "gz" => {
-                if !Self::detect_tar_gz(bytes).await {
-                    let err = anyhow!("Gzip stream has no tar archive within");
+                if !Self::peek_tar_gz(&peek_buf).await {
+                    let err = anyhow!("Unsupported archive format detected within gzip");
 
                     return Err(err);
                 }
@@ -62,13 +68,13 @@ impl ArchiveFormat {
             },
         };
 
-        Ok(archive_format)
+        Ok((archive_format, peek_buf))
     }
 
-    async fn detect_tar_gz(bytes: &[u8]) -> bool {
+    async fn peek_tar_gz(buf: &[u8]) -> bool {
         let mut peek_buf = [0_u8; Self::PEEK_SIZE];
 
-        let buf_reader = BufReader::new(bytes);
+        let buf_reader = BufReader::new(buf);
 
         let gz_decoder = GzipDecoder::new(buf_reader);
 
