@@ -1,6 +1,11 @@
-use std::{borrow::Cow, path::Path};
+use std::{
+    borrow::Cow,
+    path::{Path, PathBuf},
+};
 
 use anyhow::Context as _;
+use bytes::Bytes;
+use futures::stream::BoxStream;
 use tokio::fs;
 
 use super::{
@@ -10,10 +15,11 @@ use super::{
         resolved::ResolvedFormula,
     },
     PreparedPackageable,
+    download::{Download, Downloadable as _},
 };
 use crate::{context::Context, ext::tokio::path::PathExt as _};
 
-pub(crate) struct PreparedFormula {
+pub(crate) struct PreparedFormula<Dl = ()> {
     pub(in super::super) name: String,
     pub(in super::super) version: String,
     version_revision: String,
@@ -24,6 +30,8 @@ pub(crate) struct PreparedFormula {
     bottle_sha256: String,
     keg_only: bool,
     pub(in super::super) is_requested: bool,
+
+    download: Dl,
 }
 
 impl TryFrom<(ResolvedFormula, bool)> for PreparedFormula {
@@ -52,13 +60,50 @@ impl TryFrom<(ResolvedFormula, bool)> for PreparedFormula {
             bottle_sha256: bottle.sha256,
             keg_only: resolved_formula.keg_only,
             is_requested,
+
+            download: (),
         };
 
         Ok(this)
     }
 }
 
-impl Packageable for PreparedFormula {
+impl<Dl> From<(PreparedFormula<()>, Dl)> for PreparedFormula<Dl> {
+    fn from((this, download): (PreparedFormula<()>, Dl)) -> Self {
+        Self {
+            name: this.name,
+            version: this.version,
+            version_revision: this.version_revision,
+            bottle_rebuild: this.bottle_rebuild,
+            bottle_tag: this.bottle_tag,
+            bottle_cellar: this.bottle_cellar,
+            bottle_url: this.bottle_url,
+            bottle_sha256: this.bottle_sha256,
+            keg_only: this.keg_only,
+            is_requested: this.is_requested,
+
+            download,
+        }
+    }
+}
+
+impl PreparedFormula<()> {
+    pub(super) async fn with_download(
+        self,
+        context: &Context,
+    ) -> anyhow::Result<(
+        PreparedFormula<Download>,
+        BoxStream<'static, anyhow::Result<Bytes>>,
+    )> {
+        let (download, stream) = self.prepare_download(context).await?;
+
+        let this = PreparedFormula::from((self, download));
+
+        Ok((this, stream))
+    }
+}
+
+impl<Dl> Packageable for PreparedFormula<Dl> {
     fn id(&self) -> &str {
         &self.name
     }
@@ -68,13 +113,15 @@ impl Packageable for PreparedFormula {
     }
 }
 
-impl PreparedPackageable for PreparedFormula {
-    fn download_url(&self) -> &str {
-        &self.bottle_url
+impl<Dl> PreparedPackageable for PreparedFormula<Dl> {
+    type Download = Dl;
+
+    fn download(&self) -> &Self::Download {
+        &self.download
     }
 
-    fn expected_sha256(&self) -> &str {
-        &self.bottle_sha256
+    fn pour_dir_path(&self, context: &Context) -> PathBuf {
+        context.homebrew_dirs.cellar_dir()
     }
 
     async fn is_installed(&self, context: &Context) -> anyhow::Result<bool> {
@@ -122,17 +169,25 @@ impl PreparedPackageable for PreparedFormula {
     }
 }
 
-impl PreparedFormula {
+impl<Dl> PreparedFormula<Dl> {
     pub(crate) fn version_revision(&self) -> &str {
         &self.version_revision
     }
 
-    pub(crate) fn bottle_rebuild(&self) -> u64 {
+    pub(super) fn bottle_rebuild(&self) -> u64 {
         self.bottle_rebuild
     }
 
-    pub(crate) fn bottle_tag(&self) -> &str {
+    pub(super) fn bottle_tag(&self) -> &str {
         &self.bottle_tag
+    }
+
+    pub(super) fn bottle_url(&self) -> &str {
+        &self.bottle_url
+    }
+
+    pub(super) fn bottle_sha256(&self) -> &str {
+        &self.bottle_sha256
     }
 
     pub(crate) fn should_relocate(&self, cellar_dir_path: &Path) -> bool {

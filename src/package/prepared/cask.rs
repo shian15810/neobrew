@@ -1,3 +1,7 @@
+use std::path::PathBuf;
+
+use bytes::Bytes;
+use futures::stream::BoxStream;
 use tokio::fs;
 
 use super::{
@@ -8,10 +12,11 @@ use super::{
     },
     PreparedPackageable,
     cask_stanza::Stanzas,
+    download::{Download, Downloadable as _},
 };
 use crate::{context::Context, ext::tokio::path::PathExt as _};
 
-pub(crate) struct PreparedCask {
+pub(crate) struct PreparedCask<Dl = ()> {
     pub(in super::super) token: String,
     pub(in super::super) version: String,
     variation_tag: Option<String>,
@@ -19,6 +24,8 @@ pub(crate) struct PreparedCask {
     variation_sha256: String,
     variation_stanzas: Stanzas,
     pub(in super::super) is_requested: bool,
+
+    download: Dl,
 }
 
 impl TryFrom<(ResolvedCask, bool)> for PreparedCask {
@@ -39,13 +46,47 @@ impl TryFrom<(ResolvedCask, bool)> for PreparedCask {
             variation_sha256: variation.sha256,
             variation_stanzas: Stanzas::from(variation.artifacts),
             is_requested,
+
+            download: (),
         };
 
         Ok(this)
     }
 }
 
-impl Packageable for PreparedCask {
+impl<Dl> From<(PreparedCask<()>, Dl)> for PreparedCask<Dl> {
+    fn from((this, download): (PreparedCask<()>, Dl)) -> Self {
+        Self {
+            token: this.token,
+            version: this.version,
+            variation_tag: this.variation_tag,
+            variation_url: this.variation_url,
+            variation_sha256: this.variation_sha256,
+            variation_stanzas: this.variation_stanzas,
+            is_requested: this.is_requested,
+
+            download,
+        }
+    }
+}
+
+impl PreparedCask<()> {
+    pub(super) async fn with_download(
+        self,
+        context: &Context,
+    ) -> anyhow::Result<(
+        PreparedCask<Download>,
+        BoxStream<'static, anyhow::Result<Bytes>>,
+    )> {
+        let (download, stream) = self.prepare_download(context).await?;
+
+        let this = PreparedCask::from((self, download));
+
+        Ok((this, stream))
+    }
+}
+
+impl<Dl> Packageable for PreparedCask<Dl> {
     fn id(&self) -> &str {
         &self.token
     }
@@ -55,13 +96,19 @@ impl Packageable for PreparedCask {
     }
 }
 
-impl PreparedPackageable for PreparedCask {
-    fn download_url(&self) -> &str {
-        &self.variation_url
+impl<Dl> PreparedPackageable for PreparedCask<Dl> {
+    type Download = Dl;
+
+    fn download(&self) -> &Self::Download {
+        &self.download
     }
 
-    fn expected_sha256(&self) -> &str {
-        &self.variation_sha256
+    fn pour_dir_path(&self, context: &Context) -> PathBuf {
+        let id = self.id();
+
+        let version = self.version();
+
+        context.homebrew_dirs.staged_dir(id, version)
     }
 
     async fn is_installed(&self, context: &Context) -> anyhow::Result<bool> {
@@ -109,7 +156,15 @@ impl PreparedPackageable for PreparedCask {
     }
 }
 
-impl PreparedCask {
+impl<Dl> PreparedCask<Dl> {
+    pub(super) fn variation_url(&self) -> &str {
+        &self.variation_url
+    }
+
+    pub(super) fn variation_sha256(&self) -> &str {
+        &self.variation_sha256
+    }
+
     pub(crate) fn stanzas(&self) -> &Stanzas {
         &self.variation_stanzas
     }

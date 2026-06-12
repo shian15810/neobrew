@@ -170,19 +170,21 @@ trait RegistrableJson {
     async fn save_json(&self, id: &str, bytes: Bytes) -> anyhow::Result<()> {
         let dest_file_path = self.json_path(id);
 
-        let dest_base_path = dest_file_path.base()?;
+        let dest_file_base_path = dest_file_path.base()?;
 
-        fs::create_dir_all(dest_base_path).await?;
+        fs::create_dir_all(dest_file_base_path).await?;
 
-        let temp_file = NamedTempFile::new_in(dest_base_path)?;
+        let json_file = NamedTempFile::new_in(dest_file_base_path)?;
 
-        let mut async_temp_file = File::open_write(temp_file.path()).await?;
+        let json_file_path = json_file.path();
 
-        async_temp_file.write_all(&bytes).await?;
+        let mut async_json_file = File::open_write(json_file_path).await?;
 
-        async_temp_file.shutdown().await?;
+        async_json_file.write_all(&bytes).await?;
 
-        temp_file.persist(dest_file_path)?;
+        async_json_file.shutdown().await?;
+
+        json_file.persist(dest_file_path)?;
 
         Ok(())
     }

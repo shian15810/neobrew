@@ -20,6 +20,10 @@ use super::{
     state_committer::StateCommitter,
     state_store::{Payloads, Publish, Session, Stage},
 };
+use crate::{
+    context::Context,
+    package::prepared::{Download, PreparedPackage},
+};
 
 pub(crate) struct _PullConnectorMarker;
 
@@ -28,7 +32,7 @@ pub(crate) trait PullConnector: Sized {
     type Staging;
     type Output;
 
-    fn should_run(&self) -> bool {
+    fn should_run(&self, _prepared_package: &PreparedPackage<Download>) -> bool {
         true
     }
 
@@ -44,6 +48,8 @@ pub(crate) trait PullConnector: Sized {
     async fn from_reader(
         &self,
         reader: &mut (impl AsyncRead + Unpin + Send),
+        prepared_package: &PreparedPackage<Download>,
+        context: &Context,
     ) -> anyhow::Result<Self::Staging>;
 
     fn wait_stage(&self) -> Option<Stage> {
@@ -51,14 +57,6 @@ pub(crate) trait PullConnector: Sized {
     }
 
     async fn on_final_run(self, staging: Self::Staging) -> anyhow::Result<Self::Output>;
-
-    async fn persist(self) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    fn cleanup(self) -> anyhow::Result<()> {
-        Ok(())
-    }
 
     fn passed_prefix(&self) -> Option<&'static str> {
         None
@@ -98,9 +96,13 @@ where
         let handle = task::spawn(async move {
             let channel = &mut session.channel;
 
+            let prepared_package = &session.prepared_package;
+
             let pb = &session.pb;
 
-            let should_run = self.should_run();
+            let context = &session.context;
+
+            let should_run = self.should_run(prepared_package);
 
             let state_committer = StateCommitter {
                 passed_prefix: self.passed_prefix(),
@@ -127,7 +129,9 @@ where
 
             let mut reader = StreamReader::new(stream);
 
-            let staging = self.from_reader(&mut reader).await?;
+            let staging = self
+                .from_reader(&mut reader, prepared_package, context)
+                .await?;
 
             let mut stream = reader.into_inner();
 

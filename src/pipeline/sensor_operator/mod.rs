@@ -13,17 +13,28 @@ use super::{
     state_committer::StateCommitter,
     state_store::{Payloads, Publish, Session, Stage, Subscribe},
 };
-use crate::{context::Context, package::prepared::PreparedPackage};
+use crate::{
+    context::Context,
+    package::prepared::{Download, PreparedPackage},
+};
 
 pub(crate) struct _SensorOperatorMarker;
 
 #[async_trait]
 pub(crate) trait SensorOperator: Sized {
     type Payload;
+    type State;
     type Staging;
     type Output;
 
-    fn should_run(&self, _prepared_package: &PreparedPackage, _context: &Context) -> bool {
+    fn poke_stage(&self) -> Stage;
+
+    fn should_run(
+        &self,
+        _payload: Option<&Self::Payload>,
+        _prepared_package: &PreparedPackage<Download>,
+        _context: &Context,
+    ) -> bool {
         true
     }
 
@@ -35,24 +46,16 @@ pub(crate) trait SensorOperator: Sized {
         None
     }
 
-    fn poke_stage(&self) -> Stage;
+    fn init(&self, context: &Context) -> anyhow::Result<Self::State>;
 
     async fn execute(
         &self,
-        payload: &Self::Payload,
-        prepared_package: &PreparedPackage,
+        state: &Self::State,
+        prepared_package: &PreparedPackage<Download>,
         context: &Context,
     ) -> anyhow::Result<Self::Staging>;
 
     fn on_final_run(self, staging: Self::Staging) -> anyhow::Result<Self::Output>;
-
-    fn persist(self) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    fn cleanup(self) -> anyhow::Result<()> {
-        Ok(())
-    }
 
     fn passed_prefix(&self) -> Option<&'static str> {
         None
@@ -62,11 +65,15 @@ pub(crate) trait SensorOperator: Sized {
         None
     }
 
-    fn passed_stage(&self, should_run: bool, prepared_package: &PreparedPackage) -> Option<Stage>;
+    fn passed_stage(
+        &self,
+        should_run: bool,
+        prepared_package: &PreparedPackage<Download>,
+    ) -> Option<Stage>;
 }
 
-impl<SensorOp: SensorOperator<Output: Send> + Send + 'static> Operator<_SensorOperatorMarker>
-    for SensorOp
+impl<SensorOp: SensorOperator<State: Send, Output: Send> + Send + 'static>
+    Operator<_SensorOperatorMarker> for SensorOp
 where
     Payloads: Subscribe<SensorOp::Payload> + Publish<SensorOp::Output>,
 {
@@ -82,23 +89,11 @@ where
         let handle = task::spawn(async move {
             let channel = &mut session.channel;
 
+            let prepared_package = &session.prepared_package;
+
             let pb = &session.pb;
 
-            let should_run = self.should_run(&session.prepared_package, &session.context);
-
-            let state_committer = StateCommitter {
-                passed_prefix: self.passed_prefix(),
-                failed_prefix: self.failed_prefix(),
-
-                passed_stage: self.passed_stage(should_run, &session.prepared_package),
-            };
-
-            if !should_run {
-                let output = self.on_skip_run();
-                let output = state_committer.finalize(output, &session)?;
-
-                return Ok(output);
-            }
+            let context = &session.context;
 
             let poke_stage = self.poke_stage();
 
@@ -113,13 +108,29 @@ where
 
             let payload = payloads.subscribe()?;
 
+            let should_run = self.should_run(payload, prepared_package, context);
+
+            let state_committer = StateCommitter {
+                passed_prefix: self.passed_prefix(),
+                failed_prefix: self.failed_prefix(),
+
+                passed_stage: self.passed_stage(should_run, prepared_package),
+            };
+
+            if !should_run {
+                let output = self.on_skip_run();
+                let output = state_committer.finalize(output, &session)?;
+
+                return Ok(output);
+            }
+
             if let Some(running_prefix) = self.running_prefix() {
                 pb.set_prefix(running_prefix);
             }
 
-            let staging = self
-                .execute(payload, &session.prepared_package, &session.context)
-                .await?;
+            let state = self.init(context)?;
+
+            let staging = self.execute(&state, prepared_package, context).await?;
 
             let output = self.on_final_run(staging);
             let output = output.map(Some);

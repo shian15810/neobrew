@@ -10,14 +10,18 @@ use tokio::{
 };
 use tokio_util::task::AbortOnDropHandle;
 
-use super::{Relocator, Relocatory};
+use super::{Relocator, Relocatory, ReplacementPairs};
 use crate::{
     ext::{std::path::PathExt as _, tokio::fs::FileExt as _},
     util::linux,
 };
 
 impl Relocatory for Relocator {
-    async fn patch_file(&self, dest_file_path: &Path) -> anyhow::Result<()> {
+    async fn patch_file(
+        &self,
+        dest_file_path: &Path,
+        replacement_pairs: &ReplacementPairs,
+    ) -> anyhow::Result<()> {
         let has_magic = linux::Elf::has_magic(dest_file_path).await?;
 
         if !has_magic {
@@ -32,8 +36,10 @@ impl Relocatory for Relocator {
         let handle = task::spawn_blocking({
             let bytes = bytes.clone();
 
+            let replacement_pairs = replacement_pairs.clone();
+
             move || {
-                let replaced_bytes = this.replace_bytes(&bytes)?;
+                let replaced_bytes = this.replace_bytes(&bytes, &replacement_pairs)?;
 
                 anyhow::Ok(replaced_bytes)
             }
@@ -50,11 +56,13 @@ impl Relocatory for Relocator {
 
         let permissions = metadata.permissions();
 
-        let dest_base_path = dest_file_path.base()?;
+        let dest_file_base_path = dest_file_path.base()?;
 
-        let temp_file = NamedTempFile::new_in(dest_base_path)?;
+        let temp_file = NamedTempFile::new_in(dest_file_base_path)?;
 
-        let mut async_temp_file = File::open_write(temp_file.path()).await?;
+        let temp_file_path = temp_file.path();
+
+        let mut async_temp_file = File::open_write(temp_file_path).await?;
 
         async_temp_file.write_all(&replaced_bytes).await?;
 
@@ -67,7 +75,11 @@ impl Relocatory for Relocator {
         Ok(())
     }
 
-    fn replace_bytes(&self, bytes: &Bytes) -> anyhow::Result<Vec<u8>> {
+    fn replace_bytes(
+        &self,
+        bytes: &Bytes,
+        replacement_pairs: &ReplacementPairs,
+    ) -> anyhow::Result<Vec<u8>> {
         let mut rewriter = Writer::read(bytes)?;
 
         if let Some(runpath) = rewriter.elf_runpath() {
@@ -75,7 +87,7 @@ impl Relocatory for Relocator {
 
             let new_runpath = old_runpath
                 .split(':')
-                .map(|component| self.replace_pstr(component))
+                .map(|component| self.replace_pstr(component, replacement_pairs))
                 .collect::<Vec<_>>();
             let new_runpath = new_runpath.join(":");
 
@@ -94,7 +106,7 @@ impl Relocatory for Relocator {
         let new_needed = old_needed
             .into_iter()
             .filter_map(|old_need| {
-                let new_need = self.replace_pstr(&old_need);
+                let new_need = self.replace_pstr(&old_need, replacement_pairs);
 
                 match new_need {
                     Cow::Owned(new_string) => {

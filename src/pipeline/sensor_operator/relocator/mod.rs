@@ -24,22 +24,36 @@ use crate::{
     ext::tokio::path::PathExt as _,
     package::{
         Packageable as _,
-        prepared::{PreparedFormula, PreparedPackage},
+        prepared::{Download, PreparedFormula, PreparedPackage},
     },
 };
 
+type ReplacementPairs = [(&'static str, String); 4];
+
 #[derive(Clone)]
-pub(crate) struct Relocator {
-    replacement_pairs: [(&'static str, String); 4],
-}
+pub(crate) struct Relocator;
 
 #[async_trait]
 impl SensorOperator for Relocator {
     type Payload = PouredOutput;
+    type State = ReplacementPairs;
     type Staging = PathBuf;
     type Output = RelocatedOutput;
 
-    fn should_run(&self, prepared_package: &PreparedPackage, context: &Context) -> bool {
+    fn poke_stage(&self) -> Stage {
+        Stage::Poured
+    }
+
+    fn should_run(
+        &self,
+        payload: Option<&Self::Payload>,
+        prepared_package: &PreparedPackage<Download>,
+        context: &Context,
+    ) -> bool {
+        let Some(_payload) = payload else {
+            return false;
+        };
+
         let PreparedPackage::Formula(prepared_formula) = prepared_package else {
             return false;
         };
@@ -53,53 +67,7 @@ impl SensorOperator for Relocator {
         Some("Relocating")
     }
 
-    fn poke_stage(&self) -> Stage {
-        Stage::Poured
-    }
-
-    async fn execute(
-        &self,
-        _payload: &Self::Payload,
-        prepared_package: &PreparedPackage,
-        context: &Context,
-    ) -> anyhow::Result<Self::Staging> {
-        let PreparedPackage::Formula(prepared_formula) = prepared_package else {
-            let err = anyhow!("`PreparedCask` is not supposed to be relocated");
-
-            return Err(err);
-        };
-
-        let keg_dir_path = self.patch(prepared_formula, context).await?;
-
-        Ok(keg_dir_path)
-    }
-
-    fn on_final_run(self, staging: Self::Staging) -> anyhow::Result<Self::Output> {
-        let keg_dir_path = staging;
-
-        let relocated_output = RelocatedOutput {
-            keg_dir_path,
-        };
-
-        Ok(relocated_output)
-    }
-
-    fn passed_stage(&self, _should_run: bool, prepared_package: &PreparedPackage) -> Option<Stage> {
-        let PreparedPackage::Formula(_prepared_formula) = prepared_package else {
-            return None;
-        };
-
-        Some(Stage::Relocated)
-    }
-}
-
-impl Relocator {
-    const PREFIX_PLACEHOLDER: &str = "@@HOMEBREW_PREFIX@@";
-    const CELLAR_PLACEHOLDER: &str = "@@HOMEBREW_CELLAR@@";
-    const REPOSITORY_PLACEHOLDER: &str = "@@HOMEBREW_REPOSITORY@@";
-    const LIBRARY_PLACEHOLDER: &str = "@@HOMEBREW_LIBRARY@@";
-
-    pub(crate) fn new(context: &Context) -> Self {
+    fn init(&self, context: &Context) -> anyhow::Result<Self::State> {
         let homebrew_dirs = &context.homebrew_dirs;
 
         let replacement_pairs = [
@@ -117,14 +85,67 @@ impl Relocator {
 
         replacement_pairs.sort_by_key(|(placeholder, _)| Reverse(placeholder.len()));
 
-        Self {
-            replacement_pairs,
-        }
+        let state = replacement_pairs;
+
+        Ok(state)
     }
+
+    async fn execute(
+        &self,
+        state: &Self::State,
+        prepared_package: &PreparedPackage<Download>,
+        context: &Context,
+    ) -> anyhow::Result<Self::Staging> {
+        let PreparedPackage::Formula(prepared_formula) = prepared_package else {
+            let err = anyhow!("`PreparedCask` is not supposed to be relocated");
+
+            return Err(err);
+        };
+
+        let replacement_pairs = state;
+
+        let keg_dir_path = self
+            .patch(prepared_formula, replacement_pairs, context)
+            .await?;
+
+        let staging = keg_dir_path;
+
+        Ok(staging)
+    }
+
+    fn on_final_run(self, staging: Self::Staging) -> anyhow::Result<Self::Output> {
+        let keg_dir_path = staging;
+
+        let relocated_output = RelocatedOutput {
+            keg_dir_path,
+        };
+
+        Ok(relocated_output)
+    }
+
+    fn passed_stage(
+        &self,
+        _should_run: bool,
+        prepared_package: &PreparedPackage<Download>,
+    ) -> Option<Stage> {
+        let PreparedPackage::Formula(_prepared_formula) = prepared_package else {
+            return None;
+        };
+
+        Some(Stage::Relocated)
+    }
+}
+
+impl Relocator {
+    const PREFIX_PLACEHOLDER: &str = "@@HOMEBREW_PREFIX@@";
+    const CELLAR_PLACEHOLDER: &str = "@@HOMEBREW_CELLAR@@";
+    const REPOSITORY_PLACEHOLDER: &str = "@@HOMEBREW_REPOSITORY@@";
+    const LIBRARY_PLACEHOLDER: &str = "@@HOMEBREW_LIBRARY@@";
 
     async fn patch(
         &self,
-        prepared_formula: &PreparedFormula,
+        prepared_formula: &PreparedFormula<Download>,
+        replacement_pairs: &ReplacementPairs,
         context: &Context,
     ) -> anyhow::Result<PathBuf> {
         let id = prepared_formula.id();
@@ -133,12 +154,16 @@ impl Relocator {
 
         let keg_dir_path = context.homebrew_dirs.keg_dir(id, version_revision);
 
-        self.patch_keg(&keg_dir_path).await?;
+        self.patch_keg(&keg_dir_path, replacement_pairs).await?;
 
         Ok(keg_dir_path)
     }
 
-    async fn patch_keg(&self, keg_dir_path: &Path) -> anyhow::Result<()> {
+    async fn patch_keg(
+        &self,
+        keg_dir_path: &Path,
+        replacement_pairs: &ReplacementPairs,
+    ) -> anyhow::Result<()> {
         let mut keg_entries = WalkDir::new(keg_dir_path);
 
         while let Some(keg_entry) = keg_entries.next().await {
@@ -150,14 +175,19 @@ impl Relocator {
                 continue;
             }
 
-            self.patch_file(&keg_entry_path).await?;
+            self.patch_file(&keg_entry_path, replacement_pairs).await?;
         }
 
         Ok(())
     }
 
-    fn replace_pstr<'a>(&self, text: &'a str) -> Cow<'a, str> {
-        self.replacement_pairs.iter().fold(
+    #[expect(clippy::unused_self)]
+    fn replace_pstr<'a>(
+        &self,
+        text: &'a str,
+        replacement_pairs: &ReplacementPairs,
+    ) -> Cow<'a, str> {
+        replacement_pairs.iter().fold(
             Cow::Borrowed(text),
             |current, (placeholder, replacement_pstr)| {
                 if current.contains(placeholder) {
@@ -173,7 +203,15 @@ impl Relocator {
 }
 
 trait Relocatory {
-    async fn patch_file(&self, dest_file_path: &Path) -> anyhow::Result<()>;
+    async fn patch_file(
+        &self,
+        dest_file_path: &Path,
+        replacement_pairs: &ReplacementPairs,
+    ) -> anyhow::Result<()>;
 
-    fn replace_bytes(&self, bytes: &Bytes) -> anyhow::Result<Vec<u8>>;
+    fn replace_bytes(
+        &self,
+        bytes: &Bytes,
+        replacement_pairs: &ReplacementPairs,
+    ) -> anyhow::Result<Vec<u8>>;
 }

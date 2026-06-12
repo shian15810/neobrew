@@ -8,67 +8,83 @@ use super::{
     super::state_store::{HashedOutput, Stage},
     PushConnector,
 };
+use crate::package::prepared::{Download, PreparedPackage, PreparedPackageable as _};
 
-pub(crate) struct Hasher {
-    sha256_digest: Sha256,
-
-    expected_sha256: String,
-
-    should_run: bool,
-}
-
-impl Hasher {
-    pub(crate) fn new(expected_sha256: String, should_run: bool) -> Self {
-        Self {
-            sha256_digest: Sha256::new(),
-
-            expected_sha256,
-
-            should_run,
-        }
-    }
-}
+pub(crate) struct Hasher;
 
 #[async_trait]
 impl PushConnector for Hasher {
+    type State = Sha256;
     type Staging = String;
     type Output = HashedOutput;
 
-    fn should_run(&self) -> bool {
-        self.should_run
+    fn should_run(&self, prepared_package: &PreparedPackage<Download>) -> bool {
+        let download = prepared_package.download();
+
+        !download.is_verified()
     }
 
-    async fn on_skip_run(self) -> anyhow::Result<Option<Self::Output>> {
+    async fn on_skip_run(
+        self,
+        prepared_package: &PreparedPackage<Download>,
+    ) -> anyhow::Result<Option<Self::Output>> {
+        let download = prepared_package.download();
+
+        let expected_sha256 = download.expected_sha256();
+
         let output = HashedOutput {
             is_verified: true,
 
-            actual_sha256: self.expected_sha256.clone(),
-            expected_sha256: self.expected_sha256,
+            actual_sha256: expected_sha256.to_owned(),
+            expected_sha256: expected_sha256.to_owned(),
         };
 
         Ok(Some(output))
     }
 
-    async fn feed(&mut self, chunk: Bytes) -> anyhow::Result<()> {
-        self.sha256_digest.update(chunk);
+    async fn init(
+        &self,
+        _prepared_package: &PreparedPackage<Download>,
+    ) -> anyhow::Result<Self::State> {
+        let sha256_digest = Sha256::new();
+
+        let state = sha256_digest;
+
+        Ok(state)
+    }
+
+    async fn feed(&self, state: &mut Self::State, chunk: Bytes) -> anyhow::Result<()> {
+        let sha256_digest = state;
+
+        sha256_digest.update(chunk);
 
         Ok(())
     }
 
-    async fn flush(&mut self) -> anyhow::Result<Self::Staging> {
-        let sha256_digest = self.sha256_digest.clone();
+    async fn flush(&self, state: Self::State) -> anyhow::Result<Self::Staging> {
+        let sha256_digest = state;
 
         let actual_sha256 = sha256_digest.finalize();
         let actual_sha256 = HexDisplay(&actual_sha256);
         let actual_sha256 = format!("{actual_sha256:x}");
 
-        Ok(actual_sha256)
+        let staging = actual_sha256;
+
+        Ok(staging)
     }
 
-    async fn on_final_run(self, staging: Self::Staging) -> anyhow::Result<Self::Output> {
+    async fn on_final_run(
+        self,
+        staging: Self::Staging,
+        prepared_package: &PreparedPackage<Download>,
+    ) -> anyhow::Result<Self::Output> {
         let actual_sha256 = staging;
 
-        let is_verified = actual_sha256 == self.expected_sha256;
+        let download = prepared_package.download();
+
+        let expected_sha256 = download.expected_sha256();
+
+        let is_verified = actual_sha256 == expected_sha256;
 
         if !is_verified {
             let err = anyhow!("Hasher failed due to SHA-256 mismatch");
@@ -80,7 +96,7 @@ impl PushConnector for Hasher {
             is_verified,
 
             actual_sha256,
-            expected_sha256: self.expected_sha256,
+            expected_sha256: expected_sha256.to_owned(),
         };
 
         Ok(output)

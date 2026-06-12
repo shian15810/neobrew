@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use clap::Args;
-use futures::stream::StreamExt as _;
 use indicatif::{MultiProgress, ProgressBar};
 use tokio::task::JoinSet;
 
@@ -9,7 +8,6 @@ use super::Runner;
 use crate::{
     compatibility::{Compatibility, Compatible as _},
     context::Context,
-    downloads::Downloads,
     ext::core::result::ResultExt as _,
     package::{
         Packageable as _,
@@ -26,7 +24,6 @@ use crate::{
         sensor_operator::{Artifactor, Relocator},
     },
     registries::Registries,
-    streams::Streams,
 };
 
 #[derive(Args)]
@@ -52,9 +49,6 @@ struct Installation {
 
     compatibility: Compatibility,
 
-    downloads: Downloads,
-    streams: Streams,
-
     context: Arc<Context>,
 }
 
@@ -66,9 +60,6 @@ impl Installation {
             multi_pb: MultiProgress::new(),
 
             compatibility: Compatibility::try_new()?,
-
-            downloads: Downloads::new(Arc::clone(&context)),
-            streams: Streams::new(Arc::clone(&context)),
 
             context,
         };
@@ -229,63 +220,13 @@ impl Installation {
 
         pb.set_prefix("Preparing");
 
-        let id = prepared_package.id();
-
-        let version = prepared_package.version();
-
-        let expected_sha256 = prepared_package.expected_sha256();
-
-        let download = self
-            .downloads
-            .retrieve(&prepared_package, expected_sha256)
-            .await?;
-
-        let is_verified = download.is_verified;
-
-        let write_file_path = download.file_path;
-
-        let write_link_path = download.link_path;
-
-        let archive_format = download.archive_format;
-
-        let pour_dir_path = match prepared_package {
-            PreparedPackage::Formula(_) => self.context.homebrew_dirs.cellar_dir(),
-            PreparedPackage::Cask(_) => self.context.homebrew_dirs.staged_dir(id, version),
-        };
-
-        let (stream, content_length) = if is_verified {
-            let (stream, content_length) = self.streams.download(&write_file_path).await?;
-
-            let stream = stream.left_stream();
-
-            (stream, Some(content_length))
-        } else {
-            let (stream, content_length) = self.streams.oci_or_url(&prepared_package).await?;
-
-            let stream = stream.right_stream();
-
-            (stream, content_length)
-        };
-
-        let hasher = Hasher::new(expected_sha256.to_owned(), !is_verified);
-
-        let writer = Writer::try_init(write_file_path, write_link_path, !is_verified).await?;
-
-        let pourer = Pourer::try_init(pour_dir_path.clone(), archive_format).await?;
-
-        let dmg_pourer = DmgPourer::try_init(pour_dir_path, archive_format).await?;
-
-        let relocator = Relocator::new(&self.context);
-
-        let linker = Linker::new();
-
-        let artifactor = Artifactor::new(&self.context);
+        let (prepared_package, stream) = prepared_package.with_download(&self.context).await?;
 
         Pipeline::build(prepared_package, pb.clone(), Arc::clone(&self.context))
-            .with_progressor(content_length)?
-            .fanout(hasher)
-            .fanout(writer.fanout(dmg_pourer))
-            .fanout(pourer.fanout(relocator.fanout(linker)).fanout(artifactor))
+            .with_pb()
+            .fanout(Hasher)
+            .fanout(Writer.fanout(DmgPourer))
+            .fanout(Pourer.fanout(Relocator.fanout(Linker)).fanout(Artifactor))
             .run_concurrently(stream)
             .await?;
 

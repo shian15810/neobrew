@@ -7,7 +7,7 @@ use serde_repr::Deserialize_repr;
 use serde_with::{BoolFromInt, FromInto, serde_as};
 
 use super::{super::Packageable, RawPackageable};
-use crate::{ext::serde::true_on_null, util::macos};
+use crate::{ext::serde::true_on_absent, util::macos};
 
 #[derive(Deserialize)]
 pub(crate) struct RawCask {
@@ -203,11 +203,11 @@ pub(in super::super) struct ArtifactInstallerSourceScript {
     args: Vec<String>,
     #[serde(default)]
     input: Vec<String>,
-    #[serde(default = "true_on_null")]
+    #[serde(default = "true_on_absent")]
     must_succeed: bool,
-    #[serde(default = "true_on_null")]
+    #[serde(default = "true_on_absent")]
     print_stderr: bool,
-    #[serde(default = "true_on_null")]
+    #[serde(default = "true_on_absent")]
     print_stdout: bool,
     #[serde(default)]
     sudo: bool,

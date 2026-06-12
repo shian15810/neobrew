@@ -42,14 +42,12 @@
 pub mod command;
 mod compatibility;
 pub mod context;
-mod downloads;
 mod ext;
 mod macros;
 mod package;
 mod pipeline;
 mod receipt;
 mod registries;
-mod streams;
 mod util;
 
 use clap::{ArgMatches, FromArgMatches as _};

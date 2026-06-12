@@ -20,52 +20,28 @@ use super::{
     PullConnector,
 };
 use crate::{
+    context::Context,
     ext::{std::path::PathExt as _, tokio::path::PathExt as _},
+    package::prepared::{Download, PreparedPackage, PreparedPackageable as _},
     util::ArchiveFormat,
 };
 
-pub(crate) struct Pourer {
-    temp_dir: TempDir,
-
-    dest_dir_path: PathBuf,
-    archive_format: Option<ArchiveFormat>,
-}
+pub(crate) struct Pourer;
 
 impl Pourer {
-    pub(crate) async fn try_init(
-        dest_dir_path: PathBuf,
-        archive_format: Option<ArchiveFormat>,
-    ) -> anyhow::Result<Self> {
-        let dest_base_path = &dest_dir_path;
-
-        fs::create_dir_all(dest_base_path).await?;
-
-        let temp_dir = TempDir::new_in(dest_base_path)?;
-
-        let this = Self {
-            temp_dir,
-
-            dest_dir_path,
-            archive_format,
-        };
-
-        Ok(this)
-    }
-
     async fn extract(
         &self,
-        archive_format: &ArchiveFormat,
+        archive_format: ArchiveFormat,
         buf_reader: impl AsyncBufRead + Unpin,
+        src_dir_path: &Path,
     ) -> anyhow::Result<()> {
-        let dest_base_path = self.temp_dir.path();
-
         match archive_format {
             ArchiveFormat::TarGz => {
                 let gz_decoder = GzipDecoder::new(buf_reader);
 
                 let mut archive = Archive::new(gz_decoder);
 
-                archive.unpack(dest_base_path).await?;
+                archive.unpack(src_dir_path).await?;
             },
             ArchiveFormat::Zip => {
                 let mut zip_reader = ZipFileReader::with_tokio(buf_reader);
@@ -88,7 +64,7 @@ impl Pourer {
                     if src_file_pstr.ends_with('/') {
                         zip_reader = entry_reader.skip().await?;
                     } else {
-                        let dest_file_path = dest_base_path.join(src_file_path);
+                        let dest_file_path = src_dir_path.join(src_file_path);
 
                         let dest_file_base_path = dest_file_path.base()?;
 
@@ -107,15 +83,53 @@ impl Pourer {
 
         Ok(())
     }
+
+    async fn persist(self, src_dir: TempDir, dest_dir_path: &Path) -> anyhow::Result<()> {
+        let src_dir_path = src_dir.path();
+
+        let mut src_dir_entries = fs::read_dir(src_dir_path).await?;
+
+        while let Some(src_dir_entry) = src_dir_entries.next_entry().await? {
+            let src_entry_dir_name = src_dir_entry.file_name();
+
+            let src_entry_dir_path = src_dir_entry.path();
+
+            let dest_entry_dir_path = dest_dir_path.join(src_entry_dir_name);
+
+            if !src_entry_dir_path.is_dir_exists_nofollow().await? {
+                continue;
+            }
+
+            if dest_entry_dir_path.is_dir_exists_nofollow().await? {
+                fs::remove_dir_all(&dest_entry_dir_path).await?;
+            }
+
+            fs::rename(&src_entry_dir_path, &dest_entry_dir_path)
+                .await
+                .with_context(|| {
+                    let src_entry_dir_path = src_entry_dir_path.display();
+
+                    let dest_entry_dir_path = dest_entry_dir_path.display();
+
+                    format!(r#"Failed to rename "{src_entry_dir_path}" to "{dest_entry_dir_path}""#)
+                })?;
+        }
+
+        src_dir.close()?;
+
+        Ok(())
+    }
 }
 
 #[async_trait]
 impl PullConnector for Pourer {
-    type Staging = ArchiveFormat;
+    type Staging = (TempDir, PathBuf, ArchiveFormat);
     type Output = PouredOutput;
 
-    fn should_run(&self) -> bool {
-        let Some(archive_format) = &self.archive_format else {
+    fn should_run(&self, prepared_package: &PreparedPackage<Download>) -> bool {
+        let download = prepared_package.download();
+
+        let Some(archive_format) = download.archive_format() else {
             return true;
         };
 
@@ -125,33 +139,43 @@ impl PullConnector for Pourer {
         }
     }
 
-    fn on_skip_run(self) -> anyhow::Result<Option<Self::Output>> {
-        self.cleanup()?;
-
-        Ok(None)
-    }
-
     async fn from_reader(
         &self,
         reader: &mut (impl AsyncRead + Unpin + Send),
+        prepared_package: &PreparedPackage<Download>,
+        context: &Context,
     ) -> anyhow::Result<Self::Staging> {
+        let dest_dir_path = prepared_package.pour_dir_path(context);
+
+        fs::create_dir_all(&dest_dir_path).await?;
+
+        let src_dir = TempDir::new_in(&dest_dir_path)?;
+
+        let src_dir_path = src_dir.path();
+
         let mut buf_reader = BufReader::new(reader);
 
-        let archive_format = if let Some(archive_format) = &self.archive_format {
-            self.extract(archive_format, buf_reader).await?;
+        let download = prepared_package.download();
 
-            archive_format.to_owned()
+        let archive_format = if let Some(archive_format) = download.archive_format() {
+            self.extract(archive_format, buf_reader, src_dir_path)
+                .await?;
+
+            archive_format
         } else {
             let (archive_format, peek_buf) = ArchiveFormat::peek(&mut buf_reader).await?;
 
             let chained_buf_reader = Cursor::new(peek_buf).chain(buf_reader);
 
-            self.extract(&archive_format, chained_buf_reader).await?;
+            self.extract(archive_format, chained_buf_reader, src_dir_path)
+                .await?;
 
             archive_format
         };
 
-        Ok(archive_format)
+        let staging = (src_dir, dest_dir_path, archive_format);
+
+        Ok(staging)
     }
 
     fn wait_stage(&self) -> Option<Stage> {
@@ -159,11 +183,9 @@ impl PullConnector for Pourer {
     }
 
     async fn on_final_run(self, staging: Self::Staging) -> anyhow::Result<Self::Output> {
-        let archive_format = staging;
+        let (src_dir, dest_dir_path, archive_format) = staging;
 
-        let dest_dir_path = self.dest_dir_path.clone();
-
-        self.persist().await?;
+        self.persist(src_dir, &dest_dir_path).await?;
 
         let output = PouredOutput {
             dest_dir_path,
@@ -171,50 +193,6 @@ impl PullConnector for Pourer {
         };
 
         Ok(output)
-    }
-
-    async fn persist(self) -> anyhow::Result<()> {
-        let src_base_path = self.temp_dir.path();
-
-        let dest_base_path = self.dest_dir_path;
-
-        let mut src_base_entries = fs::read_dir(src_base_path).await?;
-
-        while let Some(src_base_entry) = src_base_entries.next_entry().await? {
-            let src_dir_name = src_base_entry.file_name();
-
-            let src_dir_path = src_base_entry.path();
-
-            let dest_dir_path = dest_base_path.join(src_dir_name);
-
-            if !src_dir_path.is_dir_exists_nofollow().await? {
-                continue;
-            }
-
-            if dest_dir_path.is_dir_exists_nofollow().await? {
-                fs::remove_dir_all(&dest_dir_path).await?;
-            }
-
-            fs::rename(&src_dir_path, &dest_dir_path)
-                .await
-                .with_context(|| {
-                    let src_dir_path = src_dir_path.display();
-
-                    let dest_dir_path = dest_dir_path.display();
-
-                    format!(r#"Failed to rename "{src_dir_path}" to "{dest_dir_path}""#)
-                })?;
-        }
-
-        self.temp_dir.close()?;
-
-        Ok(())
-    }
-
-    fn cleanup(self) -> anyhow::Result<()> {
-        self.temp_dir.close()?;
-
-        Ok(())
     }
 
     fn passed_stage(&self, should_run: bool) -> Option<Stage> {

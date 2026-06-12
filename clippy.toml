@@ -20,18 +20,11 @@ disallowed-macros = [
 disallowed-methods = [
     "core::hint::assert_unchecked",
     "core::hint::unreachable_unchecked",
+    "std::fs::metadata",
     "std::panic::panic_any",
     "std::panic::resume_unwind",
     "std::process::abort",
     "std::process::exit",
+    "tokio::fs::metadata",
 ]
-disallowed-names = [
-    "anyhow::Result::Err",
-    "anyhow::Result::Ok",
-    "core::option::Option::None",
-    "core::option::Option::Some",
-    "core::result::Result::Err",
-    "core::result::Result::Ok",
-    "either::Either::Left",
-    "either::Either::Right",
-]
+disallowed-names = ["foobar", "bar", "qux", ".."]

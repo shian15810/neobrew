@@ -22,7 +22,7 @@ impl Elf {
 
                 return Err(err);
             },
-        };
+        }
 
         let has_magic = &peek_buf == Self::ELF_MAGIC;
 

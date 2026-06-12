@@ -26,7 +26,10 @@ use self::{
     push_connector::Progressor,
     state_store::{ProgressedOutput, Session},
 };
-use crate::{context::Context, package::prepared::PreparedPackage};
+use crate::{
+    context::Context,
+    package::prepared::{Download, PreparedPackage},
+};
 
 pub(crate) struct Pipeline<Si, Handles> {
     sink: Si,
@@ -37,7 +40,7 @@ pub(crate) struct Pipeline<Si, Handles> {
 
 impl Pipeline<sink::SinkErrInto<sink::Drain<Bytes>, Bytes, anyhow::Error>, HNil> {
     pub(crate) fn build(
-        prepared_package: PreparedPackage,
+        prepared_package: PreparedPackage<Download>,
         pb: ProgressBar,
         context: Arc<Context>,
     ) -> Self {
@@ -61,32 +64,6 @@ impl<
 > Pipeline<Si, Handles>
 {
     #[expect(clippy::type_complexity)]
-    pub(crate) fn with_progressor<_ConnMarker>(
-        self,
-        content_length: Option<u64>,
-    ) -> anyhow::Result<
-        Pipeline<
-            sink::Fanout<Si, <Progressor as Connector<_ConnMarker>>::Sink>,
-            HCons<AbortOnDropHandle<anyhow::Result<Option<ProgressedOutput>>>, Handles>,
-        >,
-    >
-    where
-        Progressor: Connector<
-                _ConnMarker,
-                Sink: sink::Sink<Bytes, Error = anyhow::Error>,
-                Output = ProgressedOutput,
-            >,
-    {
-        let pb = &self.session.pb;
-
-        let progressor = Progressor::try_new(pb.clone(), content_length)?;
-
-        let pipeline = self.fanout(progressor);
-
-        Ok(pipeline)
-    }
-
-    #[expect(clippy::type_complexity)]
     pub(crate) fn fanout<
         Conn: Connector<_ConnMarker, Sink: sink::Sink<Bytes, Error = anyhow::Error>>,
         _ConnMarker,
@@ -97,7 +74,9 @@ impl<
         sink::Fanout<Si, Conn::Sink>,
         HCons<AbortOnDropHandle<anyhow::Result<Option<Conn::Output>>>, Handles>,
     > {
-        let (sink, handle) = connector.launch(self.session.clone());
+        let session = self.session.clone();
+
+        let (sink, handle) = connector.launch(session);
 
         let sink = self.sink.fanout(sink);
 
@@ -110,6 +89,27 @@ impl<
 
             session: self.session,
         }
+    }
+
+    #[expect(clippy::type_complexity)]
+    pub(crate) fn with_pb<_ConnMarker>(
+        self,
+    ) -> Pipeline<
+        sink::Fanout<Si, <Progressor as Connector<_ConnMarker>>::Sink>,
+        HCons<AbortOnDropHandle<anyhow::Result<Option<ProgressedOutput>>>, Handles>,
+    >
+    where
+        Progressor: Connector<
+                _ConnMarker,
+                Sink: sink::Sink<Bytes, Error = anyhow::Error>,
+                Output = ProgressedOutput,
+            >,
+    {
+        let pb = &self.session.pb;
+
+        let progressor = Progressor::new(pb.clone());
+
+        self.fanout(progressor)
     }
 
     pub(crate) async fn run_concurrently(

@@ -22,41 +22,36 @@ use super::{
 use crate::{
     context::Context,
     ext::{std::path::PathExt as _, tokio::path::PathExt as _},
-    package::prepared::PreparedPackage,
+    package::prepared::{Download, PreparedPackage, PreparedPackageable as _},
     util::ArchiveFormat,
 };
 
-pub(crate) struct DmgPourer {
-    temp_dir: TempDir,
-
-    dest_dir_path: PathBuf,
-    archive_format: Option<ArchiveFormat>,
-}
+pub(crate) struct DmgPourer;
 
 #[async_trait]
 impl ActionOperator for DmgPourer {
     type Input = WrittenOutput;
-    type Staging = ();
+    type Staging = (TempDir, PathBuf);
     type Output = PouredOutput;
 
     async fn should_run(
         &self,
         input: Option<&Self::Input>,
-        _prepared_package: &PreparedPackage,
+        prepared_package: &PreparedPackage<Download>,
     ) -> anyhow::Result<bool> {
         let Some(input) = input else {
             return Ok(false);
         };
 
-        let is_dmg = self.is_dmg(&input.dest_file_path).await?;
+        let src_file_path = &input.dest_file_path;
+
+        let download = prepared_package.download();
+
+        let archive_format = download.archive_format();
+
+        let is_dmg = self.is_dmg(src_file_path, archive_format).await?;
 
         Ok(is_dmg)
-    }
-
-    fn on_skip_run(self) -> anyhow::Result<Option<Self::Output>> {
-        self.cleanup()?;
-
-        Ok(None)
     }
 
     fn running_prefix(&self) -> Option<&'static str> {
@@ -66,8 +61,8 @@ impl ActionOperator for DmgPourer {
     async fn execute(
         &self,
         input: Option<&Self::Input>,
-        _prepared_package: &PreparedPackage,
-        _context: &Context,
+        prepared_package: &PreparedPackage<Download>,
+        context: &Context,
     ) -> anyhow::Result<Self::Staging> {
         let Some(input) = input else {
             let err = anyhow!("`Input` is supposed to be defined");
@@ -75,58 +70,54 @@ impl ActionOperator for DmgPourer {
             return Err(err);
         };
 
-        self.pour(&input.dest_file_path).await?;
+        let src_file_path = &input.dest_file_path;
 
-        Ok(())
+        let dest_dir_path = prepared_package.pour_dir_path(context);
+
+        fs::create_dir_all(&dest_dir_path).await?;
+
+        let src_dir = TempDir::new_in(&dest_dir_path)?;
+
+        let src_dir_path = src_dir.path();
+
+        self.pour(src_file_path, src_dir_path, &dest_dir_path)
+            .await?;
+
+        let staging = (src_dir, dest_dir_path);
+
+        Ok(staging)
     }
 
-    fn on_final_run(self, _staging: Self::Staging) -> anyhow::Result<Self::Output> {
-        let dest_dir_path = self.dest_dir_path.clone();
+    fn on_final_run(self, staging: Self::Staging) -> anyhow::Result<Self::Output> {
+        let (src_dir, dest_dir_path) = staging;
 
-        self.cleanup()?;
+        src_dir.close()?;
 
         let output = PouredOutput {
             dest_dir_path,
+
             archive_format: ArchiveFormat::Dmg,
         };
 
         Ok(output)
     }
 
-    fn cleanup(self) -> anyhow::Result<()> {
-        self.temp_dir.close()?;
-
-        Ok(())
-    }
-
-    fn passed_stage(&self, should_run: bool, _prepared_package: &PreparedPackage) -> Option<Stage> {
+    fn passed_stage(
+        &self,
+        should_run: bool,
+        _prepared_package: &PreparedPackage<Download>,
+    ) -> Option<Stage> {
         should_run.then_some(Stage::Poured)
     }
 }
 
 impl DmgPourer {
-    pub(crate) async fn try_init(
-        dest_dir_path: PathBuf,
+    async fn is_dmg(
+        &self,
+        src_file_path: &Path,
         archive_format: Option<ArchiveFormat>,
-    ) -> anyhow::Result<Self> {
-        let dest_base_path = &dest_dir_path;
-
-        fs::create_dir_all(dest_base_path).await?;
-
-        let temp_dir = TempDir::new_in(dest_base_path)?;
-
-        let this = Self {
-            temp_dir,
-
-            dest_dir_path,
-            archive_format,
-        };
-
-        Ok(this)
-    }
-
-    async fn is_dmg(&self, src_file_path: &Path) -> anyhow::Result<bool> {
-        let is_dmg = if let Some(archive_format) = &self.archive_format {
+    ) -> anyhow::Result<bool> {
+        let is_dmg = if let Some(archive_format) = archive_format {
             matches!(archive_format, ArchiveFormat::Dmg)
         } else {
             ArchiveFormat::is_dmg(src_file_path).await?
@@ -135,8 +126,13 @@ impl DmgPourer {
         Ok(is_dmg)
     }
 
-    async fn pour(&self, src_file_path: &Path) -> anyhow::Result<()> {
-        let mount_points = self.mount(src_file_path).await?;
+    async fn pour(
+        &self,
+        src_file_path: &Path,
+        src_dir_path: &Path,
+        dest_dir_path: &Path,
+    ) -> anyhow::Result<()> {
+        let mount_points = self.mount(src_file_path, src_dir_path).await?;
 
         if mount_points.is_empty() {
             let err = anyhow!("No mount point found in DMG");
@@ -146,7 +142,7 @@ impl DmgPourer {
 
         let extract_mount_point_futs = mount_points
             .iter()
-            .map(|mount_point| self.extract(mount_point));
+            .map(|mount_point| self.extract(mount_point, src_dir_path, dest_dir_path));
 
         let extract_mount_point_res = future::try_join_all(extract_mount_point_futs).await;
 
@@ -164,18 +160,24 @@ impl DmgPourer {
         Ok(())
     }
 
-    async fn mount(&self, src_file_path: &Path) -> anyhow::Result<Vec<PathBuf>> {
+    async fn mount(
+        &self,
+        src_file_path: &Path,
+        src_dir_path: &Path,
+    ) -> anyhow::Result<Vec<PathBuf>> {
         let mount_points = self
-            .mount_without_eula(src_file_path)
-            .or_else(|_| self.mount_with_eula(src_file_path))
+            .mount_without_eula(src_file_path, src_dir_path)
+            .or_else(|_| self.mount_with_eula(src_file_path, src_dir_path))
             .await?;
 
         Ok(mount_points)
     }
 
-    async fn mount_without_eula(&self, src_file_path: &Path) -> anyhow::Result<Vec<PathBuf>> {
-        let src_base_path = self.temp_dir.path();
-
+    async fn mount_without_eula(
+        &self,
+        src_file_path: &Path,
+        src_dir_path: &Path,
+    ) -> anyhow::Result<Vec<PathBuf>> {
         let mut hdiutil = Command::new("hdiutil");
 
         hdiutil
@@ -184,7 +186,7 @@ impl DmgPourer {
             .arg("-nobrowse")
             .arg("-readonly")
             .arg("-mountrandom")
-            .arg(src_base_path)
+            .arg(src_dir_path)
             .arg(src_file_path);
 
         hdiutil
@@ -214,16 +216,16 @@ impl DmgPourer {
         Ok(mount_points)
     }
 
-    async fn mount_with_eula(&self, src_file_path: &Path) -> anyhow::Result<Vec<PathBuf>> {
-        let src_base_path = self.temp_dir.path();
-
+    async fn mount_with_eula(
+        &self,
+        src_file_path: &Path,
+        src_dir_path: &Path,
+    ) -> anyhow::Result<Vec<PathBuf>> {
         let dmg_file_stem = src_file_path
             .file_stem()
             .context("DMG path has no file stem")?;
 
-        let cdr_path = src_base_path
-            .join(dmg_file_stem)
-            .with_added_extension("cdr");
+        let cdr_path = src_dir_path.join(dmg_file_stem).with_added_extension("cdr");
 
         let mut hdiutil_convert = Command::new("hdiutil");
 
@@ -255,7 +257,7 @@ impl DmgPourer {
             .arg("-nobrowse")
             .arg("-readonly")
             .arg("-mountrandom")
-            .arg(src_base_path)
+            .arg(src_dir_path)
             .arg(cdr_path);
 
         let hdiutil_attach = hdiutil_attach.output().await?;
@@ -296,11 +298,12 @@ impl DmgPourer {
         Ok(mount_points)
     }
 
-    async fn extract(&self, mount_point: &Path) -> anyhow::Result<()> {
-        let src_base_path = self.temp_dir.path();
-
-        let dest_base_path = &self.dest_dir_path;
-
+    async fn extract(
+        &self,
+        mount_point: &Path,
+        src_dir_path: &Path,
+        dest_dir_path: &Path,
+    ) -> anyhow::Result<()> {
         let bom = self.bom(mount_point).await?;
 
         if bom.is_empty() {
@@ -309,24 +312,24 @@ impl DmgPourer {
             return Err(err);
         }
 
-        let temp_list_file = NamedTempFile::new_in(dest_base_path)?;
+        let list_file = NamedTempFile::new_in(dest_dir_path)?;
 
-        let temp_bom_file = NamedTempFile::new_in(dest_base_path)?;
+        let bom_file = NamedTempFile::new_in(dest_dir_path)?;
 
-        let temp_list_file_path = temp_list_file.path();
+        let list_file_path = list_file.path();
 
-        let temp_bom_file_path = temp_bom_file.path();
+        let bom_file_path = bom_file.path();
 
-        fs::write(temp_list_file_path, bom).await?;
+        fs::write(list_file_path, bom).await?;
 
         let mut mkbom = Command::new("mkbom");
 
         mkbom
             .arg("-s")
             .arg("-i")
-            .arg(temp_list_file_path)
+            .arg(list_file_path)
             .arg("--")
-            .arg(temp_bom_file_path);
+            .arg(bom_file_path);
 
         let mkbom = mkbom.output().await?;
 
@@ -343,10 +346,10 @@ impl DmgPourer {
 
         ditto
             .arg("--bom")
-            .arg(temp_bom_file_path)
+            .arg(bom_file_path)
             .arg("--")
             .arg(mount_point)
-            .arg(dest_base_path);
+            .arg(dest_dir_path);
 
         let ditto = ditto.output().await?;
 
@@ -359,18 +362,18 @@ impl DmgPourer {
             return Err(err);
         }
 
-        temp_bom_file.close()?;
+        bom_file.close()?;
 
-        temp_list_file.close()?;
+        list_file.close()?;
 
-        let mut dest_item_entries = WalkDir::new(dest_base_path);
+        let mut dest_item_entries = WalkDir::new(dest_dir_path);
 
         while let Some(dest_item_entry) = dest_item_entries.next().await {
             let dest_item_entry = dest_item_entry?;
 
             let dest_item_path = dest_item_entry.path();
 
-            if dest_item_path.starts_with(src_base_path) {
+            if dest_item_path.starts_with(src_dir_path) {
                 continue;
             }
 
@@ -432,25 +435,25 @@ impl DmgPourer {
         Ok(bom)
     }
 
-    async fn is_system_dir_link(&self, path: &Path) -> anyhow::Result<bool> {
-        if !path.is_link_exists_nofollow().await? {
+    async fn is_system_dir_link(&self, link_path: &Path) -> anyhow::Result<bool> {
+        if !link_path.is_link_exists_nofollow().await? {
             return Ok(false);
         }
 
-        let link_path = fs::read_link(path).await?;
-        let link_path = if link_path.is_relative() {
-            let link_base_path = path.base()?;
+        let dir_path = fs::read_link(link_path).await?;
+        let dir_path = if dir_path.is_relative() {
+            let link_base_path = link_path.base()?;
 
-            link_base_path.join(link_path)
+            link_base_path.join(dir_path)
         } else {
-            link_path
+            dir_path
         };
-        let link_path = link_path.clean();
+        let dir_path = dir_path.clean();
 
-        let link_pstr = link_path.to_string_lossy();
-        let link_pstr = link_pstr.as_ref();
+        let dir_pstr = dir_path.to_string_lossy();
+        let dir_pstr = dir_pstr.as_ref();
 
-        let is_system_dir_link = Self::SYSTEM_DIRS.contains(&link_pstr);
+        let is_system_dir_link = Self::SYSTEM_DIRS.contains(&dir_pstr);
 
         Ok(is_system_dir_link)
     }
@@ -467,7 +470,7 @@ impl DmgPourer {
     }
 
     async fn eject(&self, mount_point: &Path) -> anyhow::Result<()> {
-        if !mount_point.exists() {
+        if !mount_point.try_exists()? {
             return Ok(());
         }
 

@@ -15,7 +15,7 @@ use crate::{
     ext::{std::path::PathExt as _, tokio::path::PathExt as _},
     package::{
         Packageable as _,
-        prepared::{PreparedFormula, PreparedPackage},
+        prepared::{Download, PreparedFormula, PreparedPackage},
     },
     pipeline::state_store::{LinkedOutput, RelocatedOutput, Stage},
 };
@@ -52,7 +52,7 @@ impl ActionOperator for Linker {
     async fn should_run(
         &self,
         _input: Option<&Self::Input>,
-        prepared_package: &PreparedPackage,
+        prepared_package: &PreparedPackage<Download>,
     ) -> anyhow::Result<bool> {
         let PreparedPackage::Formula(_prepared_formula) = prepared_package else {
             return Ok(false);
@@ -68,7 +68,7 @@ impl ActionOperator for Linker {
     async fn execute(
         &self,
         _input: Option<&Self::Input>,
-        prepared_package: &PreparedPackage,
+        prepared_package: &PreparedPackage<Download>,
         context: &Context,
     ) -> anyhow::Result<Self::Staging> {
         let PreparedPackage::Formula(prepared_formula) = prepared_package else {
@@ -80,7 +80,9 @@ impl ActionOperator for Linker {
         let (opt_prefix_link_path, linked_keg_prefix_link_path) =
             self.link(prepared_formula, context).await?;
 
-        Ok((opt_prefix_link_path, linked_keg_prefix_link_path))
+        let staging = (opt_prefix_link_path, linked_keg_prefix_link_path);
+
+        Ok(staging)
     }
 
     fn on_final_run(self, staging: Self::Staging) -> anyhow::Result<Self::Output> {
@@ -94,7 +96,11 @@ impl ActionOperator for Linker {
         Ok(output)
     }
 
-    fn passed_stage(&self, _should_run: bool, prepared_package: &PreparedPackage) -> Option<Stage> {
+    fn passed_stage(
+        &self,
+        _should_run: bool,
+        prepared_package: &PreparedPackage<Download>,
+    ) -> Option<Stage> {
         let PreparedPackage::Formula(_prepared_formula) = prepared_package else {
             return None;
         };
@@ -104,13 +110,9 @@ impl ActionOperator for Linker {
 }
 
 impl Linker {
-    pub(crate) fn new() -> Self {
-        Self
-    }
-
     async fn link(
         &self,
-        prepared_formula: &PreparedFormula,
+        prepared_formula: &PreparedFormula<Download>,
         context: &Context,
     ) -> anyhow::Result<(PathBuf, Option<PathBuf>)> {
         let opt_prefix_link_path = self.link_opt(prepared_formula, context).await?;
@@ -128,7 +130,7 @@ impl Linker {
 
     async fn link_opt(
         &self,
-        prepared_formula: &PreparedFormula,
+        prepared_formula: &PreparedFormula<Download>,
         context: &Context,
     ) -> anyhow::Result<PathBuf> {
         let id = prepared_formula.id();
@@ -152,7 +154,7 @@ impl Linker {
 
     async fn link_keg(
         &self,
-        prepared_formula: &PreparedFormula,
+        prepared_formula: &PreparedFormula<Download>,
         context: &Context,
     ) -> anyhow::Result<PathBuf> {
         let id = prepared_formula.id();
@@ -199,34 +201,34 @@ impl Linker {
     #[async_recursion]
     async fn link_dir(
         &self,
-        src_base_path: &Path,
-        dest_base_path: &Path,
+        src_dir_path: &Path,
+        dest_dir_path: &Path,
         should_skip: bool,
     ) -> anyhow::Result<()> {
-        let mut src_base_entries = fs::read_dir(src_base_path).await?;
+        let mut src_dir_entries = fs::read_dir(src_dir_path).await?;
 
-        while let Some(src_base_entry) = src_base_entries.next_entry().await? {
-            let src_file_name = src_base_entry.file_name();
+        while let Some(src_dir_entry) = src_dir_entries.next_entry().await? {
+            let src_entry_dir_name = src_dir_entry.file_name();
 
-            let src_file_path = src_base_entry.path();
+            let src_entry_dir_path = src_dir_entry.path();
 
-            let dest_file_path = dest_base_path.join(src_file_name);
+            let dest_entry_dir_path = dest_dir_path.join(src_entry_dir_name);
 
-            if src_file_path.is_dir_exists_nofollow().await? {
+            if src_entry_dir_path.is_dir_exists_nofollow().await? {
                 if should_skip {
                     continue;
                 }
 
-                self.link_dir(&src_file_path, &dest_file_path, false)
+                self.link_dir(&src_entry_dir_path, &dest_entry_dir_path, false)
                     .await?;
 
                 continue;
             }
 
-            fs::create_dir_all(dest_base_path).await?;
+            fs::create_dir_all(dest_dir_path).await?;
 
-            src_file_path
-                .create_relative_link_atomically_at(dest_file_path)
+            src_entry_dir_path
+                .create_relative_link_atomically_at(dest_entry_dir_path)
                 .await?;
         }
 
@@ -235,7 +237,7 @@ impl Linker {
 
     async fn is_linked(
         &self,
-        prepared_formula: &PreparedFormula,
+        prepared_formula: &PreparedFormula<Download>,
         context: &Context,
     ) -> anyhow::Result<bool> {
         let is_opt_linked = self.is_opt_linked(prepared_formula, context).await?;
@@ -259,7 +261,7 @@ impl Linker {
 
     async fn is_opt_linked(
         &self,
-        prepared_formula: &PreparedFormula,
+        prepared_formula: &PreparedFormula<Download>,
         context: &Context,
     ) -> anyhow::Result<bool> {
         let id = prepared_formula.id();
@@ -284,7 +286,7 @@ impl Linker {
 
     async fn is_keg_linked(
         &self,
-        prepared_formula: &PreparedFormula,
+        prepared_formula: &PreparedFormula<Download>,
         context: &Context,
     ) -> anyhow::Result<bool> {
         let id = prepared_formula.id();

@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -12,126 +12,136 @@ use super::{
     super::state_store::{Stage, WrittenOutput},
     PushConnector,
 };
-use crate::ext::{
-    std::path::PathExt as _,
-    tokio::{fs::FileExt as _, path::PathExt as _},
+use crate::{
+    ext::{
+        std::path::PathExt as _,
+        tokio::{fs::FileExt as _, path::PathExt as _},
+    },
+    package::prepared::{Download, PreparedPackage, PreparedPackageable as _},
 };
 
-pub(crate) struct Writer {
-    temp_file: NamedTempFile,
-    buf_async_temp_file: BufWriter<File>,
-
-    dest_file_path: PathBuf,
-    dest_link_path: PathBuf,
-
-    should_run: bool,
-}
+pub(crate) struct Writer;
 
 impl Writer {
-    pub(crate) async fn try_init(
-        dest_file_path: PathBuf,
-        dest_link_path: PathBuf,
-        should_run: bool,
-    ) -> anyhow::Result<Self> {
-        let dest_base_path = dest_file_path.base()?;
+    async fn persist(
+        self,
+        dest_file: NamedTempFile,
+        dest_file_path: &Path,
+        dest_link_path: &Path,
+    ) -> anyhow::Result<()> {
+        dest_file.persist(dest_file_path)?;
 
-        fs::create_dir_all(dest_base_path).await?;
+        let dest_link_base_path = dest_link_path.base()?;
 
-        let temp_file = NamedTempFile::new_in(dest_base_path)?;
+        fs::create_dir_all(dest_link_base_path).await?;
 
-        let async_temp_file = File::open_write(temp_file.path()).await?;
+        dest_file_path
+            .create_relative_link_atomically_at(dest_link_path)
+            .await?;
 
-        let buf_async_temp_file = BufWriter::new(async_temp_file);
-
-        let this = Self {
-            temp_file,
-            buf_async_temp_file,
-
-            dest_file_path,
-            dest_link_path,
-
-            should_run,
-        };
-
-        Ok(this)
+        Ok(())
     }
 }
 
 #[async_trait]
 impl PushConnector for Writer {
-    type Staging = ();
+    type State = (BufWriter<File>, NamedTempFile);
+    type Staging = NamedTempFile;
     type Output = WrittenOutput;
 
-    fn should_run(&self) -> bool {
-        self.should_run
+    fn should_run(&self, prepared_package: &PreparedPackage<Download>) -> bool {
+        let download = prepared_package.download();
+
+        !download.is_verified()
     }
 
-    async fn on_skip_run(mut self) -> anyhow::Result<Option<Self::Output>> {
-        self.flush().await?;
+    async fn on_skip_run(
+        mut self,
+        prepared_package: &PreparedPackage<Download>,
+    ) -> anyhow::Result<Option<Self::Output>> {
+        let download = prepared_package.download();
 
-        let dest_file_path = self.dest_file_path.clone();
+        let dest_file_path = download.file_path();
 
-        let dest_link_path = self.dest_link_path.clone();
-
-        self.cleanup()?;
+        let dest_link_path = download.link_path();
 
         let output = WrittenOutput {
-            dest_file_path,
-            dest_link_path,
+            dest_file_path: dest_file_path.to_owned(),
+            dest_link_path: dest_link_path.to_owned(),
         };
 
         Ok(Some(output))
     }
 
-    async fn feed(&mut self, chunk: Bytes) -> anyhow::Result<()> {
-        self.buf_async_temp_file.write_all(&chunk).await?;
+    async fn init(
+        &self,
+        prepared_package: &PreparedPackage<Download>,
+    ) -> anyhow::Result<Self::State> {
+        let download = prepared_package.download();
+
+        let dest_file_path = download.file_path();
+
+        let dest_file_base_path = dest_file_path.base()?;
+
+        fs::create_dir_all(dest_file_base_path).await?;
+
+        let dest_file = NamedTempFile::new_in(dest_file_base_path)?;
+
+        let dest_file_path = dest_file.path();
+
+        let async_dest_file = File::open_write(dest_file_path).await?;
+
+        let buf_async_dest_file = BufWriter::new(async_dest_file);
+
+        let state = (buf_async_dest_file, dest_file);
+
+        Ok(state)
+    }
+
+    async fn feed(&self, state: &mut Self::State, chunk: Bytes) -> anyhow::Result<()> {
+        let (buf_async_dest_file, _dest_file) = state;
+
+        buf_async_dest_file.write_all(&chunk).await?;
 
         Ok(())
     }
 
-    async fn flush(&mut self) -> anyhow::Result<Self::Staging> {
-        self.buf_async_temp_file.shutdown().await?;
+    async fn flush(&self, state: Self::State) -> anyhow::Result<Self::Staging> {
+        let (mut buf_async_dest_file, dest_file) = state;
 
-        let async_temp_file = self.buf_async_temp_file.get_mut();
+        buf_async_dest_file.shutdown().await?;
 
-        async_temp_file.shutdown().await?;
+        let async_dest_file = buf_async_dest_file.get_mut();
 
-        Ok(())
+        async_dest_file.shutdown().await?;
+
+        let staging = dest_file;
+
+        Ok(staging)
     }
 
-    async fn on_final_run(self, _staging: Self::Staging) -> anyhow::Result<Self::Output> {
-        let dest_file_path = self.dest_file_path.clone();
+    async fn on_final_run(
+        self,
+        staging: Self::Staging,
+        prepared_package: &PreparedPackage<Download>,
+    ) -> anyhow::Result<Self::Output> {
+        let dest_file = staging;
 
-        let dest_link_path = self.dest_link_path.clone();
+        let download = prepared_package.download();
 
-        self.persist().await?;
+        let dest_file_path = download.file_path();
+
+        let dest_link_path = download.link_path();
+
+        self.persist(dest_file, dest_file_path, dest_link_path)
+            .await?;
 
         let output = WrittenOutput {
-            dest_file_path,
-            dest_link_path,
+            dest_file_path: dest_file_path.to_owned(),
+            dest_link_path: dest_link_path.to_owned(),
         };
 
         Ok(output)
-    }
-
-    async fn persist(self) -> anyhow::Result<()> {
-        self.temp_file.persist(&self.dest_file_path)?;
-
-        let dest_link_base_path = self.dest_link_path.base()?;
-
-        fs::create_dir_all(dest_link_base_path).await?;
-
-        self.dest_file_path
-            .create_relative_link_atomically_at(self.dest_link_path)
-            .await?;
-
-        Ok(())
-    }
-
-    fn cleanup(self) -> anyhow::Result<()> {
-        self.temp_file.close()?;
-
-        Ok(())
     }
 
     fn passed_stage(&self, _should_run: bool) -> Option<Stage> {

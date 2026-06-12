@@ -23,13 +23,7 @@ enum Package {
     Installed(InstalledPackage),
 }
 
-#[enum_dispatch(
-    Package,
-    RawPackage,
-    ResolvedPackage,
-    PreparedPackage,
-    InstalledPackage
-)]
+#[enum_dispatch(Package, RawPackage, ResolvedPackage, InstalledPackage)]
 pub(crate) trait Packageable {
     fn id(&self) -> &str;
 

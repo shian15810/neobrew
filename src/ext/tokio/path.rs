@@ -30,7 +30,7 @@ pub(crate) trait PathExt {
     async fn create_relative_link_atomically_at(
         &self,
         link_path: impl AsRef<Self>,
-    ) -> io::Result<PathBuf>;
+    ) -> io::Result<()>;
 }
 
 impl PathExt for Path {
@@ -67,9 +67,9 @@ impl PathExt for Path {
 
         let dir_entry = dir_entries.next_entry().await?;
 
-        let is_dir_empty = dir_entry.is_none();
+        let is_none = dir_entry.is_none();
 
-        Ok(is_dir_empty)
+        Ok(is_none)
     }
 
     async fn add_permissions_mode(&self, mode: u32) -> io::Result<()> {
@@ -121,15 +121,15 @@ impl PathExt for Path {
 
         let file_type = metadata.file_type();
 
-        let is_link = file_type.is_symlink();
+        let is_symlink = file_type.is_symlink();
 
-        Ok(is_link)
+        Ok(is_symlink)
     }
 
     async fn create_relative_link_atomically_at(
         &self,
         link_path: impl AsRef<Self>,
-    ) -> io::Result<PathBuf> {
+    ) -> io::Result<()> {
         let link_path = link_path.as_ref();
 
         let link_base_path = link_path.base();
@@ -142,10 +142,12 @@ impl PathExt for Path {
 
         fs::symlink(link_diff_path, &link_tmp_path).await?;
 
-        fs::rename(link_tmp_path, link_path).await?;
+        if let Err(err) = fs::rename(&link_tmp_path, link_path).await {
+            fs::remove_file(link_tmp_path).await?;
 
-        let link_path = link_path.to_owned();
+            return Err(err);
+        }
 
-        Ok(link_path)
+        Ok(())
     }
 }

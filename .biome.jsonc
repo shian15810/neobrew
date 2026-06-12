@@ -5,6 +5,7 @@
         "includes": [
             "**/*.jsonc",
             "**/*.json",
+            "!home/.homebrew/trust.json",
         ],
     },
 

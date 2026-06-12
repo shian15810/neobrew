@@ -1,13 +1,20 @@
 use std::path::PathBuf;
 
-use super::{Artifactor, Artifactory};
-use crate::package::prepared::PreparedCask;
+use super::{Artifactor, Artifactory, ReplacementPairs};
+use crate::{
+    context::Context,
+    package::{
+        Packageable as _,
+        prepared::{Download, PreparedCask},
+    },
+};
 
 impl Artifactory for Artifactor {
     #[expect(clippy::unused_async_trait_impl)]
     async fn relocate(
         &self,
-        prepared_cask: &PreparedCask,
+        prepared_cask: &PreparedCask<Download>,
+        _replacement_pairs: &ReplacementPairs,
         context: &Context,
     ) -> anyhow::Result<PathBuf> {
         let id = prepared_cask.id();
@@ -22,7 +29,8 @@ impl Artifactory for Artifactor {
     #[expect(clippy::unused_async_trait_impl)]
     async fn link(
         &self,
-        prepared_cask: &PreparedCask,
+        prepared_cask: &PreparedCask<Download>,
+        _replacement_pairs: &ReplacementPairs,
         context: &Context,
     ) -> anyhow::Result<PathBuf> {
         let id = prepared_cask.id();

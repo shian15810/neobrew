@@ -10,7 +10,7 @@ use tokio::sync::watch;
 use crate::{
     context::Context,
     ext::std::sync::OnceLockExt as _,
-    package::prepared::PreparedPackage,
+    package::prepared::{Download, PreparedPackage},
     util::ArchiveFormat,
 };
 
@@ -18,7 +18,7 @@ use crate::{
 pub(crate) struct Session {
     pub(super) channel: Channel,
 
-    pub(super) prepared_package: Arc<PreparedPackage>,
+    pub(super) prepared_package: Arc<PreparedPackage<Download>>,
 
     pub(super) pb: ProgressBar,
 
@@ -27,7 +27,7 @@ pub(crate) struct Session {
 
 impl Session {
     pub(super) fn new(
-        prepared_package: PreparedPackage,
+        prepared_package: PreparedPackage<Download>,
         pb: ProgressBar,
         context: Arc<Context>,
     ) -> Self {
@@ -98,7 +98,7 @@ pub(super) trait Publish<Output> {
 }
 
 pub(super) trait Subscribe<Payload> {
-    fn subscribe(&self) -> anyhow::Result<&Payload>;
+    fn subscribe(&self) -> anyhow::Result<Option<&Payload>>;
 }
 
 #[derive(Clone)]
@@ -118,8 +118,8 @@ impl Publish<ProgressedOutput> for Payloads {
 }
 
 impl Subscribe<ProgressedOutput> for Payloads {
-    fn subscribe(&self) -> anyhow::Result<&ProgressedOutput> {
-        let payload = self.progressed.try_get()?;
+    fn subscribe(&self) -> anyhow::Result<Option<&ProgressedOutput>> {
+        let payload = self.progressed.get();
 
         Ok(payload)
     }
@@ -142,8 +142,8 @@ impl Publish<HashedOutput> for Payloads {
 }
 
 impl Subscribe<HashedOutput> for Payloads {
-    fn subscribe(&self) -> anyhow::Result<&HashedOutput> {
-        let payload = self.hashed.try_get()?;
+    fn subscribe(&self) -> anyhow::Result<Option<&HashedOutput>> {
+        let payload = self.hashed.get();
 
         Ok(payload)
     }
@@ -164,8 +164,8 @@ impl Publish<WrittenOutput> for Payloads {
 }
 
 impl Subscribe<WrittenOutput> for Payloads {
-    fn subscribe(&self) -> anyhow::Result<&WrittenOutput> {
-        let payload = self.written.try_get()?;
+    fn subscribe(&self) -> anyhow::Result<Option<&WrittenOutput>> {
+        let payload = self.written.get();
 
         Ok(payload)
     }
@@ -174,6 +174,7 @@ impl Subscribe<WrittenOutput> for Payloads {
 #[derive(Clone)]
 pub(crate) struct PouredOutput {
     pub(super) dest_dir_path: PathBuf,
+
     pub(super) archive_format: ArchiveFormat,
 }
 
@@ -186,8 +187,8 @@ impl Publish<PouredOutput> for Payloads {
 }
 
 impl Subscribe<PouredOutput> for Payloads {
-    fn subscribe(&self) -> anyhow::Result<&PouredOutput> {
-        let payload = self.poured.try_get()?;
+    fn subscribe(&self) -> anyhow::Result<Option<&PouredOutput>> {
+        let payload = self.poured.get();
 
         Ok(payload)
     }
@@ -207,8 +208,8 @@ impl Publish<RelocatedOutput> for Payloads {
 }
 
 impl Subscribe<RelocatedOutput> for Payloads {
-    fn subscribe(&self) -> anyhow::Result<&RelocatedOutput> {
-        let payload = self.relocated.try_get()?;
+    fn subscribe(&self) -> anyhow::Result<Option<&RelocatedOutput>> {
+        let payload = self.relocated.get();
 
         Ok(payload)
     }
@@ -229,8 +230,8 @@ impl Publish<LinkedOutput> for Payloads {
 }
 
 impl Subscribe<LinkedOutput> for Payloads {
-    fn subscribe(&self) -> anyhow::Result<&LinkedOutput> {
-        let payload = self.linked.try_get()?;
+    fn subscribe(&self) -> anyhow::Result<Option<&LinkedOutput>> {
+        let payload = self.linked.get();
 
         Ok(payload)
     }
@@ -250,8 +251,8 @@ impl Publish<ArtifactedOutput> for Payloads {
 }
 
 impl Subscribe<ArtifactedOutput> for Payloads {
-    fn subscribe(&self) -> anyhow::Result<&ArtifactedOutput> {
-        let payload = self.artifacted.try_get()?;
+    fn subscribe(&self) -> anyhow::Result<Option<&ArtifactedOutput>> {
+        let payload = self.artifacted.get();
 
         Ok(payload)
     }

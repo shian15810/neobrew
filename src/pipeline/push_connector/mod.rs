@@ -14,19 +14,24 @@ use super::{
     state_committer::StateCommitter,
     state_store::{Payloads, Publish, Session, Stage},
 };
+use crate::package::prepared::{Download, PreparedPackage};
 
 pub(crate) struct _PushConnectorMarker;
 
 #[async_trait]
 pub(crate) trait PushConnector: Sized {
+    type State;
     type Staging;
     type Output;
 
-    fn should_run(&self) -> bool {
+    fn should_run(&self, _prepared_package: &PreparedPackage<Download>) -> bool {
         true
     }
 
-    async fn on_skip_run(self) -> anyhow::Result<Option<Self::Output>> {
+    async fn on_skip_run(
+        self,
+        _prepared_package: &PreparedPackage<Download>,
+    ) -> anyhow::Result<Option<Self::Output>> {
         Ok(None)
     }
 
@@ -34,23 +39,24 @@ pub(crate) trait PushConnector: Sized {
         None
     }
 
-    async fn feed(&mut self, chunk: Bytes) -> anyhow::Result<()>;
+    async fn init(
+        &self,
+        prepared_package: &PreparedPackage<Download>,
+    ) -> anyhow::Result<Self::State>;
 
-    async fn flush(&mut self) -> anyhow::Result<Self::Staging>;
+    async fn feed(&self, state: &mut Self::State, chunk: Bytes) -> anyhow::Result<()>;
+
+    async fn flush(&self, state: Self::State) -> anyhow::Result<Self::Staging>;
 
     fn wait_stage(&self) -> Option<Stage> {
         None
     }
 
-    async fn on_final_run(self, staging: Self::Staging) -> anyhow::Result<Self::Output>;
-
-    async fn persist(self) -> anyhow::Result<()> {
-        Ok(())
-    }
-
-    fn cleanup(self) -> anyhow::Result<()> {
-        Ok(())
-    }
+    async fn on_final_run(
+        self,
+        staging: Self::Staging,
+        prepared_package: &PreparedPackage<Download>,
+    ) -> anyhow::Result<Self::Output>;
 
     fn passed_prefix(&self) -> Option<&'static str> {
         None
@@ -65,7 +71,7 @@ pub(crate) trait PushConnector: Sized {
 
 impl<
     Output: Send + 'static,
-    PushConn: PushConnector<Staging: Send, Output = Output> + Send + 'static,
+    PushConn: PushConnector<State: Send, Staging: Send, Output = Output> + Send + 'static,
 > Connector<_PushConnectorMarker> for PushConn
 where
     Payloads: Publish<PushConn::Output>,
@@ -74,7 +80,7 @@ where
     type Output = PushConn::Output;
 
     fn launch(
-        mut self,
+        self,
         mut session: Session,
     ) -> (
         Self::Sink,
@@ -90,9 +96,13 @@ where
         let handle = task::spawn(async move {
             let channel = &mut session.channel;
 
+            let prepared_package = &session.prepared_package;
+
             let pb = &session.pb;
 
-            let should_run = self.should_run();
+            let _context = &session.context;
+
+            let should_run = self.should_run(prepared_package);
 
             let state_committer = StateCommitter {
                 passed_prefix: self.passed_prefix(),
@@ -104,7 +114,7 @@ where
             if !should_run {
                 while rx.recv().await.is_some() {}
 
-                let output = self.on_skip_run().await;
+                let output = self.on_skip_run(prepared_package).await;
                 let output = state_committer.finalize(output, &session)?;
 
                 return Ok(output);
@@ -114,11 +124,13 @@ where
                 pb.set_prefix(running_prefix);
             }
 
+            let mut state = self.init(prepared_package).await?;
+
             while let Some(item) = rx.recv().await {
-                self.feed(item).await?;
+                self.feed(&mut state, item).await?;
             }
 
-            let staging = self.flush().await?;
+            let staging = self.flush(state).await?;
 
             if let Some(wait_stage) = self.wait_stage() {
                 channel
@@ -127,7 +139,7 @@ where
                     .await?;
             }
 
-            let output = self.on_final_run(staging).await;
+            let output = self.on_final_run(staging, prepared_package).await;
             let output = output.map(Some);
             let output = state_committer.finalize(output, &session)?;
 

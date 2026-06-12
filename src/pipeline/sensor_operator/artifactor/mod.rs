@@ -13,28 +13,40 @@ use super::{
     super::state_store::{ArtifactedOutput, PouredOutput, Stage},
     SensorOperator,
 };
-#[cfg(target_os = "macos")]
-use crate::context::dirs::ProjectDirs as _;
 use crate::{
-    context::Context,
-    package::prepared::{PreparedCask, PreparedPackage},
+    context::{Context, dirs::ProjectDirs as _},
+    package::prepared::{Download, PreparedCask, PreparedPackage},
 };
 
-pub(crate) struct Artifactor {
-    #[cfg(target_os = "macos")]
-    replacement_pairs: [(&'static str, String); 4],
+#[cfg(target_os = "macos")]
+type ReplacementPairs = [(&'static str, String); 4];
 
-    #[cfg(target_os = "linux")]
-    replacement_pairs: [(&'static str, String); 3],
-}
+#[cfg(target_os = "linux")]
+type ReplacementPairs = [(&'static str, String); 3];
+
+pub(crate) struct Artifactor;
 
 #[async_trait]
 impl SensorOperator for Artifactor {
     type Payload = PouredOutput;
+    type State = ReplacementPairs;
     type Staging = PathBuf;
     type Output = ArtifactedOutput;
 
-    fn should_run(&self, prepared_package: &PreparedPackage, _context: &Context) -> bool {
+    fn poke_stage(&self) -> Stage {
+        Stage::Poured
+    }
+
+    fn should_run(
+        &self,
+        payload: Option<&Self::Payload>,
+        prepared_package: &PreparedPackage<Download>,
+        _context: &Context,
+    ) -> bool {
+        let Some(_payload) = payload else {
+            return false;
+        };
+
         let PreparedPackage::Cask(_prepared_cask) = prepared_package else {
             return false;
         };
@@ -46,50 +58,7 @@ impl SensorOperator for Artifactor {
         Some("Installing")
     }
 
-    fn poke_stage(&self) -> Stage {
-        Stage::Poured
-    }
-
-    async fn execute(
-        &self,
-        _payload: &Self::Payload,
-        prepared_package: &PreparedPackage,
-        context: &Context,
-    ) -> anyhow::Result<Self::Staging> {
-        let PreparedPackage::Cask(prepared_cask) = prepared_package else {
-            let err = anyhow!("`PreparedFormula` is not supposed to be artifacted");
-
-            return Err(err);
-        };
-
-        let _staged_dir_path = self.relocate(prepared_cask, context).await?;
-
-        let staged_dir_path = self.link(prepared_cask, context).await?;
-
-        Ok(staged_dir_path)
-    }
-
-    fn on_final_run(self, staging: Self::Staging) -> anyhow::Result<Self::Output> {
-        let staged_dir_path = staging;
-
-        let output = ArtifactedOutput {
-            staged_dir_path,
-        };
-
-        Ok(output)
-    }
-
-    fn passed_stage(&self, _should_run: bool, prepared_package: &PreparedPackage) -> Option<Stage> {
-        let PreparedPackage::Cask(_prepared_cask) = prepared_package else {
-            return None;
-        };
-
-        Some(Stage::Artifacted)
-    }
-}
-
-impl Artifactor {
-    pub(crate) fn new(context: &Context) -> Self {
+    fn init(&self, context: &Context) -> anyhow::Result<Self::State> {
         let homebrew_dirs = &context.homebrew_dirs;
 
         #[cfg(target_os = "macos")]
@@ -114,18 +83,72 @@ impl Artifactor {
             (placeholder, replacement_pstr)
         });
 
-        Self {
-            replacement_pairs,
-        }
+        let state = replacement_pairs;
+
+        Ok(state)
     }
 
-    fn resolve_source(&self, pstr: &str) -> PathBuf {
-        self.replace_pstr(pstr)
+    async fn execute(
+        &self,
+        state: &Self::State,
+        prepared_package: &PreparedPackage<Download>,
+        context: &Context,
+    ) -> anyhow::Result<Self::Staging> {
+        let PreparedPackage::Cask(prepared_cask) = prepared_package else {
+            let err = anyhow!("`PreparedFormula` is not supposed to be artifacted");
+
+            return Err(err);
+        };
+
+        let replacement_pairs = state;
+
+        let _staged_dir_path = self
+            .relocate(prepared_cask, replacement_pairs, context)
+            .await?;
+
+        let staged_dir_path = self.link(prepared_cask, replacement_pairs, context).await?;
+
+        let staging = staged_dir_path;
+
+        Ok(staging)
+    }
+
+    fn on_final_run(self, staging: Self::Staging) -> anyhow::Result<Self::Output> {
+        let staged_dir_path = staging;
+
+        let output = ArtifactedOutput {
+            staged_dir_path,
+        };
+
+        Ok(output)
+    }
+
+    fn passed_stage(
+        &self,
+        _should_run: bool,
+        prepared_package: &PreparedPackage<Download>,
+    ) -> Option<Stage> {
+        let PreparedPackage::Cask(_prepared_cask) = prepared_package else {
+            return None;
+        };
+
+        Some(Stage::Artifacted)
+    }
+}
+
+impl Artifactor {
+    fn resolve_source(&self, pstr: &str, replacement_pairs: &ReplacementPairs) -> PathBuf {
+        self.replace_pstr(pstr, replacement_pairs)
     }
 
     #[cfg(debug_assertions)]
-    fn resolve_target(&self, pstr: &str, context: &Context) -> PathBuf {
-        let path = self.replace_pstr(pstr);
+    fn resolve_target(
+        &self,
+        pstr: &str,
+        replacement_pairs: &ReplacementPairs,
+        context: &Context,
+    ) -> PathBuf {
+        let path = self.replace_pstr(pstr, replacement_pairs);
 
         if path.is_relative() {
             return path;
@@ -146,11 +169,17 @@ impl Artifactor {
     }
 
     #[cfg(not(debug_assertions))]
-    fn resolve_target(&self, pstr: &str) -> PathBuf {
-        self.replace_pstr(pstr)
+    fn resolve_target(
+        &self,
+        pstr: &str,
+        replacement_pairs: &ReplacementPairs,
+        _context: &Context,
+    ) -> PathBuf {
+        self.replace_pstr(pstr, replacement_pairs)
     }
 
-    fn replace_pstr(&self, pstr: &str) -> PathBuf {
+    #[expect(clippy::unused_self)]
+    fn replace_pstr(&self, pstr: &str, replacement_pairs: &ReplacementPairs) -> PathBuf {
         let pstr = match pstr.strip_prefix("~/") {
             Some(suffix_pstr) => format!("/$HOME/{suffix_pstr}"),
             None if pstr == "~" => "/$HOME".to_owned(),
@@ -164,8 +193,7 @@ impl Artifactor {
             None => pstr,
         };
 
-        let pstr = self
-            .replacement_pairs
+        let pstr = replacement_pairs
             .iter()
             .fold(pstr, |pstr, (placeholder, replacement_pstr)| {
                 pstr.replace(placeholder, replacement_pstr)
@@ -180,13 +208,15 @@ impl Artifactor {
 trait Artifactory {
     async fn relocate(
         &self,
-        prepared_cask: &PreparedCask,
+        prepared_cask: &PreparedCask<Download>,
+        replacement_pairs: &ReplacementPairs,
         context: &Context,
     ) -> anyhow::Result<PathBuf>;
 
     async fn link(
         &self,
-        prepared_cask: &PreparedCask,
+        prepared_cask: &PreparedCask<Download>,
+        replacement_pairs: &ReplacementPairs,
         context: &Context,
     ) -> anyhow::Result<PathBuf>;
 }

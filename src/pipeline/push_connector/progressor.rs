@@ -8,6 +8,7 @@ use super::{
     super::state_store::{ProgressedOutput, Stage},
     PushConnector,
 };
+use crate::package::prepared::{Download, PreparedPackage, PreparedPackageable as _};
 
 pub(crate) struct Progressor {
     pb: ProgressBar,
@@ -60,10 +61,31 @@ impl Progressor {
         Ok(pb)
     }
 
-    pub(in super::super) fn try_new(
-        pb: ProgressBar,
-        content_length: Option<u64>,
-    ) -> anyhow::Result<Self> {
+    pub(in super::super) fn new(pb: ProgressBar) -> Self {
+        Self {
+            pb,
+        }
+    }
+}
+
+#[async_trait]
+impl PushConnector for Progressor {
+    type State = ProgressBar;
+    type Staging = ProgressBar;
+    type Output = ProgressedOutput;
+
+    fn running_prefix(&self) -> Option<&'static str> {
+        Some("Streaming")
+    }
+
+    async fn init(
+        &self,
+        prepared_package: &PreparedPackage<Download>,
+    ) -> anyhow::Result<Self::State> {
+        let download = prepared_package.download();
+
+        let content_length = download.content_length();
+
         let mut template = Self::TEMPLATE_PREFIX.to_owned();
 
         template.push(' ');
@@ -92,31 +114,21 @@ impl Progressor {
                 .progress_chars("  ")
         };
 
+        let pb = self.pb.clone();
+
         pb.set_style(style);
 
         if let Some(content_length) = content_length {
             pb.set_length(content_length);
         }
 
-        let this = Self {
-            pb,
-        };
+        let state = pb;
 
-        Ok(this)
-    }
-}
-
-#[async_trait]
-impl PushConnector for Progressor {
-    type Staging = ();
-    type Output = ProgressedOutput;
-
-    fn running_prefix(&self) -> Option<&'static str> {
-        Some("Streaming")
+        Ok(state)
     }
 
-    async fn feed(&mut self, chunk: Bytes) -> anyhow::Result<()> {
-        let pb = &self.pb;
+    async fn feed(&self, state: &mut Self::State, chunk: Bytes) -> anyhow::Result<()> {
+        let pb = state;
 
         let content_length = chunk.len();
         let content_length = u64::try_from(content_length)?;
@@ -126,12 +138,20 @@ impl PushConnector for Progressor {
         Ok(())
     }
 
-    async fn flush(&mut self) -> anyhow::Result<Self::Staging> {
-        Ok(())
+    async fn flush(&self, state: Self::State) -> anyhow::Result<Self::Staging> {
+        let pb = state;
+
+        let staging = pb;
+
+        Ok(staging)
     }
 
-    async fn on_final_run(self, _staging: Self::Staging) -> anyhow::Result<Self::Output> {
-        let pb = self.pb;
+    async fn on_final_run(
+        self,
+        staging: Self::Staging,
+        _prepared_package: &PreparedPackage<Download>,
+    ) -> anyhow::Result<Self::Output> {
+        let pb = staging;
 
         let output = ProgressedOutput {
             position: pb.position(),
