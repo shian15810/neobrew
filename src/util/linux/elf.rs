@@ -1,23 +1,31 @@
-use anyhow::{Result, anyhow};
+use std::{io::ErrorKind, path::Path};
+
+use tokio::{fs::File, io::AsyncReadExt as _};
 
 pub(crate) struct Elf;
 
 impl Elf {
-    const MAGIC_NUMBER: &[u8; 4] = b"\x7fELF";
+    const ELF_MAGIC: &[u8; 4] = b"\x7fELF";
 }
 
 impl Elf {
-    pub(crate) fn has_magic_number(bytes: &[u8]) -> Result<bool> {
-        let &[b0, b1, b2, b3, ..] = bytes else {
-            let err = anyhow!("Not enough header bytes");
+    pub(crate) async fn has_magic(path: &Path) -> anyhow::Result<bool> {
+        let mut file = File::open(path).await?;
 
-            return Err(err);
-        };
+        let mut peek_buf = [0_u8; 4];
 
-        let header_bytes = &[b0, b1, b2, b3];
+        match file.read_exact(&mut peek_buf).await {
+            Ok(_) => {},
+            Err(err) if err.kind() == ErrorKind::UnexpectedEof => return Ok(false),
+            Err(err) => {
+                let err = anyhow::Error::from(err);
 
-        let has_magic_number = header_bytes == Self::MAGIC_NUMBER;
+                return Err(err);
+            },
+        }
 
-        Ok(has_magic_number)
+        let has_magic = &peek_buf == Self::ELF_MAGIC;
+
+        Ok(has_magic)
     }
 }

@@ -1,4 +1,4 @@
-use std::{borrow::Cow, sync::Arc};
+use std::sync::Arc;
 
 use super::{
     super::{
@@ -11,8 +11,8 @@ use super::{
 
 pub(crate) struct ResolvedFormula {
     pub(in super::super) name: String,
-    versions: Versions,
-    revision: u64,
+    pub(in super::super) versions: Versions,
+    pub(in super::super) revision: u64,
     pub(in super::super) bottle: Bottle,
     dependencies: Vec<Arc<Self>>,
     pub(in super::super) keg_only: bool,
@@ -41,18 +41,11 @@ impl Packageable for ResolvedFormula {
     }
 }
 
-impl ResolvedPackageable for ResolvedFormula {
-    fn version(&self) -> Cow<'_, str> {
-        let version = &self.versions.stable;
+impl ResolvedPackageable for ResolvedFormula {}
 
-        match self.revision {
-            0 => Cow::Borrowed(version),
-            revision => {
-                let version_revision = format!("{version}_{revision}");
-
-                Cow::Owned(version_revision)
-            },
-        }
+impl ResolvedFormula {
+    pub(crate) fn dependencies_mut(&mut self) -> &mut Vec<Arc<Self>> {
+        &mut self.dependencies
     }
 }
 

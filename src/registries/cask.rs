@@ -1,6 +1,5 @@
 use std::{path::PathBuf, sync::Arc};
 
-use anyhow::Result;
 use foyer::{Cache, CacheBuilder};
 
 use super::{Registrable, RegistrableJson};
@@ -35,7 +34,7 @@ impl Registrable for CaskRegistry {
         }
     }
 
-    async fn resolve(self: Arc<Self>, package: Arc<str>) -> Result<Arc<Self::ResolvedPackage>> {
+    async fn resolve(self: Arc<Self>, package: Arc<str>) -> anyhow::Result<Arc<ResolvedCask>> {
         let resolved_cask = self.resolve_inner(package).await?;
 
         Ok(resolved_cask)
@@ -43,8 +42,11 @@ impl Registrable for CaskRegistry {
 }
 
 impl CaskRegistry {
-    async fn resolve_inner(self: Arc<Self>, package: Arc<str>) -> Result<Arc<ResolvedCask>> {
-        let resolved_cask = self
+    async fn resolve_inner(
+        self: Arc<Self>,
+        package: Arc<str>,
+    ) -> anyhow::Result<Arc<ResolvedCask>> {
+        let entry = self
             .store
             .get_or_fetch(&package, || {
                 let this = Arc::clone(&self);
@@ -52,12 +54,13 @@ impl CaskRegistry {
                 this.fetch(Arc::clone(&package))
             })
             .await?;
-        let resolved_cask = Arc::clone(resolved_cask.value());
+
+        let resolved_cask = Arc::clone(entry.value());
 
         Ok(resolved_cask)
     }
 
-    async fn fetch(self: Arc<Self>, package: Arc<str>) -> Result<Arc<ResolvedCask>> {
+    async fn fetch(self: Arc<Self>, package: Arc<str>) -> anyhow::Result<Arc<ResolvedCask>> {
         let api_url = Self::API_URL.replace("{}", &package);
 
         let resp = self.context.client.get(api_url).send().await?;
@@ -80,8 +83,8 @@ impl RegistrableJson for CaskRegistry {
     fn json_path(&self, id: &str) -> PathBuf {
         let file_name = format!("{id}.json");
 
-        let dir = self.context.homebrew_dirs.cache_dir();
+        let cache_dir_path = self.context.homebrew_dirs.cache_dir();
 
-        dir.join("api/cask").join(file_name)
+        cache_dir_path.join("api/cask").join(file_name)
     }
 }

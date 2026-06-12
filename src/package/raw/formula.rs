@@ -1,6 +1,7 @@
-use std::{borrow::Cow, collections::HashMap};
+use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
 use serde::Deserialize;
+use serde_with::DeserializeFromStr;
 
 use super::{super::Packageable, RawPackageable};
 
@@ -30,20 +31,7 @@ impl Packageable for RawFormula {
     }
 }
 
-impl RawPackageable for RawFormula {
-    fn version(&self) -> Cow<'_, str> {
-        let version = &self.versions.stable;
-
-        match self.revision {
-            0 => Cow::Borrowed(version),
-            revision => {
-                let version_revision = format!("{version}_{revision}");
-
-                Cow::Owned(version_revision)
-            },
-        }
-    }
-}
+impl RawPackageable for RawFormula {}
 
 #[derive(Deserialize)]
 pub(in super::super) struct Versions {
@@ -68,10 +56,34 @@ pub(in super::super) struct BottleStableFile {
     pub(in super::super) sha256: String,
 }
 
-#[derive(PartialEq, Deserialize)]
+#[derive(DeserializeFromStr)]
 pub(in super::super) enum BottleStableFileCellar {
-    #[serde(rename = ":any")]
     Any,
-    #[serde(rename = ":any_skip_relocation")]
-    AnySkipRelocation,
+    AnySkipRelocator,
+    Path(PathBuf),
+}
+
+#[cfg(not(debug_assertions))]
+use std::convert::Infallible;
+
+impl FromStr for BottleStableFileCellar {
+    #[cfg(debug_assertions)]
+    type Err = !;
+
+    #[cfg(not(debug_assertions))]
+    type Err = Infallible;
+
+    fn from_str(bottle_cellar: &str) -> Result<Self, Self::Err> {
+        let bottle_cellar = match bottle_cellar {
+            "any" => Self::Any,
+            "any_skip_relocation" => Self::AnySkipRelocator,
+            bottle_cellar_pstr => {
+                let bottle_cellar_path = PathBuf::from(bottle_cellar_pstr);
+
+                Self::Path(bottle_cellar_path)
+            },
+        };
+
+        Ok(bottle_cellar)
+    }
 }

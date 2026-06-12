@@ -1,8 +1,22 @@
-use super::super::Packageable;
+use super::{
+    super::{Packageable, prepared::PreparedFormula},
+    InstalledPackageable,
+};
 
 pub(crate) struct InstalledFormula {
     name: String,
-    version_revision: String,
+    version: String,
+    is_requested: bool,
+}
+
+impl From<PreparedFormula> for InstalledFormula {
+    fn from(prepared_formula: PreparedFormula) -> Self {
+        Self {
+            name: prepared_formula.name,
+            version: prepared_formula.version,
+            is_requested: prepared_formula.is_requested,
+        }
+    }
 }
 
 impl Packageable for InstalledFormula {
@@ -11,6 +25,8 @@ impl Packageable for InstalledFormula {
     }
 
     fn version(&self) -> &str {
-        &self.version_revision
+        &self.version
     }
 }
+
+impl InstalledPackageable for InstalledFormula {}

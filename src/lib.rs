@@ -1,6 +1,13 @@
 #![cfg_attr(
     debug_assertions,
-    feature(const_precise_live_drops, const_trait_impl, iterator_try_collect)
+    feature(
+        const_precise_live_drops,
+        const_trait_impl,
+        iterator_try_collect,
+        never_type,
+        trait_alias,
+        type_changing_struct_update,
+    )
 )]
 #![cfg_attr(debug_assertions, feature(doc_cfg))]
 #![cfg_attr(
@@ -32,21 +39,19 @@
 #![doc(test(attr(warn(unused), deny(warnings))))]
 #![expect(rustdoc::missing_crate_level_docs)]
 
-mod caches;
 pub mod command;
+mod compatibility;
 pub mod context;
 mod ext;
-mod linker;
 mod macros;
 mod package;
 mod pipeline;
+mod receipt;
 mod registries;
-mod relocation;
-mod streams;
 mod util;
 
 use clap::{ArgMatches, FromArgMatches as _};
-use proc_exit::prelude::*;
+use proc_exit::WithCodeResultExt as _;
 
 use self::{command::Cli, context::Context};
 

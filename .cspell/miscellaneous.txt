@@ -1,2 +1,6 @@
 # Custom Dictionary Words
+donotpresent
+eula
 noqa
+parallelly
+Recents

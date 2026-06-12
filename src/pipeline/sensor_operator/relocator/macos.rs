@@ -1,0 +1,142 @@
+use std::path::Path;
+
+use arwen::macho::{MachoContainer, MachoType};
+use bytes::Bytes;
+use tempfile::NamedTempFile;
+use tokio::{
+    fs::{self, File},
+    io::AsyncWriteExt as _,
+    task,
+};
+use tokio_util::task::AbortOnDropHandle;
+
+use super::{Relocator, Relocatory, ReplacementPairs};
+use crate::{
+    ext::{std::path::PathExt as _, tokio::fs::FileExt as _},
+    util::macos,
+};
+
+impl Relocatory for Relocator {
+    async fn patch_file(
+        &self,
+        dest_file_path: &Path,
+        replacement_pairs: &ReplacementPairs,
+    ) -> anyhow::Result<()> {
+        let has_magic = macos::MachO::has_magic(dest_file_path).await?;
+
+        if !has_magic {
+            return Ok(());
+        }
+
+        let bytes = fs::read(dest_file_path).await?;
+        let bytes = Bytes::from(bytes);
+
+        let this = self.clone();
+
+        let handle = task::spawn_blocking({
+            let bytes = bytes.clone();
+
+            let replacement_pairs = replacement_pairs.clone();
+
+            move || {
+                let replaced_bytes = this.replace_bytes(&bytes, &replacement_pairs)?;
+
+                anyhow::Ok(replaced_bytes)
+            }
+        });
+        let handle = AbortOnDropHandle::new(handle);
+
+        let replaced_bytes = handle.await??;
+
+        if replaced_bytes == *bytes {
+            return Ok(());
+        }
+
+        let metadata = fs::symlink_metadata(dest_file_path).await?;
+
+        let permissions = metadata.permissions();
+
+        let dest_file_base_path = dest_file_path.base()?;
+
+        let temp_file = NamedTempFile::new_in(dest_file_base_path)?;
+
+        let temp_file_path = temp_file.path();
+
+        let mut async_temp_file = File::open_write(temp_file_path).await?;
+
+        async_temp_file.write_all(&replaced_bytes).await?;
+
+        async_temp_file.shutdown().await?;
+
+        let dest_file = temp_file.persist(dest_file_path)?;
+
+        dest_file.set_permissions(permissions)?;
+
+        macos::Codesign::in_place(dest_file_path).await?;
+
+        Ok(())
+    }
+
+    fn replace_bytes(
+        &self,
+        bytes: &Bytes,
+        replacement_pairs: &ReplacementPairs,
+    ) -> anyhow::Result<Vec<u8>> {
+        let mut container = MachoContainer::parse(bytes)?;
+
+        let rpaths = match &container.inner {
+            MachoType::SingleArch(single) => single.inner.rpaths.clone(),
+            MachoType::Fat(fat) => fat
+                .archs
+                .iter()
+                .flat_map(|arch| arch.inner.inner.rpaths.iter().copied())
+                .collect::<Vec<_>>(),
+        };
+
+        let install_ids = match &container.inner {
+            MachoType::SingleArch(single) => single.inner.name.into_iter().collect::<Vec<_>>(),
+            MachoType::Fat(fat) => fat
+                .archs
+                .iter()
+                .filter_map(|arch| arch.inner.inner.name)
+                .collect::<Vec<_>>(),
+        };
+
+        let install_names = match &container.inner {
+            MachoType::SingleArch(single) => single.inner.libs.clone(),
+            MachoType::Fat(fat) => fat
+                .archs
+                .iter()
+                .flat_map(|arch| arch.inner.inner.libs.iter().copied())
+                .collect::<Vec<_>>(),
+        };
+
+        for old_rpath in rpaths {
+            let new_rpath = self.replace_pstr(old_rpath, replacement_pairs);
+
+            if new_rpath != old_rpath {
+                container.change_rpath(old_rpath, &new_rpath)?;
+            }
+        }
+
+        for old_install_id in install_ids {
+            let new_install_id = self.replace_pstr(old_install_id, replacement_pairs);
+
+            if new_install_id != old_install_id {
+                container.change_install_id(&new_install_id)?;
+            }
+        }
+
+        for old_install_name in install_names {
+            let new_install_name = self.replace_pstr(old_install_name, replacement_pairs);
+
+            if new_install_name != old_install_name {
+                container.change_install_name(old_install_name, &new_install_name)?;
+            }
+        }
+
+        let replaced_bytes = container.data;
+
+        Ok(replaced_bytes)
+    }
+}

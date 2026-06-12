@@ -3,7 +3,6 @@ mod global_env;
 mod homebrew_env;
 mod neobrew_env;
 
-use anyhow::Result;
 use clap::{ArgMatches, ColorChoice};
 use clap_verbosity_flag::{Verbosity, VerbosityFilter};
 use figment::{
@@ -41,14 +40,14 @@ impl Default for Config {
 }
 
 impl Config {
-    pub(super) fn load(matches: &ArgMatches) -> Result<Self> {
+    pub(super) fn load(matches: &ArgMatches) -> anyhow::Result<Self> {
         let this = Self::figment(matches)?;
         let this: Self = this.extract()?;
 
         Ok(this)
     }
 
-    fn figment(matches: &ArgMatches) -> Result<Figment> {
+    fn figment(matches: &ArgMatches) -> anyhow::Result<Figment> {
         let default_config_provider = Self::default();
         let default_config_provider = default_config_provider.into_provider();
 
@@ -113,13 +112,13 @@ trait ProviderConfig: Sized {
 trait EnvConfig: DeserializeOwned {
     const ENV_PREFIX: &str;
 
-    fn from_env() -> Result<Self> {
+    fn from_env() -> anyhow::Result<Self> {
         let this = Self::default_from_env()?;
 
         Ok(this)
     }
 
-    fn default_from_env() -> Result<Self> {
+    fn default_from_env() -> anyhow::Result<Self> {
         let this = envy::prefixed(Self::ENV_PREFIX);
         let this: Self = this.from_env()?;
 

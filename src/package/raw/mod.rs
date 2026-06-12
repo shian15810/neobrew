@@ -1,14 +1,31 @@
 mod cask;
 mod formula;
 
-use std::borrow::Cow;
-
 use enum_dispatch::enum_dispatch;
 
-pub(crate) use self::{cask::RawCask, formula::RawFormula};
 pub(super) use self::{
-    cask::{Artifact, Variation},
+    cask::{
+        Artifact,
+        ArtifactCommonSource,
+        ArtifactGenerateCompletionsFromExecutableSource,
+        ArtifactInstallerSource,
+        ArtifactPkgSource,
+        ArtifactPkgSourceOptionsChoice,
+        Variation,
+    },
     formula::{Bottle, BottleStable, BottleStableFile, BottleStableFileCellar, Versions},
+};
+pub(crate) use self::{
+    cask::{
+        DependsOn,
+        DependsOnArch,
+        DependsOnArchBrand,
+        DependsOnLinux,
+        DependsOnMaximumMacos,
+        DependsOnMinimumMacos,
+        RawCask,
+    },
+    formula::RawFormula,
 };
 use super::Packageable;
 
@@ -18,8 +35,5 @@ pub(crate) enum RawPackage {
     Cask(RawCask),
 }
 
-#[cfg_attr(debug_assertions, expect(shadowing_supertrait_items))]
 #[enum_dispatch(RawPackage)]
-trait RawPackageable: Packageable {
-    fn version(&self) -> Cow<'_, str>;
-}
+trait RawPackageable: Packageable {}

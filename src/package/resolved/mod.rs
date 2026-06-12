@@ -1,9 +1,9 @@
 mod cask;
 mod formula;
 
-use std::{borrow::Cow, sync::Arc};
+use std::sync::Arc;
 
-use either::Either::{Left, Right};
+use either::{Left, Right};
 use enum_dispatch::enum_dispatch;
 
 pub(crate) use self::{cask::ResolvedCask, formula::ResolvedFormula};
@@ -32,17 +32,10 @@ impl ResolvedPackage {
     }
 }
 
-#[cfg_attr(debug_assertions, expect(shadowing_supertrait_items))]
 #[enum_dispatch(ResolvedPackage)]
-pub(super) trait ResolvedPackageable: Packageable {
-    fn version(&self) -> Cow<'_, str>;
-}
+pub(super) trait ResolvedPackageable: Packageable {}
 
-impl<ResolvedPackage: ResolvedPackageable> ResolvedPackageable for Arc<ResolvedPackage> {
-    fn version(&self) -> Cow<'_, str> {
-        <ResolvedPackage as ResolvedPackageable>::version(self)
-    }
-}
+impl<ResolvedPackage: ResolvedPackageable> ResolvedPackageable for Arc<ResolvedPackage> {}
 
 trait ResolvedPackageableIter: ResolvedPackageable {
     fn iter(self: &Arc<Self>) -> impl Iterator<Item = Arc<Self>> + use<Self>;

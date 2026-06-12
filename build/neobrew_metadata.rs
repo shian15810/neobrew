@@ -1,6 +1,5 @@
 use std::array;
 
-use anyhow::Result;
 use cargo_toml::Manifest;
 use serde::Deserialize;
 
@@ -22,7 +21,7 @@ impl NeobrewMetadata {
 
     const ENV_PREFIX: &str = "CARGO_PKG_METADATA_NEOBREW_";
 
-    pub(super) fn setup() -> Result<()> {
+    pub(super) fn setup() -> anyhow::Result<()> {
         Self::rerun_if_changed();
 
         Self::rerun_if_env_changed();
@@ -44,7 +43,7 @@ impl NeobrewMetadata {
         }
     }
 
-    fn set_rustc_env() -> Result<()> {
+    fn set_rustc_env() -> anyhow::Result<()> {
         let cargo_toml_path = env!("CARGO_MANIFEST_PATH");
 
         let manifest: Manifest<Metadata> = Manifest::from_path_with_metadata(cargo_toml_path)?;

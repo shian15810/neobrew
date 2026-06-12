@@ -2,7 +2,8 @@
 
 set -Eeuo pipefail
 
-shopt -s inherit_errexit xpg_echo
+shopt -s xpg_echo
+shopt -s inherit_errexit || true
 
 export LC_ALL="C"
 

@@ -5,7 +5,8 @@ use std::{num::NonZeroUsize, sync::LazyLock, thread};
 
 use clap::ArgMatches;
 use oci_client::{Client, client::ClientConfig};
-use proc_exit::prelude::*;
+use os_info::Info;
+use proc_exit::WithCodeResultExt as _;
 use tokio::sync::Semaphore;
 
 use self::{
@@ -13,7 +14,10 @@ use self::{
     dirs::{HomebrewDirs, NeobrewDirs},
 };
 
+pub(crate) static INFO: LazyLock<Info> = LazyLock::new(os_info::get);
+
 const MAX_CONCURRENCY: usize = 1 << 4;
+const BUFFER_MULTIPLIER: usize = 1 << 4;
 
 static CONCURRENCY_LIMIT: LazyLock<usize> = LazyLock::new(|| {
     thread::available_parallelism()
@@ -22,10 +26,10 @@ static CONCURRENCY_LIMIT: LazyLock<usize> = LazyLock::new(|| {
         .min(MAX_CONCURRENCY)
 });
 
-const BUFFER_MULTIPLIER: usize = 1 << 4;
-
 #[expect(clippy::module_name_repetitions)]
 pub struct Context {
+    pub(crate) os_info: &'static Info,
+
     pub(crate) config: Config,
 
     pub(crate) homebrew_dirs: HomebrewDirs,
@@ -42,17 +46,19 @@ pub struct Context {
 
 impl Context {
     #[expect(clippy::missing_errors_doc)]
-    pub fn new(matches: &ArgMatches) -> Result<Self, proc_exit::Exit> {
+    pub fn load(matches: &ArgMatches) -> Result<Self, proc_exit::Exit> {
         let config = Config::load(matches);
         let config = config.with_code(proc_exit::sysexits::CONFIG_ERR)?;
 
-        let homebrew_dirs = HomebrewDirs::new();
+        let homebrew_dirs = HomebrewDirs::load();
         let homebrew_dirs = homebrew_dirs.with_code(proc_exit::sysexits::OS_ERR)?;
 
-        let neobrew_dirs = NeobrewDirs::new();
+        let neobrew_dirs = NeobrewDirs::load();
         let neobrew_dirs = neobrew_dirs.with_code(proc_exit::sysexits::OS_ERR)?;
 
         let this = Self {
+            os_info: &INFO,
+
             config,
 
             homebrew_dirs,

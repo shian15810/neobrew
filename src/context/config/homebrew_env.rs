@@ -1,6 +1,4 @@
-use std::result;
-
-use anyhow::{Result, anyhow};
+use anyhow::anyhow;
 use clap::ColorChoice;
 use clap_verbosity_flag::VerbosityFilter;
 use figment::{
@@ -35,7 +33,7 @@ pub(super) struct HomebrewEnvConfig {
 impl EnvConfig for HomebrewEnvConfig {
     const ENV_PREFIX: &str = "HOMEBREW_";
 
-    fn from_env() -> Result<Self> {
+    fn from_env() -> anyhow::Result<Self> {
         let this = Self::default_from_env()?;
 
         Self::ensure_default_prefix(&this)?;
@@ -47,12 +45,14 @@ impl EnvConfig for HomebrewEnvConfig {
 impl HomebrewEnvConfig {
     #[cfg_attr(not(debug_assertions), visibility::make(pub(in super::super)))]
     const DEFAULT_PREFIX: &str = cfg_select! {
-        all(target_os = "macos", target_arch = "aarch64") => "/opt/homebrew",
-        all(target_os = "macos", target_arch = "x86_64") => "/usr/local",
+        target_os = "macos" => cfg_select! {
+            target_arch = "aarch64" => "/opt/homebrew",
+            target_arch = "x86_64" => "/usr/local",
+        },
         target_os = "linux" => "/home/linuxbrew/.linuxbrew",
     };
 
-    fn ensure_default_prefix(&self) -> Result<()> {
+    fn ensure_default_prefix(&self) -> anyhow::Result<()> {
         let prefix = &self.prefix;
 
         if prefix == Self::DEFAULT_PREFIX {
@@ -60,7 +60,7 @@ impl HomebrewEnvConfig {
         }
 
         let err = anyhow!(formatdoc! {r#"
-            Unsupported `HOMEBREW_PREFIX` value detected: "{prefix}"
+            Unsupported `HOMEBREW_PREFIX` detected: "{prefix}"
 
             Neobrew requires the default prefix to use pre-compiled bottles and casks:
 
@@ -116,16 +116,14 @@ impl ProviderConfig for HomebrewEnvConfig {
 struct HomebrewBoolFromStr;
 
 impl<'de> DeserializeAs<'de, bool> for HomebrewBoolFromStr {
-    fn deserialize_as<D: Deserializer<'de>>(deserializer: D) -> result::Result<bool, D::Error> {
+    fn deserialize_as<D: Deserializer<'de>>(deserializer: D) -> Result<bool, D::Error> {
         let value = homebrew_bool_from_str(deserializer)?;
 
         Ok(value)
     }
 }
 
-fn homebrew_bool_from_str<'de, D: Deserializer<'de>>(
-    deserializer: D,
-) -> result::Result<bool, D::Error> {
+fn homebrew_bool_from_str<'de, D: Deserializer<'de>>(deserializer: D) -> Result<bool, D::Error> {
     const FALSY_VALUES: &[&str] = &["false", "no", "off", "nil", "0"];
 
     let value = String::deserialize(deserializer)?;

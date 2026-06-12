@@ -12,16 +12,19 @@ upper-case-acronyms-aggressive = true
 absolute-paths-allowed-crates = ["build_rs", "infer", "proc_exit"]
 allowed-idents-below-min-chars = ["e", ".."]
 disallowed-macros = [
-    "std::panic",
-    "std::todo",
-    "std::unimplemented",
-    "std::unreachable"
+    "core::panic",
+    "core::todo",
+    "core::unimplemented",
+    "core::unreachable",
 ]
 disallowed-methods = [
-    "std::hint::assert_unchecked",
-    "std::hint::unreachable_unchecked",
+    "core::hint::assert_unchecked",
+    "core::hint::unreachable_unchecked",
+    "std::fs::metadata",
     "std::panic::panic_any",
     "std::panic::resume_unwind",
     "std::process::abort",
     "std::process::exit",
+    "tokio::fs::metadata",
 ]
+disallowed-names = ["foobar", "bar", "qux", ".."]

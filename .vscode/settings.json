@@ -72,6 +72,7 @@
 
     "rust-analyzer.assist.preferSelf": true,
     "rust-analyzer.assist.emitMustUse": true,
+
     "rust-analyzer.imports.merge.glob": false,
     "rust-analyzer.imports.granularity.enforce": true,
     "rust-analyzer.imports.preferPrelude": true,
@@ -82,12 +83,22 @@
     ],
 
     "rust-analyzer.check.command": "clippy",
-    "rust-analyzer.cargo.features": "all",
-    "rust-analyzer.cargo.targetDir": true,
+    "rust-analyzer.check.targets": [
+        "aarch64-apple-darwin",
+        "aarch64-unknown-linux-gnu",
+        "x86_64-apple-darwin",
+        "x86_64-unknown-linux-gnu",
+    ],
+
+    "rust-analyzer.cargo.target": "x86_64-apple-darwin",
     "rust-analyzer.cargo.cfgs": [
         "debug_assertions",
         "miri",
     ],
+
+    "rust-analyzer.cargo.targetDir": true,
+    "rust-analyzer.cargo.features": "all",
+
     "rust-analyzer.cargo.extraEnv": {
         "RUSTUP_TOOLCHAIN": "nightly",
     },

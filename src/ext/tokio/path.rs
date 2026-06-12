@@ -1,6 +1,7 @@
 use std::{
     fs::FileType,
     io::{self, ErrorKind},
+    os::unix::fs::PermissionsExt as _,
     path::{Path, PathBuf},
 };
 
@@ -16,16 +17,20 @@ pub(crate) trait PathExt {
 
     async fn file_type(&self) -> io::Result<FileType>;
 
+    async fn is_dir_empty(&self) -> io::Result<bool>;
+
+    async fn add_permissions_mode(&self, mode: u32) -> io::Result<()>;
+
     async fn is_dir_exists_nofollow(&self) -> io::Result<bool>;
 
     async fn is_file_exists_nofollow(&self) -> io::Result<bool>;
 
-    async fn is_symlink_exists_nofollow(&self) -> io::Result<bool>;
+    async fn is_link_exists_nofollow(&self) -> io::Result<bool>;
 
-    async fn create_relative_symlink_atomically_at(
+    async fn create_relative_link_atomically_at(
         &self,
-        symlink_path: impl AsRef<Self>,
-    ) -> io::Result<PathBuf>;
+        link_path: impl AsRef<Self>,
+    ) -> io::Result<()>;
 }
 
 impl PathExt for Path {
@@ -39,7 +44,7 @@ impl PathExt for Path {
         let path = match fs::canonicalize(self).await {
             Ok(path) => path,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
-            Err(err) => return Err(err)?,
+            Err(err) => return Err(err),
         };
 
         Ok(Some(path))
@@ -53,11 +58,37 @@ impl PathExt for Path {
         Ok(file_type)
     }
 
+    async fn is_dir_empty(&self) -> io::Result<bool> {
+        let mut dir_entries = match fs::read_dir(self).await {
+            Ok(dir_entries) => dir_entries,
+            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(true),
+            Err(err) => return Err(err),
+        };
+
+        let dir_entry = dir_entries.next_entry().await?;
+
+        let is_none = dir_entry.is_none();
+
+        Ok(is_none)
+    }
+
+    async fn add_permissions_mode(&self, mode: u32) -> io::Result<()> {
+        let metadata = fs::symlink_metadata(self).await?;
+
+        let mut permissions = metadata.permissions();
+
+        permissions.set_mode(permissions.mode() | mode);
+
+        fs::set_permissions(self, permissions).await?;
+
+        Ok(())
+    }
+
     async fn is_dir_exists_nofollow(&self) -> io::Result<bool> {
         let metadata = match fs::symlink_metadata(self).await {
             Ok(metadata) => metadata,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(false),
-            Err(err) => return Err(err)?,
+            Err(err) => return Err(err),
         };
 
         let file_type = metadata.file_type();
@@ -71,7 +102,7 @@ impl PathExt for Path {
         let metadata = match fs::symlink_metadata(self).await {
             Ok(metadata) => metadata,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(false),
-            Err(err) => return Err(err)?,
+            Err(err) => return Err(err),
         };
 
         let file_type = metadata.file_type();
@@ -81,11 +112,11 @@ impl PathExt for Path {
         Ok(is_file)
     }
 
-    async fn is_symlink_exists_nofollow(&self) -> io::Result<bool> {
+    async fn is_link_exists_nofollow(&self) -> io::Result<bool> {
         let metadata = match fs::symlink_metadata(self).await {
             Ok(metadata) => metadata,
             Err(err) if err.kind() == ErrorKind::NotFound => return Ok(false),
-            Err(err) => return Err(err)?,
+            Err(err) => return Err(err),
         };
 
         let file_type = metadata.file_type();
@@ -95,25 +126,28 @@ impl PathExt for Path {
         Ok(is_symlink)
     }
 
-    async fn create_relative_symlink_atomically_at(
+    async fn create_relative_link_atomically_at(
         &self,
-        symlink_path: impl AsRef<Self>,
-    ) -> io::Result<PathBuf> {
-        let symlink_path = symlink_path.as_ref();
+        link_path: impl AsRef<Self>,
+    ) -> io::Result<()> {
+        let link_path = link_path.as_ref();
 
-        let symlink_base_path = symlink_path.base().map_err(io::Error::other)?;
+        let link_base_path = link_path.base();
+        let link_base_path = link_base_path.map_err(io::Error::other)?;
 
-        let symlink_diff_path = diff_paths(self, symlink_base_path)
+        let link_diff_path = diff_paths(self, link_base_path)
             .ok_or_else(|| io::Error::other("Failed to diff paths"))?;
 
-        let symlink_tmp_path = symlink_path.with_added_extension("tmp");
+        let link_tmp_path = link_path.with_added_extension("tmp");
 
-        fs::symlink(symlink_diff_path, &symlink_tmp_path).await?;
+        fs::symlink(link_diff_path, &link_tmp_path).await?;
 
-        fs::rename(symlink_tmp_path, symlink_path).await?;
+        if let Err(err) = fs::rename(&link_tmp_path, link_path).await {
+            fs::remove_file(link_tmp_path).await?;
 
-        let symlink_path = symlink_path.to_owned();
+            return Err(err);
+        }
 
-        Ok(symlink_path)
+        Ok(())
     }
 }

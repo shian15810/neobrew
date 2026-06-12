@@ -1,7 +1,10 @@
 # Custom Dictionary Words
+clicolor
 Eeuo
 euvx
+mann
+mountrandom
+nobrowse
 OLDIFS
 postlint
 posttest
-untap

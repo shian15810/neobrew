@@ -1,12 +1,11 @@
 mod cask;
 mod formula;
 
-use std::{path::PathBuf, sync::Arc};
+use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
-use anyhow::{Result, anyhow};
+use anyhow::anyhow;
 use bytes::Bytes;
-use futures::stream::{self, StreamExt as _, TryStreamExt as _};
-use itertools::Itertools as _;
+use futures::future::{self, FutureExt as _};
 use tempfile::NamedTempFile;
 use tokio::{
     fs::{self, File},
@@ -45,82 +44,100 @@ impl Registries {
 
     pub(crate) async fn resolve(
         self,
-        packages: impl IntoIterator<Item = String>,
-        strategy: ResolutionStrategy,
-    ) -> Result<Vec<ResolvedPackage>> {
-        let resolved_packages = self.resolve_many(packages, strategy).await?;
-        let resolved_packages = resolved_packages
+        packages: &[String],
+    ) -> anyhow::Result<(Vec<ResolvedPackage>, HashSet<String>)> {
+        let mut requested_package_ids = HashSet::new();
+
+        let mut resolved_package_ids = HashSet::new();
+
+        let resolved_packages = self.resolve_many(packages).await?;
+        let mut resolved_packages = resolved_packages
             .into_iter()
-            .flat_map(|resolved_package| resolved_package.iter())
-            .sorted_by(|left, right| left.id().cmp(right.id()))
-            .dedup_by(|left, right| left.id() == right.id())
+            .flat_map(|resolved_package| {
+                let mut resolved_package_iter = resolved_package.iter().peekable();
+
+                if let Some(resolved_package) = resolved_package_iter.peek() {
+                    let id = resolved_package.id();
+                    let id = id.to_owned();
+
+                    requested_package_ids.insert(id);
+                }
+
+                resolved_package_iter
+            })
+            .filter(|resolved_package| {
+                let id = resolved_package.id();
+                let id = id.to_owned();
+
+                resolved_package_ids.insert(id)
+            })
             .collect::<Vec<_>>();
 
+        for resolved_package in &mut resolved_packages {
+            #[expect(clippy::collapsible_if)]
+            if let ResolvedPackage::Formula(resolved_formula) = resolved_package {
+                if let Some(resolved_formula) = Arc::get_mut(resolved_formula) {
+                    resolved_formula.dependencies_mut().clear();
+                }
+            }
+        }
+
+        resolved_packages.sort_by(|left, right| left.id().cmp(right.id()));
+
+        Ok((resolved_packages, requested_package_ids))
+    }
+
+    async fn resolve_many(self, packages: &[String]) -> anyhow::Result<Vec<ResolvedPackage>> {
+        let resolved_packages_fut = packages.iter().map(async |package| {
+            let package = package.as_ref();
+            let package = Arc::from(package);
+
+            let resolved_package = self.resolve_one(package).await?;
+
+            anyhow::Ok(resolved_package)
+        });
+
+        let resolved_packages = future::try_join_all(resolved_packages_fut).await?;
+
         Ok(resolved_packages)
     }
 
-    async fn resolve_many(
-        self,
-        packages: impl IntoIterator<Item = String>,
-        strategy: ResolutionStrategy,
-    ) -> Result<Vec<ResolvedPackage>> {
-        let resolved_packages = stream::iter(packages)
-            .map(async |package| {
-                let package = Arc::from(package);
-
-                let resolved_package = self.resolve_one(package, strategy).await?;
-
-                anyhow::Ok(resolved_package)
-            })
-            .buffer_unordered(self.context.concurrency_limit)
-            .try_collect::<Vec<_>>();
-        let resolved_packages = resolved_packages.await?;
-
-        Ok(resolved_packages)
-    }
-
-    async fn resolve_one(
-        &self,
-        package: Arc<str>,
-        strategy: ResolutionStrategy,
-    ) -> Result<ResolvedPackage> {
-        if matches!(
-            strategy,
-            ResolutionStrategy::FormulaOnly | ResolutionStrategy::Both,
-        ) {
+    async fn resolve_one(&self, package: Arc<str>) -> anyhow::Result<ResolvedPackage> {
+        let resolved_formula_fut = async {
             let formula_registry = Arc::clone(&self.formula_registry);
 
-            if let Ok(resolved_formula) = formula_registry.resolve(Arc::clone(&package)).await {
-                let resolved_package = ResolvedPackage::Formula(resolved_formula);
+            let resolved_formula = formula_registry.resolve(Arc::clone(&package)).await?;
+            let resolved_formula = ResolvedPackage::Formula(resolved_formula);
 
-                return Ok(resolved_package);
-            }
-        }
+            anyhow::Ok(resolved_formula)
+        };
+        let resolved_formula_fut = resolved_formula_fut.boxed();
 
-        if matches!(
-            strategy,
-            ResolutionStrategy::CaskOnly | ResolutionStrategy::Both,
-        ) {
+        let resolved_cask_fut = async {
             let cask_registry = Arc::clone(&self.cask_registry);
 
-            if let Ok(resolved_cask) = cask_registry.resolve(Arc::clone(&package)).await {
-                let resolved_package = ResolvedPackage::Cask(resolved_cask);
+            let resolved_cask = cask_registry.resolve(Arc::clone(&package)).await?;
+            let resolved_cask = ResolvedPackage::Cask(resolved_cask);
 
-                return Ok(resolved_package);
-            }
-        }
+            anyhow::Ok(resolved_cask)
+        };
+        let resolved_cask_fut = resolved_cask_fut.boxed();
 
-        let err = anyhow!(r#"Package "{package}" not found"#);
+        let resolved_package_res =
+            future::select_ok([resolved_formula_fut, resolved_cask_fut]).await;
 
-        Err(err)
+        #[expect(clippy::manual_let_else, clippy::single_match_else)]
+        let resolved_package = match resolved_package_res {
+            Ok((resolved_package, _)) => resolved_package,
+            Err(_) => {
+                let err = anyhow!(r#"Package "{package}" not found"#);
+
+                return Err(err);
+            },
+        };
+
+        Ok(resolved_package)
     }
-}
-
-#[derive(Copy, Clone)]
-pub(crate) enum ResolutionStrategy {
-    FormulaOnly,
-    CaskOnly,
-    Both,
 }
 
 enum Registry {
@@ -141,28 +158,33 @@ trait Registrable {
 
     fn new(context: Arc<Context>) -> Self;
 
-    async fn resolve(self: Arc<Self>, package: Arc<str>) -> Result<Arc<Self::ResolvedPackage>>;
+    async fn resolve(
+        self: Arc<Self>,
+        package: Arc<str>,
+    ) -> anyhow::Result<Arc<Self::ResolvedPackage>>;
 }
 
 trait RegistrableJson {
     fn json_path(&self, id: &str) -> PathBuf;
 
-    async fn save_json(&self, id: &str, bytes: Bytes) -> Result<()> {
-        let file_path = self.json_path(id);
+    async fn save_json(&self, id: &str, bytes: Bytes) -> anyhow::Result<()> {
+        let dest_file_path = self.json_path(id);
 
-        let file_base_path = file_path.base()?;
+        let dest_file_base_path = dest_file_path.base()?;
 
-        fs::create_dir_all(file_base_path).await?;
+        fs::create_dir_all(dest_file_base_path).await?;
 
-        let file = NamedTempFile::new_in(file_base_path)?;
+        let json_file = NamedTempFile::new_in(dest_file_base_path)?;
 
-        let mut async_file = File::open_write(file.path()).await?;
+        let json_file_path = json_file.path();
 
-        async_file.write_all(&bytes).await?;
+        let mut async_json_file = File::open_write(json_file_path).await?;
 
-        async_file.shutdown().await?;
+        async_json_file.write_all(&bytes).await?;
 
-        file.persist(file_path)?;
+        async_json_file.shutdown().await?;
+
+        json_file.persist(dest_file_path)?;
 
         Ok(())
     }

@@ -3,9 +3,7 @@ mod uninstall;
 
 use std::{ffi::OsString, sync::Arc};
 
-use anyhow::Result;
 use clap::{
-    Args,
     ColorChoice,
     Parser,
     Subcommand,
@@ -17,11 +15,11 @@ use clap::{
 };
 use clap_verbosity_flag::{Verbosity, VerbosityFilter};
 use enum_dispatch::enum_dispatch;
-use proc_exit::prelude::*;
+use proc_exit::{WithCodeResultExt as _, sysexits::ToSysexitsResultExt as _};
 use tokio::process::Command;
 
 use self::{install::Install, uninstall::Uninstall};
-use crate::{context::Context, registries::ResolutionStrategy};
+use crate::context::Context;
 
 #[derive(Parser)]
 #[command(
@@ -94,45 +92,44 @@ impl Commands {
             Self::Internal(internal) => {
                 let context = Arc::new(context);
 
-                let result = internal.run_concurrent(context).await;
+                let result = internal.run_parallelly(context).await;
 
                 result.with_code(proc_exit::sysexits::SOFTWARE_ERR)?;
 
                 proc_exit::Code::SUCCESS.ok()
             },
             Self::External(args) => {
-                let mut cmd = Command::new("brew");
+                let mut brew = Command::new("brew");
 
-                cmd.args(args)
+                brew.args(args)
                     .env("HOMEBREW_NO_ANALYTICS", "1")
                     .env("HOMEBREW_NO_ENV_HINTS", "1");
 
                 match context.config.verbosity_filter {
                     VerbosityFilter::Debug => {
-                        cmd.env("HOMEBREW_DEBUG", "1");
+                        brew.env("HOMEBREW_DEBUG", "1");
                     },
                     VerbosityFilter::Info => {
-                        cmd.env("HOMEBREW_VERBOSE", "1");
+                        brew.env("HOMEBREW_VERBOSE", "1");
                     },
                     _ => {},
                 }
 
-                #[expect(clippy::match_wildcard_for_single_variants)]
                 match context.config.color_choice {
                     ColorChoice::Never => {
-                        cmd.env("HOMEBREW_NO_COLOR", "1");
+                        brew.env("HOMEBREW_NO_COLOR", "1");
                     },
                     ColorChoice::Always => {
-                        cmd.env("HOMEBREW_COLOR", "1");
+                        brew.env("HOMEBREW_COLOR", "1");
                     },
-                    _ => {},
+                    ColorChoice::Auto => {},
                 }
 
-                let result = cmd.status().await;
+                let brew = brew.status().await;
 
-                let status = result.to_sysexits()?;
+                let exit_status = brew.to_sysexits()?;
 
-                proc_exit::Code::from_status(status).ok()?;
+                proc_exit::Code::from_status(exit_status).ok()?;
 
                 proc_exit::Code::SUCCESS.ok()
             },
@@ -149,24 +146,5 @@ enum Internal {
 
 #[enum_dispatch(Internal)]
 trait Runner {
-    async fn run_concurrent(self, context: Arc<Context>) -> Result<()>;
-}
-
-#[derive(Args)]
-struct Resolution {
-    #[arg(long, alias = "formulae", conflicts_with = "cask")]
-    formula: bool,
-
-    #[arg(long, alias = "casks", conflicts_with = "formula")]
-    cask: bool,
-}
-
-impl Resolution {
-    fn strategy(&self) -> ResolutionStrategy {
-        match (self.formula, self.cask) {
-            (true, _) => ResolutionStrategy::FormulaOnly,
-            (_, true) => ResolutionStrategy::CaskOnly,
-            _ => ResolutionStrategy::Both,
-        }
-    }
+    async fn run_parallelly(self, context: Arc<Context>) -> anyhow::Result<()>;
 }

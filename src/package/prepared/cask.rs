@@ -1,47 +1,92 @@
-use super::{
-    super::{Packageable, resolved::ResolvedCask},
-    PreparedPackageable,
-};
+use std::path::PathBuf;
 
-pub(crate) struct PreparedCask {
+use bytes::Bytes;
+use futures::stream::BoxStream;
+use tokio::fs;
+
+use super::{
+    super::{
+        Packageable,
+        raw::{Artifact, Variation},
+        resolved::ResolvedCask,
+    },
+    PreparedPackageable,
+    cask_stanza::Stanzas,
+    download::{Download, Downloadable as _},
+};
+use crate::{context::Context, ext::tokio::path::PathExt as _};
+
+pub(crate) struct PreparedCask<Dl = ()> {
     pub(in super::super) token: String,
     pub(in super::super) version: String,
-    url: String,
-    sha256: String,
+    variation_tag: Option<String>,
+    variation_url: String,
+    variation_sha256: String,
+    variation_stanzas: Stanzas,
+    pub(in super::super) is_requested: bool,
+
+    download: Dl,
 }
 
-impl From<ResolvedCask> for PreparedCask {
-    fn from(resolved_cask: ResolvedCask) -> Self {
-        #[cfg(debug_assertions)]
-        #[cfg_attr(
-            debug_assertions,
-            expect(resolving_to_items_shadowing_supertrait_items)
-        )]
-        let version = {
-            use super::super::resolved::ResolvedPackageable as _;
+impl TryFrom<(ResolvedCask, bool)> for PreparedCask {
+    type Error = Option<anyhow::Error>;
 
-            resolved_cask.version()
-        };
+    fn try_from((resolved_cask, is_requested): (ResolvedCask, bool)) -> Result<Self, Self::Error> {
+        let token = resolved_cask.token.clone();
 
-        #[cfg(not(debug_assertions))]
-        let version = {
-            use super::super::resolved::ResolvedPackageable;
+        let version = resolved_cask.version.clone();
 
-            ResolvedPackageable::version(&resolved_cask)
-        };
+        let (variation_tag, variation) = resolved_cask.variation_entry()?;
 
-        let version = version.into_owned();
-
-        Self {
-            token: resolved_cask.token,
+        let this = Self {
+            token,
             version,
-            url: resolved_cask.url,
-            sha256: resolved_cask.sha256,
+            variation_tag,
+            variation_url: variation.url,
+            variation_sha256: variation.sha256,
+            variation_stanzas: Stanzas::from(variation.artifacts),
+            is_requested,
+
+            download: (),
+        };
+
+        Ok(this)
+    }
+}
+
+impl<Dl> From<(PreparedCask<()>, Dl)> for PreparedCask<Dl> {
+    fn from((this, download): (PreparedCask<()>, Dl)) -> Self {
+        Self {
+            token: this.token,
+            version: this.version,
+            variation_tag: this.variation_tag,
+            variation_url: this.variation_url,
+            variation_sha256: this.variation_sha256,
+            variation_stanzas: this.variation_stanzas,
+            is_requested: this.is_requested,
+
+            download,
         }
     }
 }
 
-impl Packageable for PreparedCask {
+impl PreparedCask<()> {
+    pub(super) async fn with_download(
+        self,
+        context: &Context,
+    ) -> anyhow::Result<(
+        PreparedCask<Download>,
+        BoxStream<'static, anyhow::Result<Bytes>>,
+    )> {
+        let (download, stream) = self.prepare_download(context).await?;
+
+        let this = PreparedCask::from((self, download));
+
+        Ok((this, stream))
+    }
+}
+
+impl<Dl> Packageable for PreparedCask<Dl> {
     fn id(&self) -> &str {
         &self.token
     }
@@ -51,18 +96,177 @@ impl Packageable for PreparedCask {
     }
 }
 
-impl PreparedPackageable for PreparedCask {
-    fn cache_url(&self) -> &str {
-        &self.url
+impl<Dl> PreparedPackageable for PreparedCask<Dl> {
+    type Download = Dl;
+
+    fn download(&self) -> &Self::Download {
+        &self.download
     }
 
-    fn expected_sha256(&self) -> &str {
-        &self.sha256
+    fn pour_dir_path(&self, context: &Context) -> PathBuf {
+        let id = self.id();
+
+        let version = self.version();
+
+        context.homebrew_dirs.staged_dir(id, version)
+    }
+
+    async fn is_installed(&self, context: &Context) -> anyhow::Result<bool> {
+        let id = self.id();
+
+        let cask_dir_path = context.homebrew_dirs.cask_dir(id);
+
+        if !cask_dir_path.is_dir_exists_nofollow().await? {
+            return Ok(false);
+        }
+
+        let mut cask_dir_entries = fs::read_dir(cask_dir_path).await?;
+
+        while let Some(cask_dir_entry) = cask_dir_entries.next_entry().await? {
+            let cask_dir_entry_path = cask_dir_entry.path();
+
+            let is_cask_dir_entry_exists = cask_dir_entry_path.is_dir_exists_nofollow().await?;
+
+            let is_cask_dir_entry_not_empty = !cask_dir_entry_path.is_dir_empty().await?;
+
+            if is_cask_dir_entry_exists && is_cask_dir_entry_not_empty {
+                return Ok(true);
+            }
+        }
+
+        Ok(false)
+    }
+
+    async fn is_up_to_date(&self, context: &Context) -> anyhow::Result<bool> {
+        let id = self.id();
+
+        let version = self.version();
+
+        let staged_dir_path = context.homebrew_dirs.staged_dir(id, version);
+
+        let is_staged_dir_exists = staged_dir_path.is_dir_exists_nofollow().await?;
+
+        let is_staged_dir_not_empty = !staged_dir_path.is_dir_empty().await?;
+
+        if is_staged_dir_exists && is_staged_dir_not_empty {
+            return Ok(true);
+        }
+
+        Ok(false)
     }
 }
 
-impl PreparedCask {
-    pub(crate) fn url(&self) -> &str {
-        &self.url
+impl<Dl> PreparedCask<Dl> {
+    pub(super) fn variation_url(&self) -> &str {
+        &self.variation_url
+    }
+
+    pub(super) fn variation_sha256(&self) -> &str {
+        &self.variation_sha256
+    }
+
+    pub(crate) fn stanzas(&self) -> &Stanzas {
+        &self.variation_stanzas
+    }
+}
+
+impl ResolvedCask {
+    fn variation_entry(mut self) -> anyhow::Result<(Option<String>, Variation<Vec<Artifact>>)> {
+        #[expect(clippy::collapsible_if)]
+        if let Some(tag) = self.variation_tag()? {
+            if let Some((tag, variation)) = self.variations.remove_entry(&tag) {
+                let variation = variation.unwrap_artifacts_or(self.artifacts);
+
+                let entry = (Some(tag), variation);
+
+                return Ok(entry);
+            }
+        }
+
+        let variation = Variation {
+            url: self.url,
+            sha256: self.sha256,
+            artifacts: self.artifacts,
+        };
+
+        let entry = (None, variation);
+
+        Ok(entry)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn variation_tag(&self) -> anyhow::Result<Option<String>> {
+        use crate::{ext::core::result::ResultExt as _, util::macos};
+
+        let current_macos_tag = macos::Tag::try_default()?;
+
+        #[cfg(debug_assertions)]
+        let tagged_candidate_macos_tags = self
+            .variations
+            .keys()
+            .map(|tag| tag.parse::<macos::Tag>().map(|macos_tag| (tag, macos_tag)))
+            .filter_map(Result::transpose_err)
+            .try_collect::<Vec<_>>()?;
+
+        #[cfg(not(debug_assertions))]
+        let tagged_candidate_macos_tags = self
+            .variations
+            .keys()
+            .map(|tag| tag.parse::<macos::Tag>().map(|macos_tag| (tag, macos_tag)))
+            .filter_map(Result::transpose_err)
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        let tag = tagged_candidate_macos_tags
+            .into_iter()
+            .filter(|(_, candidate_macos_tag)| {
+                let is_macos_architecture_equal =
+                    candidate_macos_tag.architecture() == current_macos_tag.architecture();
+
+                is_macos_architecture_equal && candidate_macos_tag <= &current_macos_tag
+            })
+            .max_by(|(_, left), (_, right)| left.cmp(right))
+            .map(|(tag, _)| tag.to_owned());
+
+        let Some(tag) = tag else {
+            return Ok(None);
+        };
+
+        Ok(Some(tag))
+    }
+
+    #[cfg(target_os = "linux")]
+    #[expect(clippy::unnecessary_wraps)]
+    fn variation_tag(&self) -> anyhow::Result<Option<String>> {
+        let tag = cfg_select! {
+            target_arch = "aarch64" => "arm64_linux",
+            target_arch = "x86_64" => "x86_64_linux",
+        };
+        let tag = self.variations.contains_key(tag).then(|| tag.to_owned());
+
+        let Some(tag) = tag else {
+            return Ok(None);
+        };
+
+        Ok(Some(tag))
+    }
+}
+
+impl Variation {
+    fn unwrap_artifacts_or(self, default: Vec<Artifact>) -> Variation<Vec<Artifact>> {
+        #[cfg(debug_assertions)]
+        let this = Variation {
+            artifacts: self.artifacts.unwrap_or(default),
+
+            ..self
+        };
+
+        #[cfg(not(debug_assertions))]
+        let this = Variation {
+            url: self.url,
+            sha256: self.sha256,
+            artifacts: self.artifacts.unwrap_or(default),
+        };
+
+        this
     }
 }

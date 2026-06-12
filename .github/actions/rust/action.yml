@@ -62,6 +62,7 @@ runs:
     - shell: /bin/sh -eu -- "{0}"
       env:
         RUST_BACKTRACE: 1
+        RUSTC_ICE: 0
 
         RUSTFLAGS: >-
           --cfg=tokio_unstable
@@ -80,6 +81,7 @@ runs:
       run: |
         {
           echo "RUST_BACKTRACE=${RUST_BACKTRACE}"
+          echo "RUSTC_ICE=${RUSTC_ICE}"
 
           echo "RUSTFLAGS=${RUSTFLAGS}"
           echo "RUSTDOCFLAGS=${RUSTDOCFLAGS}"
