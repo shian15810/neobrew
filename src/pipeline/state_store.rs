@@ -10,8 +10,8 @@ use tokio::sync::watch;
 use crate::{
     context::Context,
     ext::std::sync::OnceLockExt as _,
-    package::prepared::{Download, PreparedPackage},
-    util::ArchiveFormat,
+    package::prepared::{PreparedPackage, download::Download},
+    util::archive_format::ArchiveFormat,
 };
 
 #[derive(Clone)]

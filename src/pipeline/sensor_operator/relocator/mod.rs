@@ -23,8 +23,8 @@ use crate::{
     context::Context,
     ext::tokio::path::PathExt as _,
     package::{
-        Packageable as _,
-        prepared::{Download, PreparedFormula, PreparedPackage},
+        PackageExt as _,
+        prepared::{PreparedPackage, download::Download, formula::PreparedFormula},
     },
 };
 
@@ -202,7 +202,7 @@ impl Relocator {
     }
 }
 
-trait Relocatory {
+trait RelocatorExt {
     async fn patch_file(
         &self,
         dest_file_path: &Path,

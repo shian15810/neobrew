@@ -1,6 +1,6 @@
 use super::{
-    super::{Packageable, prepared::PreparedFormula},
-    InstalledPackageable,
+    super::{PackageExt, prepared::formula::PreparedFormula},
+    InstalledPackageExt,
 };
 
 pub(crate) struct InstalledFormula {
@@ -19,7 +19,7 @@ impl From<PreparedFormula> for InstalledFormula {
     }
 }
 
-impl Packageable for InstalledFormula {
+impl PackageExt for InstalledFormula {
     fn id(&self) -> &str {
         &self.name
     }
@@ -29,4 +29,4 @@ impl Packageable for InstalledFormula {
     }
 }
 
-impl InstalledPackageable for InstalledFormula {}
+impl InstalledPackageExt for InstalledFormula {}

@@ -1,6 +1,7 @@
 use std::{cmp::Ordering, str::FromStr};
 
 use oci_client::config::Architecture;
+use thiserror::Error;
 
 use super::{
     super::semver::Semver,
@@ -39,11 +40,10 @@ impl From<(Architecture, Codename)> for Tag {
 }
 
 impl TryFrom<(Architecture, Semver)> for Tag {
-    type Error = Option<anyhow::Error>;
+    type Error = TagError;
 
     fn try_from((architecture, semver): (Architecture, Semver)) -> Result<Self, Self::Error> {
-        let codename = Codename::try_from(semver);
-        let codename = codename.map_err(CodenameError::unsupported_into_none)?;
+        let codename = Codename::try_from(semver)?;
 
         let this = Self {
             architecture,
@@ -55,7 +55,7 @@ impl TryFrom<(Architecture, Semver)> for Tag {
 }
 
 impl FromStr for Tag {
-    type Err = Option<anyhow::Error>;
+    type Err = TagError;
 
     fn from_str(tag: &str) -> Result<Self, Self::Err> {
         let (codename, architecture) = match tag.strip_prefix("arm64_") {
@@ -63,8 +63,7 @@ impl FromStr for Tag {
             None => (tag, Architecture::Amd64),
         };
 
-        let codename = codename.parse::<Codename>();
-        let codename = codename.map_err(CodenameError::unsupported_into_none)?;
+        let codename = codename.parse::<Codename>()?;
 
         let this = Self {
             architecture,
@@ -83,10 +82,23 @@ impl PartialOrd for Tag {
 
 impl Ord for Tag {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.codename.cmp(&other.codename).then_with(|| {
-            self.architecture
-                .to_string()
-                .cmp(&other.architecture.to_string())
-        })
+        self.codename.cmp(&other.codename)
+    }
+}
+
+#[derive(Debug, Error)]
+pub(crate) enum TagError {
+    #[error("Unsupported macOS tag detected")]
+    Unsupported,
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
+}
+
+impl From<CodenameError> for TagError {
+    fn from(codename_error: CodenameError) -> Self {
+        match codename_error {
+            CodenameError::Unsupported => Self::Unsupported,
+            CodenameError::Other(err) => Self::Other(err),
+        }
     }
 }

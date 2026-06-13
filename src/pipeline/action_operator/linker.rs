@@ -9,15 +9,17 @@ use async_trait::async_trait;
 use futures::future;
 use tokio::fs;
 
-use super::ActionOperator;
+use super::{
+    super::state_store::{LinkedOutput, RelocatedOutput, Stage},
+    ActionOperator,
+};
 use crate::{
     context::Context,
     ext::{std::path::PathExt as _, tokio::path::PathExt as _},
     package::{
-        Packageable as _,
-        prepared::{Download, PreparedFormula, PreparedPackage},
+        PackageExt as _,
+        prepared::{PreparedPackage, download::Download, formula::PreparedFormula},
     },
-    pipeline::state_store::{LinkedOutput, RelocatedOutput, Stage},
 };
 
 const KEG_LINK_DIR_NAMES: &[&str] = &["bin", "etc", "include", "lib", "sbin", "share", "var"];

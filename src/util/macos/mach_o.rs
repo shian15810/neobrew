@@ -39,11 +39,7 @@ impl MachO {
         match file.read_exact(&mut peek_buf).await {
             Ok(_) => {},
             Err(err) if err.kind() == ErrorKind::UnexpectedEof => return Ok(false),
-            Err(err) => {
-                let err = anyhow::Error::from(err);
-
-                return Err(err);
-            },
+            Err(err) => return Err(err)?,
         }
 
         let peek_magic = u32::from_be_bytes(peek_buf);

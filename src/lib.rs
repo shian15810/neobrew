@@ -40,10 +40,8 @@
 #![expect(rustdoc::missing_crate_level_docs)]
 
 pub mod command;
-mod compatibility;
 pub mod context;
 mod ext;
-mod macros;
 mod package;
 mod pipeline;
 mod receipt;

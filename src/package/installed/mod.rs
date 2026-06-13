@@ -4,7 +4,7 @@ mod formula;
 use enum_dispatch::enum_dispatch;
 
 use self::{cask::InstalledCask, formula::InstalledFormula};
-use super::Packageable;
+use super::PackageExt;
 
 #[enum_dispatch]
 pub(crate) enum InstalledPackage {
@@ -13,4 +13,4 @@ pub(crate) enum InstalledPackage {
 }
 
 #[enum_dispatch(InstalledPackage)]
-trait InstalledPackageable: Packageable {}
+trait InstalledPackageExt: PackageExt {}

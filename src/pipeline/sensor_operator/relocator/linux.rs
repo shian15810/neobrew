@@ -10,19 +10,19 @@ use tokio::{
 };
 use tokio_util::task::AbortOnDropHandle;
 
-use super::{Relocator, Relocatory, ReplacementPairs};
+use super::{Relocator, RelocatorExt, ReplacementPairs};
 use crate::{
     ext::{std::path::PathExt as _, tokio::fs::FileExt as _},
-    util::linux,
+    util::linux::elf::Elf,
 };
 
-impl Relocatory for Relocator {
+impl RelocatorExt for Relocator {
     async fn patch_file(
         &self,
         dest_file_path: &Path,
         replacement_pairs: &ReplacementPairs,
     ) -> anyhow::Result<()> {
-        let has_magic = linux::Elf::has_magic(dest_file_path).await?;
+        let has_magic = Elf::has_magic(dest_file_path).await?;
 
         if !has_magic {
             return Ok(());

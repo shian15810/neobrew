@@ -23,12 +23,12 @@ use tokio::task;
 use tokio_util::task::AbortOnDropHandle;
 
 use self::{
-    push_connector::Progressor,
+    push_connector::progressor::Progressor,
     state_store::{ProgressedOutput, Session},
 };
 use crate::{
     context::Context,
-    package::prepared::{Download, PreparedPackage},
+    package::prepared::{PreparedPackage, download::Download},
 };
 
 pub(crate) struct Pipeline<Si, Handles> {

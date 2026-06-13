@@ -1,12 +1,19 @@
-use std::{collections::HashMap, iter, sync::Arc};
+use std::{
+    collections::HashMap,
+    iter,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use super::{
     super::{
-        Packageable,
-        raw::{Artifact, DependsOn, RawCask, Variation},
+        PackageExt,
+        raw::cask::{Artifact, RawCask, Variation},
     },
-    ResolvedPackageable,
-    ResolvedPackageableIter,
+    ResolvedPackageExt,
+    ResolvedPackageExtIter,
 };
 
 pub(crate) struct ResolvedCask {
@@ -15,8 +22,9 @@ pub(crate) struct ResolvedCask {
     pub(in super::super) url: String,
     pub(in super::super) sha256: String,
     pub(in super::super) artifacts: Vec<Artifact>,
-    depends_on: DependsOn,
     pub(in super::super) variations: HashMap<String, Variation>,
+    pub(in super::super) is_compatible: AtomicBool,
+    pub(in super::super) is_requested: AtomicBool,
 }
 
 impl From<RawCask> for ResolvedCask {
@@ -27,13 +35,14 @@ impl From<RawCask> for ResolvedCask {
             url: raw_cask.url,
             sha256: raw_cask.sha256,
             artifacts: raw_cask.artifacts,
-            depends_on: raw_cask.depends_on,
             variations: raw_cask.variations,
+            is_compatible: AtomicBool::new(false),
+            is_requested: AtomicBool::new(false),
         }
     }
 }
 
-impl Packageable for ResolvedCask {
+impl PackageExt for ResolvedCask {
     fn id(&self) -> &str {
         &self.token
     }
@@ -43,15 +52,17 @@ impl Packageable for ResolvedCask {
     }
 }
 
-impl ResolvedPackageable for ResolvedCask {}
+impl ResolvedPackageExt for ResolvedCask {
+    fn set_is_compatible(&self, is_compatible: bool) {
+        self.is_compatible.store(is_compatible, Ordering::Relaxed);
+    }
 
-impl ResolvedCask {
-    pub(crate) fn depends_on(&self) -> &DependsOn {
-        &self.depends_on
+    fn set_is_requested(&self, is_requested: bool) {
+        self.is_requested.store(is_requested, Ordering::Relaxed);
     }
 }
 
-impl ResolvedPackageableIter for ResolvedCask {
+impl ResolvedPackageExtIter for ResolvedCask {
     fn iter(self: &Arc<Self>) -> impl Iterator<Item = Arc<Self>> + use<> {
         let this = Arc::clone(self);
 

@@ -22,8 +22,8 @@ use super::{
 use crate::{
     context::Context,
     ext::{std::path::PathExt as _, tokio::path::PathExt as _},
-    package::prepared::{Download, PreparedPackage, PreparedPackageable as _},
-    util::ArchiveFormat,
+    package::prepared::{PreparedPackage, PreparedPackageExt as _, download::Download},
+    util::archive_format::ArchiveFormat,
 };
 
 pub(crate) struct DmgPourer;

@@ -2,19 +2,29 @@ use std::{path::PathBuf, sync::Arc};
 
 use foyer::{Cache, CacheBuilder};
 
-use super::{Registrable, RegistrableJson};
+use super::{
+    RegistryExt,
+    RegistryJsonExt,
+    compatibility::{CaskCompatibility as _, Compatibility},
+};
 use crate::{
     context::{Context, dirs::ProjectDirs as _},
-    package::{Packageable as _, raw::RawCask, resolved::ResolvedCask},
+    package::{
+        PackageExt as _,
+        raw::cask::RawCask,
+        resolved::{ResolvedPackageExt as _, cask::ResolvedCask},
+    },
 };
 
 pub(super) struct CaskRegistry {
     store: Cache<Arc<str>, Arc<ResolvedCask>>,
 
+    compatibility: Arc<Compatibility>,
+
     context: Arc<Context>,
 }
 
-impl Registrable for CaskRegistry {
+impl RegistryExt for CaskRegistry {
     type ResolvedPackage = ResolvedCask;
 
     const API_URL: &str = "https://formulae.brew.sh/api/cask/{}.json";
@@ -26,9 +36,11 @@ impl Registrable for CaskRegistry {
     const TAP_MIGRATIONS_JWS_URL: &str =
         "https://formulae.brew.sh/api/cask_tap_migrations.jws.json";
 
-    fn new(context: Arc<Context>) -> Self {
+    fn new(compatibility: Arc<Compatibility>, context: Arc<Context>) -> Self {
         Self {
             store: CacheBuilder::new(usize::MAX).build(),
+
+            compatibility,
 
             context,
         }
@@ -72,14 +84,18 @@ impl CaskRegistry {
 
         self.save_json(raw_cask.id(), bytes).await?;
 
+        let is_compatible = self.compatibility.is_cask_compatible(&raw_cask);
+
         let resolved_cask = ResolvedCask::from(raw_cask);
         let resolved_cask = Arc::new(resolved_cask);
+
+        resolved_cask.set_is_compatible(is_compatible);
 
         Ok(resolved_cask)
     }
 }
 
-impl RegistrableJson for CaskRegistry {
+impl RegistryJsonExt for CaskRegistry {
     fn json_path(&self, id: &str) -> PathBuf {
         let file_name = format!("{id}.json");
 

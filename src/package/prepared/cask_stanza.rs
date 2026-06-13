@@ -1,4 +1,4 @@
-use super::super::raw::{
+use super::super::raw::cask::{
     Artifact,
     ArtifactCommonSource,
     ArtifactGenerateCompletionsFromExecutableSource,

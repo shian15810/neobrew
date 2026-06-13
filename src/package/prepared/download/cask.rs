@@ -8,16 +8,16 @@ use sha2::{Digest as _, Sha256};
 use url::Url;
 
 use super::{
-    super::{super::Packageable as _, cask::PreparedCask},
-    DownloadableInner,
+    super::{super::PackageExt as _, cask::PreparedCask},
+    DownloadInnerExt,
 };
 use crate::{
     context::{Context, dirs::ProjectDirs as _},
     ext::std::path::PathExt as _,
-    util::ArchiveFormat,
+    util::archive_format::{ArchiveFormat, ArchiveFormatError},
 };
 
-impl DownloadableInner for PreparedCask {
+impl DownloadInnerExt for PreparedCask {
     fn url(&self) -> &str {
         self.variation_url()
     }
@@ -74,8 +74,8 @@ impl DownloadableInner for PreparedCask {
     fn archive_format(&self, link_path: &Path) -> anyhow::Result<Option<ArchiveFormat>> {
         let archive_format = match ArchiveFormat::try_from(link_path) {
             Ok(archive_format) => archive_format,
-            Err(Some(err)) => return Err(err),
-            Err(None) => return Ok(None),
+            Err(ArchiveFormatError::Unsupported) => return Ok(None),
+            Err(ArchiveFormatError::Other(err)) => return Err(err),
         };
 
         Ok(Some(archive_format))

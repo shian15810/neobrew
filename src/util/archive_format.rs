@@ -2,6 +2,7 @@ use std::{io::SeekFrom, path::Path};
 
 use anyhow::{Context as _, anyhow};
 use async_compression::tokio::bufread::GzipDecoder;
+use thiserror::Error;
 use tokio::{
     fs::File,
     io::{AsyncBufRead, AsyncReadExt as _, AsyncSeekExt as _, BufReader},
@@ -17,11 +18,11 @@ pub(crate) enum ArchiveFormat {
 }
 
 impl TryFrom<&Path> for ArchiveFormat {
-    type Error = Option<anyhow::Error>;
+    type Error = ArchiveFormatError;
 
     fn try_from(path: &Path) -> Result<Self, Self::Error> {
         let Some(compound_extension) = path.compound_extension() else {
-            return Err(None);
+            return Err(ArchiveFormatError::Unsupported);
         };
 
         let compound_extension = compound_extension.to_string_lossy();
@@ -31,7 +32,7 @@ impl TryFrom<&Path> for ArchiveFormat {
             "dmg" => Self::Dmg,
             "tar.gz" | "tgz" => Self::TarGz,
             "zip" => Self::Zip,
-            _ => return Err(None),
+            _ => return Err(ArchiveFormatError::Unsupported),
         };
 
         Ok(archive_format)
@@ -110,4 +111,12 @@ impl ArchiveFormat {
 
         Ok(is_dmg)
     }
+}
+
+#[derive(Debug, Error)]
+pub(crate) enum ArchiveFormatError {
+    #[error("Unsupported archive format detected")]
+    Unsupported,
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }

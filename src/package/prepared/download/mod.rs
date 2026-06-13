@@ -10,11 +10,11 @@ use sha2::{Digest as _, Sha256};
 use tokio::{fs::File, io};
 use tokio_util::io::{InspectWriter, ReaderStream};
 
-use super::{PreparedCask, PreparedFormula, PreparedPackage, PreparedPackageable};
+use super::{PreparedCask, PreparedFormula, PreparedPackage, PreparedPackageExt};
 use crate::{
     context::Context,
     ext::tokio::{fs::FileExt as _, path::PathExt as _},
-    util::ArchiveFormat,
+    util::archive_format::ArchiveFormat,
 };
 
 pub(crate) struct Download {
@@ -59,7 +59,7 @@ impl Download {
     }
 }
 
-impl Downloadable for PreparedPackage {
+impl DownloadExt for PreparedPackage {
     async fn prepare_download(
         &self,
         context: &Context,
@@ -71,7 +71,7 @@ impl Downloadable for PreparedPackage {
     }
 }
 
-impl DownloadableInner for PreparedPackage {
+impl DownloadInnerExt for PreparedPackage {
     fn url(&self) -> &str {
         match self {
             Self::Formula(formula) => formula.url(),
@@ -112,7 +112,7 @@ impl DownloadableInner for PreparedPackage {
 }
 
 #[expect(private_bounds)]
-pub(super) trait Downloadable: DownloadableInner {
+pub(super) trait DownloadExt: DownloadInnerExt {
     async fn prepare_download(
         &self,
         context: &Context,
@@ -162,11 +162,11 @@ pub(super) trait Downloadable: DownloadableInner {
     }
 }
 
-impl Downloadable for PreparedFormula {}
+impl DownloadExt for PreparedFormula {}
 
-impl Downloadable for PreparedCask {}
+impl DownloadExt for PreparedCask {}
 
-trait DownloadableInner: PreparedPackageable {
+trait DownloadInnerExt: PreparedPackageExt {
     fn url(&self) -> &str;
 
     async fn file_path_link_path(&self, context: &Context) -> anyhow::Result<(PathBuf, PathBuf)>;

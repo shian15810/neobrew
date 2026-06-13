@@ -1,9 +1,9 @@
 use std::{collections::HashMap, path::PathBuf, str::FromStr};
 
-use serde::Deserialize;
+use serde::{Deserialize, de::IgnoredAny};
 use serde_with::DeserializeFromStr;
 
-use super::{super::Packageable, RawPackageable};
+use super::{super::PackageExt, RawPackageExt};
 
 #[derive(Deserialize)]
 pub(crate) struct RawFormula {
@@ -11,17 +11,22 @@ pub(crate) struct RawFormula {
     pub(in super::super) versions: Versions,
     pub(in super::super) revision: u64,
     pub(in super::super) bottle: Bottle,
-    dependencies: Vec<String>,
     pub(in super::super) keg_only: bool,
+    requirements: Vec<Requirement>,
+    dependencies: Vec<String>,
 }
 
 impl RawFormula {
+    pub(crate) fn requirements(&self) -> &[Requirement] {
+        &self.requirements
+    }
+
     pub(crate) fn dependencies(&self) -> &[String] {
         &self.dependencies
     }
 }
 
-impl Packageable for RawFormula {
+impl PackageExt for RawFormula {
     fn id(&self) -> &str {
         &self.name
     }
@@ -31,7 +36,7 @@ impl Packageable for RawFormula {
     }
 }
 
-impl RawPackageable for RawFormula {}
+impl RawPackageExt for RawFormula {}
 
 #[derive(Deserialize)]
 pub(in super::super) struct Versions {
@@ -74,7 +79,7 @@ impl FromStr for BottleStableFileCellar {
     type Err = Infallible;
 
     fn from_str(bottle_cellar: &str) -> Result<Self, Self::Err> {
-        let bottle_cellar = match bottle_cellar {
+        let this = match bottle_cellar {
             "any" => Self::Any,
             "any_skip_relocation" => Self::AnySkipRelocator,
             bottle_cellar_pstr => {
@@ -84,6 +89,53 @@ impl FromStr for BottleStableFileCellar {
             },
         };
 
-        Ok(bottle_cellar)
+        Ok(this)
     }
+}
+
+#[derive(Deserialize)]
+pub(crate) struct Requirement {
+    pub(crate) name: RequirementName,
+    pub(crate) version: Option<String>,
+    pub(crate) contexts: Vec<IgnoredAny>,
+    pub(crate) specs: Vec<RequirementSpec>,
+}
+
+#[derive(DeserializeFromStr)]
+pub(crate) enum RequirementName {
+    MinimumXcode,
+    MinimumMacos,
+    MaximumMacos,
+    Linux,
+    Arch,
+    Unsupported(String),
+}
+
+impl FromStr for RequirementName {
+    #[cfg(debug_assertions)]
+    type Err = !;
+
+    #[cfg(not(debug_assertions))]
+    type Err = Infallible;
+
+    fn from_str(requirement_name: &str) -> Result<Self, Self::Err> {
+        let this = match requirement_name {
+            "xcode" => Self::MinimumXcode,
+            "macos" => Self::MinimumMacos,
+            "maximum_macos" => Self::MaximumMacos,
+            "linux" => Self::Linux,
+            "arch" => Self::Arch,
+            unsupported => Self::Unsupported(unsupported.to_owned()),
+        };
+
+        Ok(this)
+    }
+}
+
+#[derive(PartialEq, Eq, Deserialize)]
+pub(crate) enum RequirementSpec {
+    #[serde(rename = "stable")]
+    Stable,
+    #[serde(rename = "head")]
+    Head,
 }

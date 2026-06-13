@@ -11,7 +11,7 @@ use tokio::sync::Semaphore;
 
 use self::{
     config::Config,
-    dirs::{HomebrewDirs, NeobrewDirs},
+    dirs::{homebrew::HomebrewDirs, neobrew::NeobrewDirs},
 };
 
 pub(crate) static INFO: LazyLock<Info> = LazyLock::new(os_info::get);

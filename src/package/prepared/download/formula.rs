@@ -8,15 +8,15 @@ use oci_client::{Reference, manifest::OciDescriptor, secrets::RegistryAuth};
 use sha2::{Digest as _, Sha256};
 
 use super::{
-    super::{super::Packageable as _, formula::PreparedFormula},
-    DownloadableInner,
+    super::{super::PackageExt as _, formula::PreparedFormula},
+    DownloadInnerExt,
 };
 use crate::{
     context::{Context, dirs::ProjectDirs as _},
-    util::ArchiveFormat,
+    util::archive_format::ArchiveFormat,
 };
 
-impl DownloadableInner for PreparedFormula {
+impl DownloadInnerExt for PreparedFormula {
     fn url(&self) -> &str {
         self.bottle_url()
     }

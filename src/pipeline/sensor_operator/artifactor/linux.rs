@@ -1,15 +1,15 @@
 use std::path::PathBuf;
 
-use super::{Artifactor, Artifactory, ReplacementPairs};
+use super::{Artifactor, ArtifactorExt, ReplacementPairs};
 use crate::{
     context::Context,
     package::{
-        Packageable as _,
+        PackageExt as _,
         prepared::{Download, PreparedCask},
     },
 };
 
-impl Artifactory for Artifactor {
+impl ArtifactorExt for Artifactor {
     #[expect(clippy::unused_async_trait_impl)]
     async fn relocate(
         &self,

@@ -17,7 +17,7 @@ use crate::{
         std::path::PathExt as _,
         tokio::{fs::FileExt as _, path::PathExt as _},
     },
-    package::prepared::{Download, PreparedPackage, PreparedPackageable as _},
+    package::prepared::{PreparedPackage, PreparedPackageExt as _, download::Download},
 };
 
 pub(crate) struct Writer;

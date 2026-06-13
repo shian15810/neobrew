@@ -85,12 +85,6 @@ impl FromStr for Codename {
 pub(crate) enum CodenameError {
     #[error("Unsupported macOS codename detected")]
     Unsupported,
-}
-
-impl CodenameError {
-    pub(super) fn unsupported_into_none(self) -> Option<anyhow::Error> {
-        match self {
-            Self::Unsupported => None,
-        }
-    }
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }

@@ -15,7 +15,7 @@ use super::{
 };
 use crate::{
     context::{Context, dirs::ProjectDirs as _},
-    package::prepared::{Download, PreparedCask, PreparedPackage},
+    package::prepared::{PreparedPackage, cask::PreparedCask, download::Download},
 };
 
 #[cfg(target_os = "macos")]
@@ -205,7 +205,7 @@ impl Artifactor {
     }
 }
 
-trait Artifactory {
+trait ArtifactorExt {
     async fn relocate(
         &self,
         prepared_cask: &PreparedCask<Download>,

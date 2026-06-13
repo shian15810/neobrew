@@ -5,19 +5,29 @@ use async_recursion::async_recursion;
 use foyer::{Cache, CacheBuilder};
 use futures::future;
 
-use super::{Registrable, RegistrableJson};
+use super::{
+    RegistryExt,
+    RegistryJsonExt,
+    compatibility::{Compatibility, FormulaCompatibility as _},
+};
 use crate::{
     context::{Context, dirs::ProjectDirs as _},
-    package::{Packageable as _, raw::RawFormula, resolved::ResolvedFormula},
+    package::{
+        PackageExt as _,
+        raw::formula::RawFormula,
+        resolved::{ResolvedPackageExt as _, formula::ResolvedFormula},
+    },
 };
 
 pub(super) struct FormulaRegistry {
     store: Cache<Arc<str>, Arc<ResolvedFormula>>,
 
+    compatibility: Arc<Compatibility>,
+
     context: Arc<Context>,
 }
 
-impl Registrable for FormulaRegistry {
+impl RegistryExt for FormulaRegistry {
     type ResolvedPackage = ResolvedFormula;
 
     const API_URL: &str = "https://formulae.brew.sh/api/formula/{}.json";
@@ -29,9 +39,11 @@ impl Registrable for FormulaRegistry {
     const TAP_MIGRATIONS_JWS_URL: &str =
         "https://formulae.brew.sh/api/formula_tap_migrations.jws.json";
 
-    fn new(context: Arc<Context>) -> Self {
+    fn new(compatibility: Arc<Compatibility>, context: Arc<Context>) -> Self {
         Self {
             store: CacheBuilder::new(usize::MAX).build(),
+
+            compatibility,
 
             context,
         }
@@ -101,36 +113,43 @@ impl FormulaRegistry {
 
         self.save_json(raw_formula.id(), bytes).await?;
 
-        let raw_formula_dependencies = raw_formula
-            .dependencies()
-            .iter()
-            .map(|raw_formula_dependency| Arc::from(raw_formula_dependency.as_str()))
-            .collect::<Vec<_>>();
+        let is_compatible = self.compatibility.is_formula_compatible(&raw_formula)?;
 
-        let resolved_formula_dependencies_futs =
-            raw_formula_dependencies
-                .into_iter()
-                .map(async |raw_formula_dependency| {
-                    let this = Arc::clone(&self);
+        let resolved_formula_dependencies = if is_compatible {
+            let raw_formula_dependencies = raw_formula
+                .dependencies()
+                .iter()
+                .map(|raw_formula_dependency| Arc::from(raw_formula_dependency.as_str()))
+                .collect::<Vec<_>>();
 
-                    let resolved_formula_dependency = this
-                        .resolve_with_stack(raw_formula_dependency, stack.clone())
-                        .await?;
+            let resolved_formula_dependencies_futs =
+                raw_formula_dependencies
+                    .into_iter()
+                    .map(async |raw_formula_dependency| {
+                        let this = Arc::clone(&self);
 
-                    anyhow::Ok(resolved_formula_dependency)
-                });
+                        let resolved_formula_dependency = this
+                            .resolve_with_stack(raw_formula_dependency, stack.clone())
+                            .await?;
 
-        let resolved_formula_dependencies =
-            future::try_join_all(resolved_formula_dependencies_futs).await?;
+                        anyhow::Ok(resolved_formula_dependency)
+                    });
+
+            future::try_join_all(resolved_formula_dependencies_futs).await?
+        } else {
+            Vec::new()
+        };
 
         let resolved_formula = ResolvedFormula::from((raw_formula, resolved_formula_dependencies));
         let resolved_formula = Arc::new(resolved_formula);
+
+        resolved_formula.set_is_compatible(is_compatible);
 
         Ok(resolved_formula)
     }
 }
 
-impl RegistrableJson for FormulaRegistry {
+impl RegistryJsonExt for FormulaRegistry {
     fn json_path(&self, id: &str) -> PathBuf {
         let file_name = format!("{id}.json");
 

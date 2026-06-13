@@ -1,5 +1,5 @@
-mod artifactor;
-mod relocator;
+pub(crate) mod artifactor;
+pub(crate) mod relocator;
 
 use std::sync::Arc;
 
@@ -7,7 +7,6 @@ use async_trait::async_trait;
 use tokio::task;
 use tokio_util::task::AbortOnDropHandle;
 
-pub(crate) use self::{artifactor::Artifactor, relocator::Relocator};
 use super::{
     Operator,
     state_committer::StateCommitter,
@@ -15,7 +14,7 @@ use super::{
 };
 use crate::{
     context::Context,
-    package::prepared::{Download, PreparedPackage},
+    package::prepared::{PreparedPackage, download::Download},
 };
 
 pub(crate) struct _SensorOperatorMarker;

@@ -1,6 +1,6 @@
-mod hasher;
-mod progressor;
-pub(super) mod writer;
+pub(crate) mod hasher;
+pub(crate) mod progressor;
+pub(crate) mod writer;
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -8,13 +8,12 @@ use futures::sink::{self, SinkExt as _};
 use tokio::{sync::mpsc, task};
 use tokio_util::{sync::PollSender, task::AbortOnDropHandle};
 
-pub(crate) use self::{hasher::Hasher, progressor::Progressor, writer::Writer};
 use super::{
     Connector,
     state_committer::StateCommitter,
     state_store::{Payloads, Publish, Session, Stage},
 };
-use crate::package::prepared::{Download, PreparedPackage};
+use crate::package::prepared::{PreparedPackage, download::Download};
 
 pub(crate) struct _PushConnectorMarker;
 

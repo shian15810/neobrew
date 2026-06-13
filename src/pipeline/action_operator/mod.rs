@@ -1,11 +1,10 @@
-mod dmg_pourer;
-mod linker;
+pub(crate) mod dmg_pourer;
+pub(crate) mod linker;
 
 use async_trait::async_trait;
 use tokio::task;
 use tokio_util::task::AbortOnDropHandle;
 
-pub(crate) use self::{dmg_pourer::DmgPourer, linker::Linker};
 use super::{
     Operator,
     state_committer::StateCommitter,
@@ -13,7 +12,7 @@ use super::{
 };
 use crate::{
     context::Context,
-    package::prepared::{Download, PreparedPackage},
+    package::prepared::{PreparedPackage, download::Download},
 };
 
 pub(crate) struct _ActionOperatorMarker;

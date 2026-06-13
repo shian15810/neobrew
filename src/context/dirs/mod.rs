@@ -1,12 +1,9 @@
-mod homebrew;
-mod neobrew;
+pub(crate) mod homebrew;
+pub(super) mod neobrew;
 
 use std::path::PathBuf;
 
 use etcetera::BaseStrategy;
-
-pub(crate) use self::homebrew::HomebrewDirs;
-pub(super) use self::neobrew::NeobrewDirs;
 
 trait ProjectDirsInner {
     const APP_NAME: &str;

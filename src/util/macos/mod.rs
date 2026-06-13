@@ -1,11 +1,9 @@
-mod codename;
+pub(crate) mod codename;
 #[cfg(target_os = "macos")]
-mod codesign;
+pub(crate) mod codesign;
 #[cfg(target_os = "macos")]
-mod mach_o;
+pub(crate) mod mach_o;
 #[cfg(target_os = "macos")]
-mod tag;
-
-pub(crate) use self::codename::Codename;
+pub(crate) mod tag;
 #[cfg(target_os = "macos")]
-pub(crate) use self::{codesign::Codesign, mach_o::MachO, tag::Tag};
+pub(crate) mod xcode;

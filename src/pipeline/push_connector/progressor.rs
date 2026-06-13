@@ -8,7 +8,7 @@ use super::{
     super::state_store::{ProgressedOutput, Stage},
     PushConnector,
 };
-use crate::package::prepared::{Download, PreparedPackage, PreparedPackageable as _};
+use crate::package::prepared::{PreparedPackage, PreparedPackageExt as _, download::Download};
 
 pub(crate) struct Progressor {
     pb: ProgressBar,

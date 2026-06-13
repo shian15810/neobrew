@@ -4,17 +4,21 @@ use anyhow::Context as _;
 use futures::future;
 use tokio::fs;
 
-use super::{Artifactor, Artifactory, ReplacementPairs};
+use super::{Artifactor, ArtifactorExt, ReplacementPairs};
 use crate::{
     context::Context,
     ext::{std::path::PathExt as _, tokio::path::PathExt as _},
     package::{
-        Packageable as _,
-        prepared::{CommonStanza, Download, PreparedCask, Stanzas},
+        PackageExt as _,
+        prepared::{
+            cask::PreparedCask,
+            cask_stanza::{CommonStanza, Stanzas},
+            download::Download,
+        },
     },
 };
 
-impl Artifactory for Artifactor {
+impl ArtifactorExt for Artifactor {
     async fn relocate(
         &self,
         prepared_cask: &PreparedCask<Download>,
