@@ -1,13 +1,14 @@
 use super::{CaskCompatibilityInner, Compatibility, CompatibilityExt, FormulaCompatibilityInner};
 use crate::{
+    context::Context,
     package::raw::cask::{DependsOnLinux, DependsOnMaximumMacos, DependsOnMinimumMacos},
     util::macos::{codename::Codename, xcode::Xcode},
 };
 
 impl CompatibilityExt for Compatibility {
-    async fn try_new() -> anyhow::Result<Self> {
+    async fn try_new(context: &Context) -> anyhow::Result<Self> {
         let this = Self {
-            codename: Codename::try_default()?,
+            codename: Codename::try_default(context)?,
 
             xcode: Xcode::try_default().await?,
         };

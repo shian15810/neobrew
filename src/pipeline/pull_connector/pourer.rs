@@ -4,7 +4,13 @@ use std::{
 };
 
 use anyhow::{Context as _, anyhow};
-use async_compression::tokio::bufread::GzipDecoder;
+use async_compression::tokio::bufread::{
+    BzDecoder,
+    GzipDecoder,
+    LzmaDecoder,
+    XzDecoder,
+    ZstdDecoder,
+};
 use async_trait::async_trait;
 use async_zip::base::read::stream::ZipFileReader;
 use tempfile::TempDir;
@@ -36,10 +42,43 @@ impl Pourer {
         src_dir_path: &Path,
     ) -> anyhow::Result<()> {
         match archive_format {
-            ArchiveFormat::TarGz => {
-                let gz_decoder = GzipDecoder::new(buf_reader);
+            ArchiveFormat::Tar => {
+                let mut archive = Archive::new(buf_reader);
 
-                let mut archive = Archive::new(gz_decoder);
+                archive.unpack(src_dir_path).await?;
+            },
+            ArchiveFormat::TarBzip2 => {
+                let bz_decoder = BzDecoder::new(buf_reader);
+
+                let mut archive = Archive::new(bz_decoder);
+
+                archive.unpack(src_dir_path).await?;
+            },
+            ArchiveFormat::TarGzip => {
+                let gzip_decoder = GzipDecoder::new(buf_reader);
+
+                let mut archive = Archive::new(gzip_decoder);
+
+                archive.unpack(src_dir_path).await?;
+            },
+            ArchiveFormat::TarLzma => {
+                let lzma_decoder = LzmaDecoder::new(buf_reader);
+
+                let mut archive = Archive::new(lzma_decoder);
+
+                archive.unpack(src_dir_path).await?;
+            },
+            ArchiveFormat::TarXz => {
+                let xz_decoder = XzDecoder::new(buf_reader);
+
+                let mut archive = Archive::new(xz_decoder);
+
+                archive.unpack(src_dir_path).await?;
+            },
+            ArchiveFormat::TarZstd => {
+                let zstd_decoder = ZstdDecoder::new(buf_reader);
+
+                let mut archive = Archive::new(zstd_decoder);
 
                 archive.unpack(src_dir_path).await?;
             },
@@ -78,7 +117,7 @@ impl Pourer {
                     }
                 }
             },
-            ArchiveFormat::Dmg => {},
+            ArchiveFormat::Dmg | ArchiveFormat::Pkg => {},
         }
 
         Ok(())
@@ -134,8 +173,14 @@ impl PullConnector for Pourer {
         };
 
         match archive_format {
-            ArchiveFormat::TarGz | ArchiveFormat::Zip => true,
-            ArchiveFormat::Dmg => false,
+            ArchiveFormat::Tar
+            | ArchiveFormat::TarBzip2
+            | ArchiveFormat::TarGzip
+            | ArchiveFormat::TarLzma
+            | ArchiveFormat::TarXz
+            | ArchiveFormat::TarZstd
+            | ArchiveFormat::Zip => true,
+            ArchiveFormat::Dmg | ArchiveFormat::Pkg => false,
         }
     }
 

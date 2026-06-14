@@ -34,7 +34,7 @@ pub(crate) struct Registries {
 
 impl Registries {
     pub(crate) async fn try_new(context: Arc<Context>) -> anyhow::Result<Self> {
-        let compatibility = Compatibility::try_new().await?;
+        let compatibility = Compatibility::try_new(&context).await?;
         let compatibility = Arc::new(compatibility);
 
         let formula_registry =

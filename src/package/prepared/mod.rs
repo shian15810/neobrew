@@ -20,16 +20,18 @@ pub(crate) enum PreparedPackage<Dl = ()> {
     Cask(PreparedCask<Dl>),
 }
 
-impl TryFrom<ResolvedPackage> for PreparedPackage {
+impl TryFrom<(ResolvedPackage, &Context)> for PreparedPackage {
     type Error = anyhow::Error;
 
-    fn try_from(resolved_package: ResolvedPackage) -> Result<Self, Self::Error> {
+    fn try_from(
+        (resolved_package, context): (ResolvedPackage, &Context),
+    ) -> Result<Self, Self::Error> {
         let this = match resolved_package {
             ResolvedPackage::Formula(resolved_formula) => {
                 let resolved_formula = Arc::into_inner(resolved_formula)
                     .context("`Arc<ResolvedFormula>` still has multiple strong references")?;
 
-                let prepared_formula = PreparedFormula::try_from(resolved_formula)?;
+                let prepared_formula = PreparedFormula::try_from((resolved_formula, context))?;
 
                 Self::Formula(prepared_formula)
             },
@@ -37,7 +39,7 @@ impl TryFrom<ResolvedPackage> for PreparedPackage {
                 let resolved_cask = Arc::into_inner(resolved_cask)
                     .context("`Arc<ResolvedCask>` still has multiple strong references")?;
 
-                let prepared_cask = PreparedCask::try_from(resolved_cask)?;
+                let prepared_cask = PreparedCask::try_from((resolved_cask, context))?;
 
                 Self::Cask(prepared_cask)
             },

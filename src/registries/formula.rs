@@ -113,30 +113,25 @@ impl RegistryExt for FormulaRegistry {
 
         self.save_json(raw_formula.id(), bytes).await?;
 
+        let raw_dependencies = raw_formula
+            .dependencies()
+            .iter()
+            .map(|raw_dependency| Arc::from(raw_dependency.as_str()))
+            .collect::<Vec<_>>();
+
+        let resolved_dependencies_futs = raw_dependencies.into_iter().map(async |raw_dependency| {
+            let this = Arc::clone(&self);
+
+            let resolved_dependency = this
+                .resolve_with_stack(raw_dependency, stack.clone())
+                .await?;
+
+            anyhow::Ok(resolved_dependency)
+        });
+
+        let dependencies = future::try_join_all(resolved_dependencies_futs).await?;
+
         let is_compatible = self.compatibility.is_formula_compatible(&raw_formula)?;
-
-        let dependencies = if is_compatible {
-            let raw_dependencies = raw_formula
-                .dependencies()
-                .iter()
-                .map(|raw_dependency| Arc::from(raw_dependency.as_str()))
-                .collect::<Vec<_>>();
-
-            let resolved_dependencies_futs =
-                raw_dependencies.into_iter().map(async |raw_dependency| {
-                    let this = Arc::clone(&self);
-
-                    let resolved_dependency = this
-                        .resolve_with_stack(raw_dependency, stack.clone())
-                        .await?;
-
-                    anyhow::Ok(resolved_dependency)
-                });
-
-            future::try_join_all(resolved_dependencies_futs).await?
-        } else {
-            Vec::new()
-        };
 
         let resolved_formula = ResolvedFormula::from((raw_formula, dependencies));
         let resolved_formula = Arc::new(resolved_formula);

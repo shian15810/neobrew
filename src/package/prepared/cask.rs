@@ -29,10 +29,12 @@ pub(crate) struct PreparedCask<Dl = ()> {
     download: Dl,
 }
 
-impl TryFrom<ResolvedCask> for PreparedCask {
+impl TryFrom<(ResolvedCask, &Context)> for PreparedCask {
     type Error = anyhow::Error;
 
-    fn try_from(mut resolved_cask: ResolvedCask) -> Result<Self, Self::Error> {
+    fn try_from(
+        (mut resolved_cask, context): (ResolvedCask, &Context),
+    ) -> Result<Self, Self::Error> {
         let token = resolved_cask.token.clone();
 
         let version = resolved_cask.version.clone();
@@ -41,7 +43,7 @@ impl TryFrom<ResolvedCask> for PreparedCask {
 
         let is_requested = *resolved_cask.is_requested.get_mut();
 
-        let (variation_tag, variation) = resolved_cask.variation_entry()?;
+        let (variation_tag, variation) = resolved_cask.variation_entry(context)?;
 
         let this = Self {
             token,
@@ -182,9 +184,12 @@ impl<Dl> PreparedCask<Dl> {
 }
 
 impl ResolvedCask {
-    fn variation_entry(mut self) -> anyhow::Result<(Option<String>, Variation<Vec<Artifact>>)> {
+    fn variation_entry(
+        mut self,
+        context: &Context,
+    ) -> anyhow::Result<(Option<String>, Variation<Vec<Artifact>>)> {
         #[expect(clippy::collapsible_if)]
-        if let Some(tag) = self.variation_tag()? {
+        if let Some(tag) = self.variation_tag(context)? {
             if let Some((tag, variation)) = self.variations.remove_entry(&tag) {
                 let variation = variation.unwrap_artifacts_or(self.artifacts);
 
@@ -206,10 +211,10 @@ impl ResolvedCask {
     }
 
     #[cfg(target_os = "macos")]
-    fn variation_tag(&self) -> anyhow::Result<Option<String>> {
+    fn variation_tag(&self, context: &Context) -> anyhow::Result<Option<String>> {
         use crate::util::macos::tag::{Tag, TagError};
 
-        let current_macos_tag = Tag::try_default()?;
+        let current_macos_tag = Tag::try_default(context)?;
 
         #[cfg(debug_assertions)]
         let tagged_candidate_macos_tags = self

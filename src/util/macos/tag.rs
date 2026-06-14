@@ -7,6 +7,7 @@ use super::{
     super::semver::Semver,
     codename::{Codename, CodenameError},
 };
+use crate::context::Context;
 
 #[derive(PartialEq, Eq)]
 pub(crate) struct Tag {
@@ -19,10 +20,10 @@ impl Tag {
         &self.architecture
     }
 
-    pub(crate) fn try_default() -> anyhow::Result<Self> {
+    pub(crate) fn try_default(context: &Context) -> anyhow::Result<Self> {
         let architecture = Architecture::default();
 
-        let codename = Codename::try_default()?;
+        let codename = Codename::try_default(context)?;
 
         let this = Self::from((architecture, codename));
 

@@ -14,21 +14,27 @@ use self::{
     dirs::{homebrew::HomebrewDirs, neobrew::NeobrewDirs},
 };
 
-pub(crate) static INFO: LazyLock<Info> = LazyLock::new(os_info::get);
+static INFO: LazyLock<Info> = LazyLock::new(os_info::get);
 
 const MAX_CONCURRENCY: usize = 1 << 4;
+
 const BUFFER_MULTIPLIER: usize = 1 << 4;
 
-static CONCURRENCY_LIMIT: LazyLock<usize> = LazyLock::new(|| {
+static AVAILABLE_PARALLELISM: LazyLock<usize> = LazyLock::new(|| {
     thread::available_parallelism()
         .unwrap_or(NonZeroUsize::MIN)
         .get()
-        .min(MAX_CONCURRENCY)
 });
+
+static CONCURRENCY_LIMIT: LazyLock<usize> =
+    LazyLock::new(|| AVAILABLE_PARALLELISM.min(MAX_CONCURRENCY));
+
+static CHANNEL_CAPACITY: LazyLock<usize> =
+    LazyLock::new(|| CONCURRENCY_LIMIT.saturating_mul(BUFFER_MULTIPLIER));
 
 #[expect(clippy::module_name_repetitions)]
 pub struct Context {
-    pub(crate) os_info: &'static Info,
+    pub(crate) info: &'static Info,
 
     pub(crate) config: Config,
 
@@ -40,6 +46,7 @@ pub struct Context {
 
     pub(crate) semaphore: Semaphore,
 
+    pub(crate) available_parallelism: usize,
     pub(crate) concurrency_limit: usize,
     pub(crate) channel_capacity: usize,
 }
@@ -57,7 +64,11 @@ impl Context {
         let neobrew_dirs = neobrew_dirs.with_code(proc_exit::sysexits::OS_ERR)?;
 
         let this = Self {
-            os_info: &INFO,
+            info: &INFO,
+
+            available_parallelism: *AVAILABLE_PARALLELISM,
+            concurrency_limit: *CONCURRENCY_LIMIT,
+            channel_capacity: *CHANNEL_CAPACITY,
 
             config,
 
@@ -68,9 +79,6 @@ impl Context {
             oci_client: Client::new(ClientConfig::default()),
 
             semaphore: Semaphore::new(*CONCURRENCY_LIMIT),
-
-            concurrency_limit: *CONCURRENCY_LIMIT,
-            channel_capacity: CONCURRENCY_LIMIT.saturating_mul(BUFFER_MULTIPLIER),
         };
 
         Ok(this)

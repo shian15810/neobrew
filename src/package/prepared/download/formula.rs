@@ -59,7 +59,7 @@ impl DownloadInnerExt for PreparedFormula {
     }
 
     fn archive_format(&self, _link_path: &Path) -> anyhow::Result<Option<ArchiveFormat>> {
-        let archive_format = ArchiveFormat::TarGz;
+        let archive_format = ArchiveFormat::TarGzip;
 
         Ok(Some(archive_format))
     }

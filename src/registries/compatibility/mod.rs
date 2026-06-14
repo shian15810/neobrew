@@ -5,20 +5,23 @@ mod macos;
 
 use os_info::Bitness;
 
-use crate::package::raw::{
-    cask::{
-        DependsOn,
-        DependsOnArch,
-        DependsOnArchBrand,
-        DependsOnLinux,
-        DependsOnMaximumMacos,
-        DependsOnMinimumMacos,
-        RawCask,
-    },
-    formula::{RawFormula, Requirement, RequirementName, RequirementSpec},
-};
 #[cfg(target_os = "macos")]
 use crate::util::macos::{codename::Codename, xcode::Xcode};
+use crate::{
+    context::Context,
+    package::raw::{
+        cask::{
+            DependsOn,
+            DependsOnArch,
+            DependsOnArchBrand,
+            DependsOnLinux,
+            DependsOnMaximumMacos,
+            DependsOnMinimumMacos,
+            RawCask,
+        },
+        formula::{RawFormula, Requirement, RequirementName, RequirementSpec},
+    },
+};
 
 pub(super) struct Compatibility {
     #[cfg(target_os = "macos")]
@@ -29,7 +32,7 @@ pub(super) struct Compatibility {
 }
 
 pub(super) trait CompatibilityExt: FormulaCompatibility + CaskCompatibility + Sized {
-    async fn try_new() -> anyhow::Result<Self>;
+    async fn try_new(context: &Context) -> anyhow::Result<Self>;
 }
 
 #[expect(private_bounds)]

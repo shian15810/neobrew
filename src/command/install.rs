@@ -126,13 +126,17 @@ impl Installation {
         #[cfg(debug_assertions)]
         let prepared_packages = resolved_packages
             .into_iter()
-            .map(PreparedPackage::try_from)
+            .map(|resolved_package| {
+                PreparedPackage::try_from((resolved_package, Arc::as_ref(&self.context)))
+            })
             .try_collect::<Vec<_>>()?;
 
         #[cfg(not(debug_assertions))]
         let prepared_packages = resolved_packages
             .into_iter()
-            .map(PreparedPackage::try_from)
+            .map(|resolved_package| {
+                PreparedPackage::try_from((resolved_package, Arc::as_ref(&self.context)))
+            })
             .collect::<anyhow::Result<Vec<_>>>()?;
 
         let mut set = JoinSet::new();

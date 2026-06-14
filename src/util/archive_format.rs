@@ -1,11 +1,17 @@
 use std::{io::SeekFrom, path::Path};
 
 use anyhow::{Context as _, anyhow};
-use async_compression::tokio::bufread::GzipDecoder;
+use async_compression::tokio::bufread::{
+    BzDecoder,
+    GzipDecoder,
+    LzmaDecoder,
+    XzDecoder,
+    ZstdDecoder,
+};
 use thiserror::Error;
 use tokio::{
     fs::File,
-    io::{AsyncBufRead, AsyncReadExt as _, AsyncSeekExt as _, BufReader},
+    io::{AsyncBufRead, AsyncRead, AsyncReadExt as _, AsyncSeekExt as _, BufReader},
 };
 
 use crate::ext::std::path::PathExt as _;
@@ -13,7 +19,13 @@ use crate::ext::std::path::PathExt as _;
 #[derive(Clone, Copy)]
 pub(crate) enum ArchiveFormat {
     Dmg,
-    TarGz,
+    Pkg,
+    Tar,
+    TarBzip2,
+    TarGzip,
+    TarLzma,
+    TarXz,
+    TarZstd,
     Zip,
 }
 
@@ -30,7 +42,13 @@ impl TryFrom<&Path> for ArchiveFormat {
 
         let archive_format = match compound_extension {
             "dmg" => Self::Dmg,
-            "tar.gz" | "tgz" => Self::TarGz,
+            "pkg" => Self::Pkg,
+            "tar" => Self::Tar,
+            "tar.bz2" | "tbz2" | "tbz" => Self::TarBzip2,
+            "tar.gz" | "tgz" | "crate" => Self::TarGzip,
+            "tar.lzma" | "tlzma" => Self::TarLzma,
+            "tar.xz" | "txz" => Self::TarXz,
+            "tar.zst" | "tzst" => Self::TarZstd,
             "zip" => Self::Zip,
             _ => return Err(ArchiveFormatError::Unsupported),
         };
@@ -52,14 +70,71 @@ impl ArchiveFormat {
         let kind = infer::get(&peek_buf).context("Failed to detect archive format")?;
 
         let archive_format = match kind.extension() {
+            "tar" => Self::Tar,
+            "bz2" => {
+                let buf_reader = BufReader::new(peek_buf.as_ref());
+
+                let bz_decoder = BzDecoder::new(buf_reader);
+
+                if !Self::peek_tar(bz_decoder).await {
+                    let err = anyhow!("Unsupported archive format detected within bzip2");
+
+                    return Err(err);
+                }
+
+                Self::TarBzip2
+            },
             "gz" => {
-                if !Self::peek_tar_gz(&peek_buf).await {
+                let buf_reader = BufReader::new(peek_buf.as_ref());
+
+                let gzip_decoder = GzipDecoder::new(buf_reader);
+
+                if !Self::peek_tar(gzip_decoder).await {
                     let err = anyhow!("Unsupported archive format detected within gzip");
 
                     return Err(err);
                 }
 
-                Self::TarGz
+                Self::TarGzip
+            },
+            "lzma" => {
+                let buf_reader = BufReader::new(peek_buf.as_ref());
+
+                let lzma_decoder = LzmaDecoder::new(buf_reader);
+
+                if !Self::peek_tar(lzma_decoder).await {
+                    let err = anyhow!("Unsupported archive format detected within lzma");
+
+                    return Err(err);
+                }
+
+                Self::TarLzma
+            },
+            "xz" => {
+                let buf_reader = BufReader::new(peek_buf.as_ref());
+
+                let xz_decoder = XzDecoder::new(buf_reader);
+
+                if !Self::peek_tar(xz_decoder).await {
+                    let err = anyhow!("Unsupported archive format detected within xz");
+
+                    return Err(err);
+                }
+
+                Self::TarXz
+            },
+            "zst" => {
+                let buf_reader = BufReader::new(peek_buf.as_ref());
+
+                let zstd_decoder = ZstdDecoder::new(buf_reader);
+
+                if !Self::peek_tar(zstd_decoder).await {
+                    let err = anyhow!("Unsupported archive format detected within zstd");
+
+                    return Err(err);
+                }
+
+                Self::TarZstd
             },
             "zip" => Self::Zip,
             extension => {
@@ -72,16 +147,10 @@ impl ArchiveFormat {
         Ok((archive_format, peek_buf))
     }
 
-    async fn peek_tar_gz(buf: &[u8]) -> bool {
+    async fn peek_tar(mut decoder: impl AsyncRead + Unpin) -> bool {
         let mut peek_buf = [0_u8; Self::PEEK_SIZE];
 
-        let buf_reader = BufReader::new(buf);
-
-        let gz_decoder = GzipDecoder::new(buf_reader);
-
-        let mut gz_buf_reader = BufReader::new(gz_decoder);
-
-        if gz_buf_reader.read_exact(&mut peek_buf).await.is_err() {
+        if decoder.read_exact(&mut peek_buf).await.is_err() {
             return false;
         }
 

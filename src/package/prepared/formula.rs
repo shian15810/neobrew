@@ -35,16 +35,18 @@ pub(crate) struct PreparedFormula<Dl = ()> {
     download: Dl,
 }
 
-impl TryFrom<ResolvedFormula> for PreparedFormula {
+impl TryFrom<(ResolvedFormula, &Context)> for PreparedFormula {
     type Error = anyhow::Error;
 
-    fn try_from(resolved_formula: ResolvedFormula) -> Result<Self, Self::Error> {
+    fn try_from(
+        (resolved_formula, context): (ResolvedFormula, &Context),
+    ) -> Result<Self, Self::Error> {
         let version_revision = resolved_formula.version_revision();
         let version_revision = version_revision.into_owned();
 
         let bottle_rebuild = resolved_formula.bottle.stable.rebuild;
 
-        let Some((bottle_tag, bottle)) = resolved_formula.bottle.stable.entry()? else {
+        let Some((bottle_tag, bottle)) = resolved_formula.bottle.stable.entry(context)? else {
             let id = resolved_formula.name;
 
             let err = anyhow!(r#"Formula "{id}" has no bottle to download"#);
@@ -230,8 +232,8 @@ impl ResolvedFormula {
 }
 
 impl BottleStable {
-    fn entry(mut self) -> anyhow::Result<Option<(String, BottleStableFile)>> {
-        let Some(tag) = self.tag()? else {
+    fn entry(mut self, context: &Context) -> anyhow::Result<Option<(String, BottleStableFile)>> {
+        let Some(tag) = self.tag(context)? else {
             return Ok(None);
         };
 
@@ -244,10 +246,10 @@ impl BottleStable {
     }
 
     #[cfg(target_os = "macos")]
-    fn tag(&self) -> anyhow::Result<Option<String>> {
+    fn tag(&self, context: &Context) -> anyhow::Result<Option<String>> {
         use crate::util::macos::tag::{Tag, TagError};
 
-        let current_macos_tag = Tag::try_default()?;
+        let current_macos_tag = Tag::try_default(context)?;
 
         #[cfg(debug_assertions)]
         let tagged_candidate_macos_tags = self

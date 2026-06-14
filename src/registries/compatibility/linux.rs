@@ -1,8 +1,11 @@
 use super::{CaskCompatibilityInner, Compatibility, CompatibilityExt, FormulaCompatibilityInner};
-use crate::package::raw::{DependsOnLinux, DependsOnMaximumMacos, DependsOnMinimumMacos};
+use crate::{
+    context::Context,
+    package::raw::{DependsOnLinux, DependsOnMaximumMacos, DependsOnMinimumMacos},
+};
 
 impl CompatibilityExt for Compatibility {
-    async fn try_new() -> anyhow::Result<Self> {
+    async fn try_new(_context: &Context) -> anyhow::Result<Self> {
         let this = Self;
 
         Ok(this)

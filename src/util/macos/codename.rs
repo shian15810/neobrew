@@ -6,7 +6,7 @@ use serde_with::DeserializeFromStr;
 use thiserror::Error;
 
 use super::super::semver::Semver;
-use crate::context::INFO;
+use crate::context::Context;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, DeserializeFromStr)]
 pub(crate) enum Codename {
@@ -20,10 +20,8 @@ pub(crate) enum Codename {
 }
 
 impl Codename {
-    pub(crate) fn try_default() -> anyhow::Result<Self> {
-        let info = &INFO;
-
-        let version = info.version();
+    pub(crate) fn try_default(context: &Context) -> anyhow::Result<Self> {
+        let version = context.info.version();
 
         let &Version::Semantic(major, minor, patch) = version else {
             let err = anyhow!(r#"Unsupported macOS version detected: "{version}""#);
