@@ -17,6 +17,7 @@ pub(crate) struct RawCask {
     pub(in super::super) sha256: String,
     pub(in super::super) artifacts: Vec<Artifact>,
     pub(in super::super) variations: HashMap<String, Variation>,
+
     depends_on: DependsOn,
 }
 
@@ -35,6 +36,14 @@ impl RawPackageExt for RawCask {}
 impl RawCask {
     pub(crate) fn depends_on(&self) -> &DependsOn {
         &self.depends_on
+    }
+
+    pub(crate) fn dependencies(&self) -> &[String] {
+        &self.depends_on.cask
+    }
+
+    pub(crate) fn formula_dependencies(&self) -> &[String] {
+        &self.depends_on.formula
     }
 }
 

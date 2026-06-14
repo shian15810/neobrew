@@ -41,7 +41,8 @@ impl Registries {
             FormulaRegistry::new(Arc::clone(&compatibility), Arc::clone(&context));
         let formula_registry = Arc::new(formula_registry);
 
-        let cask_registry = CaskRegistry::new(compatibility, context);
+        let cask_registry =
+            CaskRegistry::new(Arc::clone(&formula_registry), compatibility, context);
         let cask_registry = Arc::new(cask_registry);
 
         let this = Self {
@@ -61,9 +62,10 @@ impl Registries {
             resolved_package.set_is_requested(true);
         }
 
+        #[expect(clippy::redundant_closure_for_method_calls)]
         let mut resolved_packages = resolved_packages
             .into_iter()
-            .flat_map(|resolved_package| resolved_package.iter())
+            .flat_map(|resolved_package| resolved_package.into_iter())
             .filter(|resolved_package| {
                 let id = resolved_package.id();
                 let id = id.to_owned();
@@ -138,15 +140,31 @@ impl Registries {
                 ResolvedPackage::Formula(resolved_formula) => {
                     let resolved_formula = Arc::get_mut(resolved_formula)?;
 
-                    if resolved_formula.dependencies().is_empty() {
-                        return None;
+                    if !resolved_formula.dependencies().is_empty() {
+                        resolved_formula.clear_dependencies();
+
+                        return Some(());
                     }
 
-                    resolved_formula.dependencies_mut().clear();
-
-                    Some(())
+                    None
                 },
-                ResolvedPackage::Cask(_resolved_cask) => None,
+                ResolvedPackage::Cask(resolved_cask) => {
+                    let resolved_cask = Arc::get_mut(resolved_cask)?;
+
+                    if !resolved_cask.dependencies().is_empty() {
+                        resolved_cask.clear_dependencies();
+
+                        return Some(());
+                    }
+
+                    if !resolved_cask.formula_dependencies().is_empty() {
+                        resolved_cask.clear_formula_dependencies();
+
+                        return Some(());
+                    }
+
+                    None
+                },
             })
             .count();
 
@@ -172,11 +190,21 @@ trait RegistryExt: RegistryJsonExt {
     const TAP_MIGRATIONS_URL: &str;
     const TAP_MIGRATIONS_JWS_URL: &str;
 
-    fn new(compatibility: Arc<Compatibility>, context: Arc<Context>) -> Self;
-
     async fn resolve(
         self: Arc<Self>,
         package: Arc<str>,
+    ) -> anyhow::Result<Arc<Self::ResolvedPackage>>;
+
+    async fn resolve_with_stack(
+        self: Arc<Self>,
+        package: Arc<str>,
+        stack: Vec<Arc<str>>,
+    ) -> anyhow::Result<Arc<Self::ResolvedPackage>>;
+
+    async fn fetch_with_stack(
+        self: Arc<Self>,
+        package: Arc<str>,
+        stack: Vec<Arc<str>>,
     ) -> anyhow::Result<Arc<Self::ResolvedPackage>>;
 }
 

@@ -47,7 +47,7 @@ impl TryFrom<ResolvedFormula> for PreparedFormula {
         let Some((bottle_tag, bottle)) = resolved_formula.bottle.stable.entry()? else {
             let id = resolved_formula.name;
 
-            let err = anyhow!(r#"Formula "{id}" has no bottle found to download"#);
+            let err = anyhow!(r#"Formula "{id}" has no bottle to download"#);
 
             return Err(err);
         };

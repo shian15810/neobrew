@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    iter,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -13,7 +12,7 @@ use super::{
         raw::cask::{Artifact, RawCask, Variation},
     },
     ResolvedPackageExt,
-    ResolvedPackageExtIter,
+    formula::ResolvedFormula,
 };
 
 pub(crate) struct ResolvedCask {
@@ -25,10 +24,19 @@ pub(crate) struct ResolvedCask {
     pub(in super::super) variations: HashMap<String, Variation>,
     pub(in super::super) is_compatible: AtomicBool,
     pub(in super::super) is_requested: AtomicBool,
+
+    dependencies: Vec<Arc<Self>>,
+    formula_dependencies: Vec<Arc<ResolvedFormula>>,
 }
 
-impl From<RawCask> for ResolvedCask {
-    fn from(raw_cask: RawCask) -> Self {
+impl From<(RawCask, Vec<Arc<Self>>, Vec<Arc<ResolvedFormula>>)> for ResolvedCask {
+    fn from(
+        (raw_cask, dependencies, formula_dependencies): (
+            RawCask,
+            Vec<Arc<Self>>,
+            Vec<Arc<ResolvedFormula>>,
+        ),
+    ) -> Self {
         Self {
             token: raw_cask.token,
             version: raw_cask.version,
@@ -38,6 +46,9 @@ impl From<RawCask> for ResolvedCask {
             variations: raw_cask.variations,
             is_compatible: AtomicBool::new(false),
             is_requested: AtomicBool::new(false),
+
+            dependencies,
+            formula_dependencies,
         }
     }
 }
@@ -62,10 +73,20 @@ impl ResolvedPackageExt for ResolvedCask {
     }
 }
 
-impl ResolvedPackageExtIter for ResolvedCask {
-    fn iter(self: &Arc<Self>) -> impl Iterator<Item = Arc<Self>> + use<> {
-        let this = Arc::clone(self);
+impl ResolvedCask {
+    pub(crate) fn dependencies(&self) -> &[Arc<Self>] {
+        &self.dependencies
+    }
 
-        iter::once(this)
+    pub(crate) fn formula_dependencies(&self) -> &[Arc<ResolvedFormula>] {
+        &self.formula_dependencies
+    }
+
+    pub(crate) fn clear_dependencies(&mut self) {
+        self.dependencies.clear();
+    }
+
+    pub(crate) fn clear_formula_dependencies(&mut self) {
+        self.formula_dependencies.clear();
     }
 }

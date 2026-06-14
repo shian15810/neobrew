@@ -12,6 +12,7 @@ pub(crate) struct RawFormula {
     pub(in super::super) revision: u64,
     pub(in super::super) bottle: Bottle,
     pub(in super::super) keg_only: bool,
+
     requirements: Vec<Requirement>,
     dependencies: Vec<String>,
 }
