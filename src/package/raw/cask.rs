@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use os_info::Bitness;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_repr::Deserialize_repr;
 use serde_with::{BoolFromInt, FromInto, serde_as};
@@ -182,8 +182,8 @@ pub(in super::super) struct ArtifactPkgSourceOptions {
 }
 
 #[serde_as]
-#[derive(Deserialize)]
-pub(in super::super) struct ArtifactPkgSourceOptionsChoice {
+#[derive(Serialize, Deserialize)]
+pub(crate) struct ArtifactPkgSourceOptionsChoice {
     #[serde(rename = "choiceIdentifier")]
     identifier: String,
     #[serde(rename = "choiceAttribute")]
@@ -193,7 +193,7 @@ pub(in super::super) struct ArtifactPkgSourceOptionsChoice {
     attribute_setting: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 enum ArtifactPkgSourceOptionsChoiceAttribute {
     #[serde(rename = "selected")]
     Selected,

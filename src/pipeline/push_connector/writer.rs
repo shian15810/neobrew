@@ -61,11 +61,14 @@ impl PushConnector for Writer {
     ) -> anyhow::Result<Option<Self::Output>> {
         let download = prepared_package.download();
 
+        let dest_file_name = download.file_name();
+
         let dest_file_path = download.file_path();
 
         let dest_link_path = download.link_path();
 
         let output = WrittenOutput {
+            dest_file_name: dest_file_name.to_owned(),
             dest_file_path: dest_file_path.to_owned(),
             dest_link_path: dest_link_path.to_owned(),
         };
@@ -129,6 +132,8 @@ impl PushConnector for Writer {
 
         let download = prepared_package.download();
 
+        let dest_file_name = download.file_name();
+
         let dest_file_path = download.file_path();
 
         let dest_link_path = download.link_path();
@@ -137,6 +142,7 @@ impl PushConnector for Writer {
             .await?;
 
         let output = WrittenOutput {
+            dest_file_name: dest_file_name.to_owned(),
             dest_file_path: dest_file_path.to_owned(),
             dest_link_path: dest_link_path.to_owned(),
         };

@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use path_clean::PathClean as _;
 
 use super::{
-    super::state_store::{ArtifactedOutput, PouredOutput, Stage},
+    super::state_store::{ArtifactedOutput, ExtractedOutput, Stage},
     SensorOperator,
 };
 use crate::{
@@ -28,13 +28,13 @@ pub(crate) struct Artifactor;
 
 #[async_trait]
 impl SensorOperator for Artifactor {
-    type Payload = PouredOutput;
+    type Payload = ExtractedOutput;
     type State = ReplacementPairs;
     type Staging = PathBuf;
     type Output = ArtifactedOutput;
 
     fn poke_stage(&self) -> Stage {
-        Stage::Poured
+        Stage::Extracted
     }
 
     fn should_run(
@@ -101,6 +101,10 @@ impl SensorOperator for Artifactor {
         };
 
         let replacement_pairs = state;
+
+        let _staged_dir_path = self
+            .install(prepared_cask, replacement_pairs, context)
+            .await?;
 
         let _staged_dir_path = self
             .relocate(prepared_cask, replacement_pairs, context)
@@ -206,6 +210,13 @@ impl Artifactor {
 }
 
 trait ArtifactorExt {
+    async fn install(
+        &self,
+        prepared_cask: &PreparedCask<Download>,
+        replacement_pairs: &ReplacementPairs,
+        context: &Context,
+    ) -> anyhow::Result<PathBuf>;
+
     async fn relocate(
         &self,
         prepared_cask: &PreparedCask<Download>,

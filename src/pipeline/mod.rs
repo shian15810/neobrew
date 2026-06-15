@@ -14,7 +14,7 @@ use frunk::{
     traits::IntoReverse,
 };
 use futures::{
-    future::TryFutureExt as _,
+    future::{FutureExt as _, TryFutureExt as _},
     sink::{self, SinkExt as _},
     stream::{self, StreamExt as _, TryStreamExt as _},
 };
@@ -357,13 +357,14 @@ impl<Output: Send, Handles: Collect<Outputs: Send> + Send> Collect
 
     async fn collect(self) -> anyhow::Result<Self::Outputs> {
         let head = self.head.err_into();
+        let head = head.map(Result::flatten);
 
         let tail = self.tail.collect();
 
         let (output, outputs) = futures::try_join!(head, tail)?;
 
         let outputs = HCons {
-            head: output?,
+            head: output,
             tail: outputs,
         };
 

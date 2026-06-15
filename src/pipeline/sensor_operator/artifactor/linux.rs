@@ -11,6 +11,22 @@ use crate::{
 
 impl ArtifactorExt for Artifactor {
     #[expect(clippy::unused_async_trait_impl)]
+    async fn install(
+        &self,
+        prepared_cask: &PreparedCask<Download>,
+        _replacement_pairs: &ReplacementPairs,
+        context: &Context,
+    ) -> anyhow::Result<PathBuf> {
+        let id = prepared_cask.id();
+
+        let version = prepared_cask.version();
+
+        let staged_dir_path = context.homebrew_dirs.staged_dir(id, version);
+
+        Ok(staged_dir_path)
+    }
+
+    #[expect(clippy::unused_async_trait_impl)]
     async fn relocate(
         &self,
         prepared_cask: &PreparedCask<Download>,

@@ -13,10 +13,14 @@ use futures::{
 use path_clean::PathClean as _;
 use plist::Value;
 use tempfile::{NamedTempFile, TempDir};
-use tokio::{fs, io::AsyncWriteExt as _, process::Command};
+use tokio::{
+    fs,
+    io::{self, AsyncWriteExt as _},
+    process::Command,
+};
 
 use super::{
-    super::state_store::{PouredOutput, Stage, WrittenOutput},
+    super::state_store::{ExtractedOutput, Stage, WrittenOutput},
     ActionOperator,
 };
 use crate::{
@@ -26,13 +30,13 @@ use crate::{
     util::archive_format::ArchiveFormat,
 };
 
-pub(crate) struct DmgPourer;
+pub(crate) struct DmgExtractor;
 
 #[async_trait]
-impl ActionOperator for DmgPourer {
+impl ActionOperator for DmgExtractor {
     type Input = WrittenOutput;
     type Staging = (TempDir, PathBuf);
-    type Output = PouredOutput;
+    type Output = ExtractedOutput;
 
     async fn should_run(
         &self,
@@ -55,7 +59,7 @@ impl ActionOperator for DmgPourer {
     }
 
     fn running_prefix(&self) -> Option<&'static str> {
-        Some("Pouring")
+        Some("Extracting")
     }
 
     async fn execute(
@@ -72,7 +76,7 @@ impl ActionOperator for DmgPourer {
 
         let src_file_path = &input.dest_file_path;
 
-        let dest_dir_path = prepared_package.pour_dir_path(context);
+        let dest_dir_path = prepared_package.extract_dir_path(context);
 
         fs::create_dir_all(&dest_dir_path).await?;
 
@@ -80,7 +84,7 @@ impl ActionOperator for DmgPourer {
 
         let src_dir_path = src_dir.path();
 
-        self.pour(src_file_path, src_dir_path, &dest_dir_path)
+        self.extract(src_file_path, src_dir_path, &dest_dir_path)
             .await?;
 
         let staging = (src_dir, dest_dir_path);
@@ -93,7 +97,7 @@ impl ActionOperator for DmgPourer {
 
         src_dir.close()?;
 
-        let output = PouredOutput {
+        let output = ExtractedOutput {
             dest_dir_path,
 
             archive_format: ArchiveFormat::Dmg,
@@ -107,26 +111,25 @@ impl ActionOperator for DmgPourer {
         should_run: bool,
         _prepared_package: &PreparedPackage<Download>,
     ) -> Option<Stage> {
-        should_run.then_some(Stage::Poured)
+        should_run.then_some(Stage::Extracted)
     }
 }
 
-impl DmgPourer {
+impl DmgExtractor {
     async fn is_dmg(
         &self,
         src_file_path: &Path,
         archive_format: Option<ArchiveFormat>,
     ) -> anyhow::Result<bool> {
-        let is_dmg = if let Some(archive_format) = archive_format {
-            matches!(archive_format, ArchiveFormat::Dmg)
-        } else {
-            ArchiveFormat::is_dmg(src_file_path).await?
+        let is_dmg = match archive_format {
+            Some(archive_format) => matches!(archive_format, ArchiveFormat::Dmg),
+            None => ArchiveFormat::is_dmg(src_file_path).await?,
         };
 
         Ok(is_dmg)
     }
 
-    async fn pour(
+    async fn extract(
         &self,
         src_file_path: &Path,
         src_dir_path: &Path,
@@ -140,11 +143,11 @@ impl DmgPourer {
             return Err(err);
         }
 
-        let extract_mount_point_futs = mount_points
+        let copy_mount_point_futs = mount_points
             .iter()
-            .map(|mount_point| self.extract(mount_point, src_dir_path, dest_dir_path));
+            .map(|mount_point| self.copy(mount_point, src_dir_path, dest_dir_path));
 
-        let extract_mount_point_res = future::try_join_all(extract_mount_point_futs).await;
+        let copy_mount_point_res = future::try_join_all(copy_mount_point_futs).await;
 
         let eject_mount_point_futs = mount_points
             .iter()
@@ -155,7 +158,7 @@ impl DmgPourer {
             .into_iter()
             .collect::<anyhow::Result<Vec<_>>>();
 
-        extract_mount_point_res.and(eject_mount_point_res)?;
+        copy_mount_point_res.and(eject_mount_point_res)?;
 
         Ok(())
     }
@@ -203,10 +206,11 @@ impl DmgPourer {
         let hdiutil = hdiutil.wait_with_output().await?;
 
         if !hdiutil.status.success() {
-            let stderr = String::from_utf8_lossy(&hdiutil.stderr);
-            let stderr = stderr.into_owned();
+            let stdout = String::from_utf8_lossy(&hdiutil.stdout);
 
-            let err = anyhow!(stderr);
+            let stderr = String::from_utf8_lossy(&hdiutil.stderr);
+
+            let err = anyhow!("{stdout}{stderr}");
 
             return Err(err);
         }
@@ -241,10 +245,11 @@ impl DmgPourer {
         let hdiutil_convert = hdiutil_convert.output().await?;
 
         if !hdiutil_convert.status.success() {
-            let stderr = String::from_utf8_lossy(&hdiutil_convert.stderr);
-            let stderr = stderr.into_owned();
+            let stdout = String::from_utf8_lossy(&hdiutil_convert.stdout);
 
-            let err = anyhow!(stderr);
+            let stderr = String::from_utf8_lossy(&hdiutil_convert.stderr);
+
+            let err = anyhow!("{stdout}{stderr}");
 
             return Err(err);
         }
@@ -263,10 +268,11 @@ impl DmgPourer {
         let hdiutil_attach = hdiutil_attach.output().await?;
 
         if !hdiutil_attach.status.success() {
-            let stderr = String::from_utf8_lossy(&hdiutil_attach.stderr);
-            let stderr = stderr.into_owned();
+            let stdout = String::from_utf8_lossy(&hdiutil_attach.stdout);
 
-            let err = anyhow!(stderr);
+            let stderr = String::from_utf8_lossy(&hdiutil_attach.stderr);
+
+            let err = anyhow!("{stdout}{stderr}");
 
             return Err(err);
         }
@@ -298,7 +304,7 @@ impl DmgPourer {
         Ok(mount_points)
     }
 
-    async fn extract(
+    async fn copy(
         &self,
         mount_point: &Path,
         src_dir_path: &Path,
@@ -312,15 +318,15 @@ impl DmgPourer {
             return Err(err);
         }
 
-        let list_file = NamedTempFile::new_in(dest_dir_path)?;
-
-        let bom_file = NamedTempFile::new_in(dest_dir_path)?;
+        let list_file = NamedTempFile::new_in(src_dir_path)?;
 
         let list_file_path = list_file.path();
 
-        let bom_file_path = bom_file.path();
-
         fs::write(list_file_path, bom).await?;
+
+        let bom_file = NamedTempFile::new_in(src_dir_path)?;
+
+        let bom_file_path = bom_file.path();
 
         let mut mkbom = Command::new("mkbom");
 
@@ -333,11 +339,14 @@ impl DmgPourer {
 
         let mkbom = mkbom.output().await?;
 
-        if !mkbom.status.success() {
-            let stderr = String::from_utf8_lossy(&mkbom.stderr);
-            let stderr = stderr.into_owned();
+        list_file.close()?;
 
-            let err = anyhow!(stderr);
+        if !mkbom.status.success() {
+            let stdout = String::from_utf8_lossy(&mkbom.stdout);
+
+            let stderr = String::from_utf8_lossy(&mkbom.stderr);
+
+            let err = anyhow!("{stdout}{stderr}");
 
             return Err(err);
         }
@@ -353,23 +362,30 @@ impl DmgPourer {
 
         let ditto = ditto.output().await?;
 
-        if !ditto.status.success() {
-            let stderr = String::from_utf8_lossy(&ditto.stderr);
-            let stderr = stderr.into_owned();
+        bom_file.close()?;
 
-            let err = anyhow!(stderr);
+        if !ditto.status.success() {
+            let stdout = String::from_utf8_lossy(&ditto.stdout);
+
+            let stderr = String::from_utf8_lossy(&ditto.stderr);
+
+            let err = anyhow!("{stdout}{stderr}");
 
             return Err(err);
         }
 
-        bom_file.close()?;
-
-        list_file.close()?;
-
         let mut dest_item_entries = WalkDir::new(dest_dir_path);
 
         while let Some(dest_item_entry) = dest_item_entries.next().await {
-            let dest_item_entry = dest_item_entry?;
+            let dest_item_entry = match dest_item_entry {
+                Ok(dest_item_entry) => dest_item_entry,
+                Err(err)
+                    if err.io().map(io::Error::kind) == Some(io::ErrorKind::PermissionDenied) =>
+                {
+                    continue;
+                },
+                Err(err) => return Err(err)?,
+            };
 
             let dest_item_path = dest_item_entry.path();
 
@@ -395,7 +411,15 @@ impl DmgPourer {
         let mut mount_point_entries = WalkDir::new(mount_point);
 
         while let Some(mount_point_entry) = mount_point_entries.next().await {
-            let mount_point_entry = mount_point_entry?;
+            let mount_point_entry = match mount_point_entry {
+                Ok(mount_point_entry) => mount_point_entry,
+                Err(err)
+                    if err.io().map(io::Error::kind) == Some(io::ErrorKind::PermissionDenied) =>
+                {
+                    continue;
+                },
+                Err(err) => return Err(err)?,
+            };
 
             let mount_point_entry_path = mount_point_entry.path();
 
@@ -460,13 +484,15 @@ impl DmgPourer {
 
     #[expect(clippy::unused_self)]
     fn is_dmg_metadata(&self, entry_relpath: &Path) -> bool {
-        entry_relpath
+        let is_dmg_metadata = entry_relpath
             .components()
             .find_map(|component| match component {
                 Component::Normal(first_component_pstr) => first_component_pstr.to_str(),
                 _ => None,
             })
-            .is_some_and(|first_component_pstr| Self::DMG_METADATA.contains(&first_component_pstr))
+            .map(|first_component_pstr| Self::DMG_METADATA.contains(&first_component_pstr));
+
+        is_dmg_metadata == Some(true)
     }
 
     async fn eject(&self, mount_point: &Path) -> anyhow::Result<()> {
@@ -489,10 +515,11 @@ impl DmgPourer {
         let diskutil_info = diskutil_info.output().await?;
 
         if !diskutil_info.status.success() {
-            let stderr = String::from_utf8_lossy(&diskutil_info.stderr);
-            let stderr = stderr.into_owned();
+            let stdout = String::from_utf8_lossy(&diskutil_info.stdout);
 
-            let err = anyhow!(stderr);
+            let stderr = String::from_utf8_lossy(&diskutil_info.stderr);
+
+            let err = anyhow!("{stdout}{stderr}");
 
             return Err(err);
         }
@@ -528,10 +555,11 @@ impl DmgPourer {
             let diskutil_eject = diskutil_eject.output().await?;
 
             if !diskutil_eject.status.success() {
-                let stderr = String::from_utf8_lossy(&diskutil_eject.stderr);
-                let stderr = stderr.into_owned();
+                let stdout = String::from_utf8_lossy(&diskutil_eject.stdout);
 
-                let err = anyhow!(stderr);
+                let stderr = String::from_utf8_lossy(&diskutil_eject.stderr);
+
+                let err = anyhow!("{stdout}{stderr}");
 
                 return Err(err);
             }
@@ -550,20 +578,18 @@ impl DmgPourer {
     }
 
     async fn eject_force(&self, mount_point: &Path) -> anyhow::Result<()> {
-        let mut diskutil_unmount = Command::new("diskutil");
+        let mut diskutil = Command::new("diskutil");
 
-        diskutil_unmount
-            .arg("unmount")
-            .arg("force")
-            .arg(mount_point);
+        diskutil.arg("unmount").arg("force").arg(mount_point);
 
-        let diskutil_unmount = diskutil_unmount.output().await?;
+        let diskutil = diskutil.output().await?;
 
-        if !diskutil_unmount.status.success() {
-            let stderr = String::from_utf8_lossy(&diskutil_unmount.stderr);
-            let stderr = stderr.into_owned();
+        if !diskutil.status.success() {
+            let stdout = String::from_utf8_lossy(&diskutil.stdout);
 
-            let err = anyhow!(stderr);
+            let stderr = String::from_utf8_lossy(&diskutil.stderr);
+
+            let err = anyhow!("{stdout}{stderr}");
 
             return Err(err);
         }

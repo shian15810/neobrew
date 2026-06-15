@@ -1,5 +1,6 @@
-pub(crate) mod dmg_pourer;
+pub(crate) mod dmg_extractor;
 pub(crate) mod linker;
+pub(crate) mod pkg_extractor;
 
 use async_trait::async_trait;
 use tokio::task;

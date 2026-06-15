@@ -15,8 +15,12 @@ use crate::{
         Connector as _,
         Operator as _,
         Pipeline,
-        action_operator::{dmg_pourer::DmgPourer, linker::Linker},
-        pull_connector::pourer::Pourer,
+        action_operator::{
+            dmg_extractor::DmgExtractor,
+            linker::Linker,
+            pkg_extractor::PkgExtractor,
+        },
+        pull_connector::extractor::Extractor,
         push_connector::{hasher::Hasher, progressor::Progressor, writer::Writer},
         sensor_operator::{artifactor::Artifactor, relocator::Relocator},
     },
@@ -200,8 +204,12 @@ impl Installation {
         Pipeline::build(prepared_package, pb.clone(), Arc::clone(&self.context))
             .with_pb()
             .fanout(Hasher)
-            .fanout(Writer.fanout(DmgPourer))
-            .fanout(Pourer.fanout(Relocator.fanout(Linker)).fanout(Artifactor))
+            .fanout(Writer.fanout(DmgExtractor).fanout(PkgExtractor))
+            .fanout(
+                Extractor
+                    .fanout(Relocator.fanout(Linker))
+                    .fanout(Artifactor),
+            )
             .run_concurrently(stream)
             .await?;
 

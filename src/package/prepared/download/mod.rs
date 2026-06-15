@@ -20,6 +20,7 @@ use crate::{
 pub(crate) struct Download {
     url: String,
 
+    file_name: String,
     file_path: PathBuf,
     link_path: PathBuf,
 
@@ -34,6 +35,10 @@ pub(crate) struct Download {
 }
 
 impl Download {
+    pub(crate) fn file_name(&self) -> &str {
+        &self.file_name
+    }
+
     pub(crate) fn file_path(&self) -> &Path {
         &self.file_path
     }
@@ -79,10 +84,13 @@ impl DownloadInnerExt for PreparedPackage {
         }
     }
 
-    async fn file_path_link_path(&self, context: &Context) -> anyhow::Result<(PathBuf, PathBuf)> {
+    async fn file_name_file_path_link_path(
+        &self,
+        context: &Context,
+    ) -> anyhow::Result<(String, PathBuf, PathBuf)> {
         match self {
-            Self::Formula(formula) => formula.file_path_link_path(context).await,
-            Self::Cask(cask) => cask.file_path_link_path(context).await,
+            Self::Formula(formula) => formula.file_name_file_path_link_path(context).await,
+            Self::Cask(cask) => cask.file_name_file_path_link_path(context).await,
         }
     }
 
@@ -93,10 +101,10 @@ impl DownloadInnerExt for PreparedPackage {
         }
     }
 
-    fn archive_format(&self, link_path: &Path) -> anyhow::Result<Option<ArchiveFormat>> {
+    fn archive_format(&self, file_name: &str) -> anyhow::Result<Option<ArchiveFormat>> {
         match self {
-            Self::Formula(formula) => formula.archive_format(link_path),
-            Self::Cask(cask) => cask.archive_format(link_path),
+            Self::Formula(formula) => formula.archive_format(file_name),
+            Self::Cask(cask) => cask.archive_format(file_name),
         }
     }
 
@@ -119,7 +127,7 @@ pub(super) trait DownloadExt: DownloadInnerExt {
     ) -> anyhow::Result<(Download, BoxStream<'static, anyhow::Result<Bytes>>)> {
         let url = self.url().to_owned();
 
-        let (file_path, link_path) = self.file_path_link_path(context).await?;
+        let (file_name, file_path, link_path) = self.file_name_file_path_link_path(context).await?;
 
         let actual_sha256 = self.actual_sha256(&file_path).await?;
 
@@ -134,7 +142,7 @@ pub(super) trait DownloadExt: DownloadInnerExt {
             )
             .await?;
 
-        let archive_format = self.archive_format(&link_path)?;
+        let archive_format = self.archive_format(&file_name)?;
 
         let (stream, content_length) = if is_verified {
             self.file_stream_content_length(&file_path).await?
@@ -145,6 +153,7 @@ pub(super) trait DownloadExt: DownloadInnerExt {
         let download = Download {
             url,
 
+            file_name,
             file_path,
             link_path,
 
@@ -169,7 +178,10 @@ impl DownloadExt for PreparedCask {}
 trait DownloadInnerExt: PreparedPackageExt {
     fn url(&self) -> &str;
 
-    async fn file_path_link_path(&self, context: &Context) -> anyhow::Result<(PathBuf, PathBuf)>;
+    async fn file_name_file_path_link_path(
+        &self,
+        context: &Context,
+    ) -> anyhow::Result<(String, PathBuf, PathBuf)>;
 
     async fn actual_sha256(&self, file_path: &Path) -> anyhow::Result<Option<String>> {
         let Some(mut file) = File::open_if_exists(file_path).await? else {
@@ -216,7 +228,7 @@ trait DownloadInnerExt: PreparedPackageExt {
         Ok(is_verified)
     }
 
-    fn archive_format(&self, link_path: &Path) -> anyhow::Result<Option<ArchiveFormat>>;
+    fn archive_format(&self, file_name: &str) -> anyhow::Result<Option<ArchiveFormat>>;
 
     async fn file_stream_content_length(
         &self,

@@ -36,6 +36,10 @@ static CHANNEL_CAPACITY: LazyLock<usize> =
 pub struct Context {
     pub(crate) info: &'static Info,
 
+    pub(crate) available_parallelism: usize,
+    pub(crate) concurrency_limit: usize,
+    pub(crate) channel_capacity: usize,
+
     pub(crate) config: Config,
 
     pub(crate) homebrew_dirs: HomebrewDirs,
@@ -45,10 +49,6 @@ pub struct Context {
     pub(crate) oci_client: Client,
 
     pub(crate) semaphore: Semaphore,
-
-    pub(crate) available_parallelism: usize,
-    pub(crate) concurrency_limit: usize,
-    pub(crate) channel_capacity: usize,
 }
 
 impl Context {

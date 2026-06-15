@@ -110,7 +110,8 @@ impl RelocatorExt for Relocator {
 
                 match new_need {
                     Cow::Owned(new_string) => {
-                        let old_need = old_need.into_owned().into_bytes();
+                        let old_need = old_need.into_owned();
+                        let old_need = old_need.into_bytes();
 
                         let new_need = new_string.into_bytes();
 

@@ -61,10 +61,11 @@ impl Xcode {
         let xcodebuild = xcodebuild.output().await?;
 
         if !xcodebuild.status.success() {
-            let stderr = String::from_utf8_lossy(&xcodebuild.stderr);
-            let stderr = stderr.into_owned();
+            let stdout = String::from_utf8_lossy(&xcodebuild.stdout);
 
-            let err = anyhow!(stderr);
+            let stderr = String::from_utf8_lossy(&xcodebuild.stderr);
+
+            let err = anyhow!("{stdout}{stderr}");
 
             return Err(err);
         }

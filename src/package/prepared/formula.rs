@@ -175,7 +175,7 @@ impl<Dl> PreparedPackageExt for PreparedFormula<Dl> {
         &self.download
     }
 
-    fn pour_dir_path(&self, context: &Context) -> PathBuf {
+    fn extract_dir_path(&self, context: &Context) -> PathBuf {
         context.homebrew_dirs.cellar_dir()
     }
 }

@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     io::Cursor,
     path::{Component, Path, PathBuf},
 };
@@ -22,7 +23,7 @@ use tokio_tar::Archive;
 use tokio_util::compat::FuturesAsyncReadCompatExt as _;
 
 use super::{
-    super::state_store::{PouredOutput, Stage},
+    super::state_store::{ExtractedOutput, Stage},
     PullConnector,
 };
 use crate::{
@@ -32,9 +33,9 @@ use crate::{
     util::archive_format::ArchiveFormat,
 };
 
-pub(crate) struct Pourer;
+pub(crate) struct Extractor;
 
-impl Pourer {
+impl Extractor {
     async fn extract(
         &self,
         archive_format: ArchiveFormat,
@@ -85,6 +86,8 @@ impl Pourer {
             ArchiveFormat::Zip => {
                 let mut zip_reader = ZipFileReader::with_tokio(buf_reader);
 
+                let mut created_dir_paths = HashSet::new();
+
                 while let Some(mut entry_reader) = zip_reader.next_with_entry().await? {
                     let src_file_pstr = entry_reader.reader().entry().filename().as_str()?;
 
@@ -107,7 +110,11 @@ impl Pourer {
 
                         let dest_file_base_path = dest_file_path.base()?;
 
-                        fs::create_dir_all(dest_file_base_path).await?;
+                        if !created_dir_paths.contains(dest_file_base_path) {
+                            fs::create_dir_all(dest_file_base_path).await?;
+
+                            created_dir_paths.insert(dest_file_base_path.to_owned());
+                        }
 
                         let mut dest_file = File::create(dest_file_path).await?;
 
@@ -161,9 +168,9 @@ impl Pourer {
 }
 
 #[async_trait]
-impl PullConnector for Pourer {
+impl PullConnector for Extractor {
     type Staging = (TempDir, PathBuf, ArchiveFormat);
-    type Output = PouredOutput;
+    type Output = ExtractedOutput;
 
     fn should_run(&self, prepared_package: &PreparedPackage<Download>) -> bool {
         let download = prepared_package.download();
@@ -190,7 +197,7 @@ impl PullConnector for Pourer {
         prepared_package: &PreparedPackage<Download>,
         context: &Context,
     ) -> anyhow::Result<Self::Staging> {
-        let dest_dir_path = prepared_package.pour_dir_path(context);
+        let dest_dir_path = prepared_package.extract_dir_path(context);
 
         fs::create_dir_all(&dest_dir_path).await?;
 
@@ -202,20 +209,24 @@ impl PullConnector for Pourer {
 
         let download = prepared_package.download();
 
-        let archive_format = if let Some(archive_format) = download.archive_format() {
-            self.extract(archive_format, buf_reader, src_dir_path)
-                .await?;
+        #[expect(clippy::single_match_else)]
+        let archive_format = match download.archive_format() {
+            Some(archive_format) => {
+                self.extract(archive_format, buf_reader, src_dir_path)
+                    .await?;
 
-            archive_format
-        } else {
-            let (archive_format, peek_buf) = ArchiveFormat::peek(&mut buf_reader).await?;
+                archive_format
+            },
+            None => {
+                let (archive_format, peek_buf) = ArchiveFormat::peek(&mut buf_reader).await?;
 
-            let chained_buf_reader = Cursor::new(peek_buf).chain(buf_reader);
+                let chained_buf_reader = Cursor::new(peek_buf).chain(buf_reader);
 
-            self.extract(archive_format, chained_buf_reader, src_dir_path)
-                .await?;
+                self.extract(archive_format, chained_buf_reader, src_dir_path)
+                    .await?;
 
-            archive_format
+                archive_format
+            },
         };
 
         let staging = (src_dir, dest_dir_path, archive_format);
@@ -232,7 +243,7 @@ impl PullConnector for Pourer {
 
         self.persist(src_dir, &dest_dir_path).await?;
 
-        let output = PouredOutput {
+        let output = ExtractedOutput {
             dest_dir_path,
             archive_format,
         };
@@ -241,6 +252,6 @@ impl PullConnector for Pourer {
     }
 
     fn passed_stage(&self, should_run: bool) -> Option<Stage> {
-        should_run.then_some(Stage::Poured)
+        should_run.then_some(Stage::Extracted)
     }
 }

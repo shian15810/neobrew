@@ -11,7 +11,7 @@ use super::super::raw::cask::{
 pub(crate) struct Stanzas {
     pub(crate) app: Vec<CommonStanza>,
     pub(crate) suite: Vec<CommonStanza>,
-    pkg: Vec<PkgStanza>,
+    pub(crate) pkg: Vec<PkgStanza>,
     installer: Vec<ArtifactInstallerSource>,
     pub(crate) binary: Vec<CommonStanza>,
     pub(crate) manpage: Vec<CommonStanza>,
@@ -277,10 +277,10 @@ impl From<(ArtifactCommonSource, String)> for CommonStanza {
     }
 }
 
-struct PkgStanza {
-    source: String,
-    allow_untrusted: bool,
-    choices: Vec<ArtifactPkgSourceOptionsChoice>,
+pub(crate) struct PkgStanza {
+    pub(crate) source: String,
+    pub(crate) allow_untrusted: bool,
+    pub(crate) choices: Vec<ArtifactPkgSourceOptionsChoice>,
 }
 
 impl From<ArtifactPkgSource> for PkgStanza {

@@ -107,7 +107,7 @@ pub(crate) trait PreparedPackageExt: PackageExt {
 
     fn download(&self) -> &Self::Download;
 
-    fn pour_dir_path(&self, context: &Context) -> PathBuf;
+    fn extract_dir_path(&self, context: &Context) -> PathBuf;
 }
 
 impl<Dl> PreparedPackageExt for PreparedPackage<Dl>
@@ -145,10 +145,10 @@ where
         }
     }
 
-    fn pour_dir_path(&self, context: &Context) -> PathBuf {
+    fn extract_dir_path(&self, context: &Context) -> PathBuf {
         match self {
-            Self::Formula(formula) => formula.pour_dir_path(context),
-            Self::Cask(cask) => cask.pour_dir_path(context),
+            Self::Formula(formula) => formula.extract_dir_path(context),
+            Self::Cask(cask) => cask.extract_dir_path(context),
         }
     }
 }

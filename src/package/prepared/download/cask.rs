@@ -22,7 +22,10 @@ impl DownloadInnerExt for PreparedCask {
         self.variation_url()
     }
 
-    async fn file_path_link_path(&self, context: &Context) -> anyhow::Result<(PathBuf, PathBuf)> {
+    async fn file_name_file_path_link_path(
+        &self,
+        context: &Context,
+    ) -> anyhow::Result<(String, PathBuf, PathBuf)> {
         let version = self.version();
 
         let url = self.variation_url();
@@ -40,8 +43,9 @@ impl DownloadInnerExt for PreparedCask {
 
         let mut url_name = url.path_segments().context("Invalid URL")?;
         let url_name = url_name.next_back().context("Empty path segments")?;
+        let url_name = url_name.to_owned();
 
-        let url_path = Path::new(url_name);
+        let url_path = Path::new(&url_name);
 
         let url_compound_extension = url_path.compound_extension();
 
@@ -64,15 +68,15 @@ impl DownloadInnerExt for PreparedCask {
 
         let link_path = cache_dir_path.join("Cask").join(link_name);
 
-        Ok((file_path, link_path))
+        Ok((url_name, file_path, link_path))
     }
 
     fn expected_sha256(&self) -> &str {
         self.variation_sha256()
     }
 
-    fn archive_format(&self, link_path: &Path) -> anyhow::Result<Option<ArchiveFormat>> {
-        let archive_format = match ArchiveFormat::try_from(link_path) {
+    fn archive_format(&self, file_name: &str) -> anyhow::Result<Option<ArchiveFormat>> {
+        let archive_format = match ArchiveFormat::try_from(file_name) {
             Ok(archive_format) => archive_format,
             Err(ArchiveFormatError::Unsupported) => return Ok(None),
             Err(ArchiveFormatError::Other(err)) => return Err(err),

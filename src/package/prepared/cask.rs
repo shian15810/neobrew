@@ -160,7 +160,7 @@ impl<Dl> PreparedPackageExt for PreparedCask<Dl> {
         &self.download
     }
 
-    fn pour_dir_path(&self, context: &Context) -> PathBuf {
+    fn extract_dir_path(&self, context: &Context) -> PathBuf {
         let id = self.id();
 
         let version = self.version();

@@ -1,6 +1,9 @@
-use std::{io::ErrorKind, path::Path};
+use std::path::Path;
 
-use tokio::{fs::File, io::AsyncReadExt as _};
+use tokio::{
+    fs::File,
+    io::{self, AsyncReadExt as _},
+};
 
 pub(crate) struct MachO;
 
@@ -38,7 +41,7 @@ impl MachO {
 
         match file.read_exact(&mut peek_buf).await {
             Ok(_) => {},
-            Err(err) if err.kind() == ErrorKind::UnexpectedEof => return Ok(false),
+            Err(err) if err.kind() == io::ErrorKind::UnexpectedEof => return Ok(false),
             Err(err) => return Err(err)?,
         }
 

@@ -207,6 +207,8 @@ impl Linker {
         dest_dir_path: &Path,
         should_skip: bool,
     ) -> anyhow::Result<()> {
+        let mut is_dest_dir_created = false;
+
         let mut src_dir_entries = fs::read_dir(src_dir_path).await?;
 
         while let Some(src_dir_entry) = src_dir_entries.next_entry().await? {
@@ -227,7 +229,11 @@ impl Linker {
                 continue;
             }
 
-            fs::create_dir_all(dest_dir_path).await?;
+            if !is_dest_dir_created {
+                fs::create_dir_all(dest_dir_path).await?;
+
+                is_dest_dir_created = true;
+            }
 
             src_entry_dir_path
                 .create_relative_link_atomically_at(dest_entry_dir_path)

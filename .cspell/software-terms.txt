@@ -10,6 +10,7 @@ KOLY
 libexec
 lzma
 Lzma
+mpkg
 relpath
 relpstr
 relpstrs

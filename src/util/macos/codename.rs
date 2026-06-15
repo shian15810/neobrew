@@ -17,6 +17,7 @@ pub(crate) enum Codename {
     Sonoma,
     Sequoia,
     Tahoe,
+    GoldenGate,
 }
 
 impl Codename {
@@ -46,6 +47,7 @@ impl TryFrom<Semver> for Codename {
 
     fn try_from(semver: Semver) -> Result<Self, Self::Error> {
         let this = match (semver.major, semver.minor, semver.patch) {
+            (27, ..) => Self::GoldenGate,
             (26, ..) => Self::Tahoe,
             (15, ..) => Self::Sequoia,
             (14, ..) => Self::Sonoma,
@@ -65,6 +67,7 @@ impl FromStr for Codename {
 
     fn from_str(codename: &str) -> Result<Self, Self::Err> {
         let this = match codename {
+            "golden_gate" | "27" => Self::GoldenGate,
             "tahoe" | "26" => Self::Tahoe,
             "sequoia" | "15" => Self::Sequoia,
             "sonoma" | "14" => Self::Sonoma,

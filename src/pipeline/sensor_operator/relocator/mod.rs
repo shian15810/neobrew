@@ -16,7 +16,7 @@ use bytes::Bytes;
 use futures::stream::StreamExt as _;
 
 use super::{
-    super::state_store::{PouredOutput, RelocatedOutput, Stage},
+    super::state_store::{ExtractedOutput, RelocatedOutput, Stage},
     SensorOperator,
 };
 use crate::{
@@ -35,13 +35,13 @@ pub(crate) struct Relocator;
 
 #[async_trait]
 impl SensorOperator for Relocator {
-    type Payload = PouredOutput;
+    type Payload = ExtractedOutput;
     type State = ReplacementPairs;
     type Staging = PathBuf;
     type Output = RelocatedOutput;
 
     fn poke_stage(&self) -> Stage {
-        Stage::Poured
+        Stage::Extracted
     }
 
     fn should_run(
