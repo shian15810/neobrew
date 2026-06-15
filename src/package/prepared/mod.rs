@@ -1,5 +1,4 @@
 pub(crate) mod cask;
-#[cfg(target_os = "macos")]
 pub(crate) mod cask_stanza;
 pub(crate) mod download;
 pub(crate) mod formula;

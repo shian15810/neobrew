@@ -1,10 +1,11 @@
-use std::{cmp::Ordering, str::FromStr};
+use std::str::FromStr;
 
 use anyhow::{Context as _, anyhow};
 use tokio::process::Command;
 
 use super::super::semver::Semver;
 
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub(crate) struct Xcode {
     semver: Semver,
     build: Option<String>,
@@ -75,25 +76,5 @@ impl Xcode {
         let this = stdout.parse::<Self>()?;
 
         Ok(this)
-    }
-}
-
-impl PartialEq for Xcode {
-    fn eq(&self, other: &Self) -> bool {
-        self.semver == other.semver
-    }
-}
-
-impl Eq for Xcode {}
-
-impl PartialOrd for Xcode {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl Ord for Xcode {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.semver.cmp(&other.semver)
     }
 }

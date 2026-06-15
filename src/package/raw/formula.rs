@@ -4,6 +4,7 @@ use serde::{Deserialize, de::IgnoredAny};
 use serde_with::DeserializeFromStr;
 
 use super::{super::PackageExt, RawPackageExt};
+use crate::util::macos::codename::Codename;
 
 #[derive(Deserialize)]
 pub(crate) struct RawFormula {
@@ -15,6 +16,8 @@ pub(crate) struct RawFormula {
 
     requirements: Vec<Requirement>,
     dependencies: Vec<String>,
+    uses_from_macos: Vec<UseFromMacos>,
+    uses_from_macos_bounds: Vec<UseFromMacosBound>,
 }
 
 impl RawFormula {
@@ -24,6 +27,19 @@ impl RawFormula {
 
     pub(crate) fn dependencies(&self) -> &[String] {
         &self.dependencies
+    }
+
+    pub(crate) fn uses_from_macos_bounds(
+        &self,
+    ) -> impl Iterator<Item = (&UseFromMacos, &UseFromMacosBound)> {
+        assert_eq!(
+            self.uses_from_macos.len(),
+            self.uses_from_macos_bounds.len()
+        );
+
+        self.uses_from_macos
+            .iter()
+            .zip(self.uses_from_macos_bounds.iter())
     }
 }
 
@@ -139,4 +155,45 @@ pub(crate) enum RequirementSpec {
     Stable,
     #[serde(rename = "head")]
     Head,
+}
+
+#[derive(Deserialize)]
+pub(crate) enum DependencyType {
+    #[serde(rename = "build")]
+    Build,
+    #[serde(rename = "test")]
+    Test,
+    #[serde(rename = "recommended")]
+    Recommended,
+    #[serde(rename = "optional")]
+    Optional,
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub(crate) enum UseFromMacos {
+    Dependency(String),
+    HashedDependencies(HashMap<String, UseFromMacosDependencyType>),
+}
+
+impl UseFromMacos {
+    pub(crate) fn dependencies(&self) -> Vec<&str> {
+        match self {
+            Self::Dependency(dependency) => vec![dependency],
+            Self::HashedDependencies(_) => Vec::new(),
+        }
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(untagged)]
+pub(crate) enum UseFromMacosDependencyType {
+    Single(DependencyType),
+    Multiple(Vec<DependencyType>),
+}
+
+#[derive(Deserialize)]
+pub(crate) struct UseFromMacosBound {
+    #[serde(default)]
+    pub(crate) since: Option<Codename>,
 }

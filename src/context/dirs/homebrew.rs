@@ -84,7 +84,7 @@ impl HomebrewDirs {
 
     #[cfg(not(debug_assertions))]
     pub(crate) fn prefix_dir(&self) -> PathBuf {
-        use super::super::config::HomebrewEnvConfig;
+        use super::super::config::homebrew_env::HomebrewEnvConfig;
 
         PathBuf::from(HomebrewEnvConfig::DEFAULT_PREFIX)
     }

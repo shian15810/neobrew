@@ -125,13 +125,21 @@ impl RegistryExt for CaskRegistry {
         let raw_dependencies = raw_cask
             .dependencies()
             .iter()
-            .map(|raw_dependency| Arc::from(raw_dependency.as_str()))
+            .map(|raw_dependency| {
+                let raw_dependency = raw_dependency.as_str();
+
+                Arc::from(raw_dependency)
+            })
             .collect::<Vec<_>>();
 
         let raw_formula_dependencies = raw_cask
             .formula_dependencies()
             .iter()
-            .map(|raw_formula_dependency| Arc::from(raw_formula_dependency.as_str()))
+            .map(|raw_formula_dependency| {
+                let raw_formula_dependency = raw_formula_dependency.as_str();
+
+                Arc::from(raw_formula_dependency)
+            })
             .collect::<Vec<_>>();
 
         let resolved_dependencies_futs = raw_dependencies.into_iter().map(async |raw_dependency| {

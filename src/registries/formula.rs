@@ -113,11 +113,25 @@ impl RegistryExt for FormulaRegistry {
 
         self.save_json(raw_formula.id(), bytes).await?;
 
-        let raw_dependencies = raw_formula
+        let mut raw_dependencies = raw_formula
             .dependencies()
             .iter()
-            .map(|raw_dependency| Arc::from(raw_dependency.as_str()))
+            .map(|raw_dependency| {
+                let raw_dependency = raw_dependency.as_str();
+
+                Arc::from(raw_dependency)
+            })
             .collect::<Vec<_>>();
+
+        for (use_from_macos, bound) in raw_formula.uses_from_macos_bounds() {
+            if self.compatibility.is_use_from_macos_dependency(bound) {
+                for raw_dependency in use_from_macos.dependencies() {
+                    let raw_dependency = Arc::from(raw_dependency);
+
+                    raw_dependencies.push(raw_dependency);
+                }
+            }
+        }
 
         let resolved_dependencies_futs = raw_dependencies.into_iter().map(async |raw_dependency| {
             let this = Arc::clone(&self);

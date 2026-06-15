@@ -5,7 +5,7 @@ use crate::{
     context::Context,
     package::{
         PackageExt as _,
-        prepared::{Download, PreparedCask},
+        prepared::{cask::PreparedCask, download::Download},
     },
 };
 

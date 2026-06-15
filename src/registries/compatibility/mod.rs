@@ -19,7 +19,7 @@ use crate::{
             DependsOnMinimumMacos,
             RawCask,
         },
-        formula::{RawFormula, Requirement, RequirementName, RequirementSpec},
+        formula::{RawFormula, Requirement, RequirementName, RequirementSpec, UseFromMacosBound},
     },
 };
 
@@ -44,9 +44,9 @@ pub(super) trait FormulaCompatibility: FormulaCompatibilityInner {
 
         Ok(is_compatible)
     }
-}
 
-impl<FormulaCompatInner: FormulaCompatibilityInner> FormulaCompatibility for FormulaCompatInner {}
+    fn is_use_from_macos_dependency(&self, bound: &UseFromMacosBound) -> bool;
+}
 
 trait FormulaCompatibilityInner {
     fn check_requirements(&self, requirements: &[Requirement]) -> anyhow::Result<bool> {
@@ -110,8 +110,6 @@ trait FormulaCompatibilityInner {
         }
     }
 }
-
-impl<CaskCompatInner: CaskCompatibilityInner> CaskCompatibility for CaskCompatInner {}
 
 #[expect(private_bounds)]
 pub(super) trait CaskCompatibility: CaskCompatibilityInner {

@@ -1,7 +1,17 @@
-use super::{CaskCompatibilityInner, Compatibility, CompatibilityExt, FormulaCompatibilityInner};
+use super::{
+    CaskCompatibility,
+    CaskCompatibilityInner,
+    Compatibility,
+    CompatibilityExt,
+    FormulaCompatibility,
+    FormulaCompatibilityInner,
+};
 use crate::{
     context::Context,
-    package::raw::cask::{DependsOnLinux, DependsOnMaximumMacos, DependsOnMinimumMacos},
+    package::raw::{
+        cask::{DependsOnLinux, DependsOnMaximumMacos, DependsOnMinimumMacos},
+        formula::UseFromMacosBound,
+    },
     util::macos::{codename::Codename, xcode::Xcode},
 };
 
@@ -14,6 +24,16 @@ impl CompatibilityExt for Compatibility {
         };
 
         Ok(this)
+    }
+}
+
+impl FormulaCompatibility for Compatibility {
+    fn is_use_from_macos_dependency(&self, bound: &UseFromMacosBound) -> bool {
+        let Some(since) = &bound.since else {
+            return false;
+        };
+
+        &self.codename < since
     }
 }
 
@@ -54,6 +74,8 @@ impl FormulaCompatibilityInner for Compatibility {
         Ok(is_compatible)
     }
 }
+
+impl CaskCompatibility for Compatibility {}
 
 impl CaskCompatibilityInner for Compatibility {
     fn check_depends_on_os(

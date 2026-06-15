@@ -266,7 +266,7 @@ impl ResolvedCask {
 
     #[cfg(target_os = "linux")]
     #[expect(clippy::unnecessary_wraps)]
-    fn variation_tag(&self) -> anyhow::Result<Option<String>> {
+    fn variation_tag(&self, _context: &Context) -> anyhow::Result<Option<String>> {
         let tag = cfg_select! {
             target_arch = "aarch64" => "arm64_linux",
             target_arch = "x86_64" => "x86_64_linux",

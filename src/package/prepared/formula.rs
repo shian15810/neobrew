@@ -301,7 +301,7 @@ impl BottleStable {
 
     #[cfg(target_os = "linux")]
     #[expect(clippy::unnecessary_wraps)]
-    fn tag(&self) -> anyhow::Result<Option<String>> {
+    fn tag(&self, _context: &Context) -> anyhow::Result<Option<String>> {
         let tag = cfg_select! {
             target_arch = "aarch64" => "arm64_linux",
             target_arch = "x86_64" => "x86_64_linux",

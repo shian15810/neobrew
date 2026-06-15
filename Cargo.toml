@@ -27,7 +27,10 @@ path = "src/main.rs"
 anyhow = "1.0.102"
 arwen = "0.0.5"
 astral-tokio-tar = "0.6.2"
-async-compression = { version = "0.4.42", features = ["bzip2", "gzip", "tokio", "xz", "zstd"] }
+async-compression = {
+    version = "0.4.42",
+    features = ["bzip2", "gzip", "tokio", "xz", "zstd"]
+}
 async-recursion = "1.1.1"
 async-trait = "0.1.89"
 async-walkdir = "2.1.0"
@@ -82,9 +85,6 @@ serde = "1.0.228"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 apple-codesign = "0.29.0"
-
-[patch.crates-io]
-apple-codesign = { git = "https://github.com/indygreg/apple-platform-rs.git" }
 
 [lints.cargo]
 complexity = { level = "deny", priority = -1 }
@@ -201,3 +201,6 @@ variant_size_differences = "warn"
 missing_crate_level_docs = "warn"
 private_doc_tests = "warn"
 unescaped_backticks = "warn"
+
+[patch.crates-io]
+apple-codesign = { git = "https://github.com/indygreg/apple-platform-rs.git" }

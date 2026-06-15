@@ -17,17 +17,11 @@ impl FromStr for Semver {
         let major = parts.next().context("Semver string is empty")?;
         let major = major.parse::<u64>()?;
 
-        let minor = parts.next().and_then(|minor| {
-            let minor = minor.parse::<u64>();
+        #[expect(clippy::redundant_closure_for_method_calls)]
+        let minor = parts.next().map(|minor| minor.parse::<u64>()).transpose()?;
 
-            minor.ok()
-        });
-
-        let patch = parts.next().and_then(|patch| {
-            let patch = patch.parse::<u64>();
-
-            patch.ok()
-        });
+        #[expect(clippy::redundant_closure_for_method_calls)]
+        let patch = parts.next().map(|patch| patch.parse::<u64>()).transpose()?;
 
         let this = Self {
             major,

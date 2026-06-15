@@ -33,7 +33,8 @@ impl DownloadInnerExt for PreparedCask {
         let resp = context.client.get(url).send().await?;
         let resp = resp.error_for_status()?;
 
-        let url = resp.url().as_str();
+        let url = resp.url();
+        let url = url.as_str();
 
         let url_hash = Sha256::digest(url);
         let url_hash = HexDisplay(&url_hash);

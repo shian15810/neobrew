@@ -20,28 +20,6 @@ pub(crate) enum Codename {
     GoldenGate,
 }
 
-impl Codename {
-    pub(crate) fn try_default(context: &Context) -> anyhow::Result<Self> {
-        let version = context.info.version();
-
-        let &Version::Semantic(major, minor, patch) = version else {
-            let err = anyhow!(r#"Unsupported macOS version detected: "{version}""#);
-
-            return Err(err);
-        };
-
-        let semver = Semver {
-            major,
-            minor: Some(minor),
-            patch: Some(patch),
-        };
-
-        let this = Self::try_from(semver)?;
-
-        Ok(this)
-    }
-}
-
 impl TryFrom<Semver> for Codename {
     type Error = CodenameError;
 
@@ -77,6 +55,28 @@ impl FromStr for Codename {
             "catalina" | "10.15" => Self::Catalina,
             _ => return Err(CodenameError::Unsupported),
         };
+
+        Ok(this)
+    }
+}
+
+impl Codename {
+    pub(crate) fn try_default(context: &Context) -> anyhow::Result<Self> {
+        let version = context.info.version();
+
+        let &Version::Semantic(major, minor, patch) = version else {
+            let err = anyhow!(r#"Unsupported macOS version detected: "{version}""#);
+
+            return Err(err);
+        };
+
+        let semver = Semver {
+            major,
+            minor: Some(minor),
+            patch: Some(patch),
+        };
+
+        let this = Self::try_from(semver)?;
 
         Ok(this)
     }

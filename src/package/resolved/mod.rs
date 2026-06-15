@@ -1,7 +1,7 @@
 pub(crate) mod cask;
 pub(crate) mod formula;
 
-use std::sync::Arc;
+use std::{collections::HashSet, sync::Arc};
 
 use enum_dispatch::enum_dispatch;
 
@@ -38,49 +38,62 @@ impl IntoIterator for ResolvedPackage {
     fn into_iter(self) -> Self::IntoIter {
         ResolvedPackageIter {
             stack: vec![self],
+
+            visited: HashSet::new(),
         }
     }
 }
 
 pub(crate) struct ResolvedPackageIter {
     stack: Vec<ResolvedPackage>,
+
+    visited: HashSet<String>,
 }
 
 impl Iterator for ResolvedPackageIter {
     type Item = ResolvedPackage;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let resolved_package = self.stack.pop()?;
+        while let Some(resolved_package) = self.stack.pop() {
+            let id = resolved_package.id();
+            let id = id.to_owned();
 
-        match &resolved_package {
-            ResolvedPackage::Formula(resolved_formula) => {
-                let dependencies = resolved_formula
-                    .dependencies()
-                    .iter()
-                    .cloned()
-                    .map(ResolvedPackage::Formula);
+            if !self.visited.insert(id) {
+                continue;
+            }
 
-                self.stack.extend(dependencies);
-            },
-            ResolvedPackage::Cask(resolved_cask) => {
-                let dependencies = resolved_cask
-                    .dependencies()
-                    .iter()
-                    .cloned()
-                    .map(ResolvedPackage::Cask);
+            match &resolved_package {
+                ResolvedPackage::Formula(resolved_formula) => {
+                    let dependencies = resolved_formula
+                        .dependencies()
+                        .iter()
+                        .cloned()
+                        .map(ResolvedPackage::Formula);
 
-                self.stack.extend(dependencies);
+                    self.stack.extend(dependencies);
+                },
+                ResolvedPackage::Cask(resolved_cask) => {
+                    let dependencies = resolved_cask
+                        .dependencies()
+                        .iter()
+                        .cloned()
+                        .map(ResolvedPackage::Cask);
 
-                let formula_dependencies = resolved_cask
-                    .formula_dependencies()
-                    .iter()
-                    .cloned()
-                    .map(ResolvedPackage::Formula);
+                    self.stack.extend(dependencies);
 
-                self.stack.extend(formula_dependencies);
-            },
+                    let formula_dependencies = resolved_cask
+                        .formula_dependencies()
+                        .iter()
+                        .cloned()
+                        .map(ResolvedPackage::Formula);
+
+                    self.stack.extend(formula_dependencies);
+                },
+            }
+
+            return Some(resolved_package);
         }
 
-        Some(resolved_package)
+        None
     }
 }
