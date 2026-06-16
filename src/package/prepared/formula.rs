@@ -1,7 +1,4 @@
-use std::{
-    borrow::Cow,
-    path::{Path, PathBuf},
-};
+use std::{borrow::Cow, path::PathBuf};
 
 use anyhow::{Context as _, anyhow};
 use bytes::Bytes;
@@ -20,14 +17,14 @@ use super::{
 use crate::{context::Context, ext::tokio::path::PathExt as _};
 
 pub(crate) struct PreparedFormula<Dl = ()> {
-    pub(in super::super) name: String,
+    pub(in super::super) id: String,
     pub(in super::super) version: String,
-    version_revision: String,
-    bottle_rebuild: u64,
-    bottle_tag: String,
-    bottle_cellar: BottleStableFileCellar,
-    bottle_url: String,
-    bottle_sha256: String,
+    revision: u64,
+    pub(super) rebuild: u64,
+    pub(super) bottle: String,
+    pub(super) url: String,
+    pub(super) sha256: String,
+    cellar: BottleStableFileCellar,
     keg_only: bool,
     is_compatible: bool,
     pub(in super::super) is_requested: bool,
@@ -41,13 +38,10 @@ impl TryFrom<(ResolvedFormula, &Context)> for PreparedFormula {
     fn try_from(
         (resolved_formula, context): (ResolvedFormula, &Context),
     ) -> Result<Self, Self::Error> {
-        let version_revision = resolved_formula.version_revision();
-        let version_revision = version_revision.into_owned();
+        let rebuild = resolved_formula.bottle.stable.rebuild;
 
-        let bottle_rebuild = resolved_formula.bottle.stable.rebuild;
-
-        let Some((bottle_tag, bottle)) = resolved_formula.bottle.stable.entry(context)? else {
-            let id = resolved_formula.name;
+        let Some((bottle, file)) = resolved_formula.bottle.stable.file(context)? else {
+            let id = resolved_formula.id;
 
             let err = anyhow!(r#"Formula "{id}" has no bottle to download"#);
 
@@ -55,14 +49,14 @@ impl TryFrom<(ResolvedFormula, &Context)> for PreparedFormula {
         };
 
         let this = Self {
-            name: resolved_formula.name,
+            id: resolved_formula.id,
             version: resolved_formula.versions.stable,
-            version_revision,
-            bottle_rebuild,
-            bottle_tag,
-            bottle_cellar: bottle.cellar,
-            bottle_url: bottle.url,
-            bottle_sha256: bottle.sha256,
+            revision: resolved_formula.revision,
+            rebuild,
+            bottle,
+            url: file.url,
+            sha256: file.sha256,
+            cellar: file.cellar,
             keg_only: resolved_formula.keg_only,
             is_compatible: resolved_formula.is_compatible.into_inner(),
             is_requested: resolved_formula.is_requested.into_inner(),
@@ -77,14 +71,14 @@ impl TryFrom<(ResolvedFormula, &Context)> for PreparedFormula {
 impl<Dl> From<(PreparedFormula<()>, Dl)> for PreparedFormula<Dl> {
     fn from((this, download): (PreparedFormula<()>, Dl)) -> Self {
         Self {
-            name: this.name,
+            id: this.id,
             version: this.version,
-            version_revision: this.version_revision,
-            bottle_rebuild: this.bottle_rebuild,
-            bottle_tag: this.bottle_tag,
-            bottle_cellar: this.bottle_cellar,
-            bottle_url: this.bottle_url,
-            bottle_sha256: this.bottle_sha256,
+            revision: this.revision,
+            rebuild: this.rebuild,
+            bottle: this.bottle,
+            url: this.url,
+            sha256: this.sha256,
+            cellar: this.cellar,
             keg_only: this.keg_only,
             is_compatible: this.is_compatible,
             is_requested: this.is_requested,
@@ -112,7 +106,7 @@ impl PreparedFormula<()> {
 
 impl<Dl> PackageExt for PreparedFormula<Dl> {
     fn id(&self) -> &str {
-        &self.name
+        &self.id
     }
 
     fn version(&self) -> &str {
@@ -128,7 +122,7 @@ impl<Dl> PreparedPackageExt for PreparedFormula<Dl> {
     }
 
     async fn is_installed(&self, context: &Context) -> anyhow::Result<bool> {
-        let id = self.id();
+        let id = &self.id;
 
         let rack_dir_path = context.homebrew_dirs.rack_dir(id);
 
@@ -154,11 +148,11 @@ impl<Dl> PreparedPackageExt for PreparedFormula<Dl> {
     }
 
     async fn is_up_to_date(&self, context: &Context) -> anyhow::Result<bool> {
-        let id = self.id();
+        let id = &self.id;
 
         let version_revision = self.version_revision();
 
-        let keg_dir_path = context.homebrew_dirs.keg_dir(id, version_revision);
+        let keg_dir_path = context.homebrew_dirs.keg_dir(id, &version_revision);
 
         let is_keg_dir_exists = keg_dir_path.is_dir_exists_nofollow().await?;
 
@@ -181,44 +175,8 @@ impl<Dl> PreparedPackageExt for PreparedFormula<Dl> {
 }
 
 impl<Dl> PreparedFormula<Dl> {
-    pub(crate) fn version_revision(&self) -> &str {
-        &self.version_revision
-    }
-
-    pub(super) fn bottle_rebuild(&self) -> u64 {
-        self.bottle_rebuild
-    }
-
-    pub(super) fn bottle_tag(&self) -> &str {
-        &self.bottle_tag
-    }
-
-    pub(super) fn bottle_url(&self) -> &str {
-        &self.bottle_url
-    }
-
-    pub(super) fn bottle_sha256(&self) -> &str {
-        &self.bottle_sha256
-    }
-
-    pub(crate) fn should_relocate(&self, cellar_dir_path: &Path) -> bool {
-        match &self.bottle_cellar {
-            BottleStableFileCellar::Any => true,
-            BottleStableFileCellar::AnySkipRelocator => false,
-            BottleStableFileCellar::Path(bottle_cellar_path) => {
-                bottle_cellar_path == cellar_dir_path
-            },
-        }
-    }
-
-    pub(crate) fn should_link_keg(&self) -> bool {
-        !self.keg_only
-    }
-}
-
-impl ResolvedFormula {
-    fn version_revision(&self) -> Cow<'_, str> {
-        let version = &self.versions.stable;
+    pub(crate) fn version_revision(&self) -> Cow<'_, str> {
+        let version = &self.version;
 
         match self.revision {
             0 => Cow::Borrowed(version),
@@ -229,96 +187,113 @@ impl ResolvedFormula {
             },
         }
     }
+
+    pub(crate) fn should_relocate(&self, context: &Context) -> bool {
+        let extract_dir_path = self.extract_dir_path(context);
+
+        match &self.cellar {
+            BottleStableFileCellar::Any => true,
+            BottleStableFileCellar::AnySkipRelocator => false,
+            BottleStableFileCellar::Path(path) => path == &extract_dir_path,
+        }
+    }
+
+    pub(crate) fn should_link_keg(&self) -> bool {
+        !self.keg_only
+    }
 }
 
 impl BottleStable {
-    fn entry(mut self, context: &Context) -> anyhow::Result<Option<(String, BottleStableFile)>> {
-        let Some(tag) = self.tag(context)? else {
+    fn file(mut self, context: &Context) -> anyhow::Result<Option<(String, BottleStableFile)>> {
+        let Some(file_key) = self.file_key(context)? else {
             return Ok(None);
         };
 
-        let entry = self
+        let file = self
             .files
-            .remove_entry(&tag)
-            .with_context(|| format!(r#"Computed bottle tag "{tag}" is missing from files"#))?;
+            .remove_entry(&file_key)
+            .context("Computed key is missing from `bottle.stable.files` of formula")?;
 
-        Ok(Some(entry))
+        Ok(Some(file))
     }
 
     #[cfg(target_os = "macos")]
-    fn tag(&self, context: &Context) -> anyhow::Result<Option<String>> {
+    fn file_key(&self, context: &Context) -> anyhow::Result<Option<String>> {
         use crate::util::macos::tag::{Tag, TagError};
 
-        let current_macos_tag = Tag::try_default(context)?;
+        let current_tag = Tag::try_default(context)?;
 
         #[cfg(debug_assertions)]
-        let tagged_candidate_macos_tags = self
+        let file_keys_tags = self
             .files
             .keys()
-            .filter_map(|tag| {
-                let macos_tag = match tag.parse::<Tag>() {
-                    Ok(macos_tag) => macos_tag,
+            .filter_map(|file_key| {
+                let file_tag = match file_key.parse::<Tag>() {
+                    Ok(file_tag) => file_tag,
                     Err(TagError::Unsupported) => return None,
                     Err(TagError::Other(err)) => return Some(Err(err)),
                 };
 
-                Some(Ok((tag, macos_tag)))
+                Some(Ok((file_key, file_tag)))
             })
             .try_collect::<Vec<_>>()?;
 
         #[cfg(not(debug_assertions))]
-        let tagged_candidate_macos_tags = self
+        let file_keys_tags = self
             .files
             .keys()
-            .filter_map(|tag| {
-                let macos_tag = match tag.parse::<Tag>() {
-                    Ok(macos_tag) => macos_tag,
+            .filter_map(|file_key| {
+                let file_tag = match file_key.parse::<Tag>() {
+                    Ok(file_tag) => file_tag,
                     Err(TagError::Unsupported) => return None,
                     Err(TagError::Other(err)) => return Some(Err(err)),
                 };
 
-                Some(Ok((tag, macos_tag)))
+                Some(Ok((file_key, file_tag)))
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
 
-        let tag = tagged_candidate_macos_tags
+        let file_key = file_keys_tags
             .into_iter()
-            .filter(|(_, candidate_macos_tag)| {
+            .filter(|(_, file_tag)| {
                 let is_macos_architecture_equal =
-                    candidate_macos_tag.architecture() == current_macos_tag.architecture();
+                    file_tag.architecture() == current_tag.architecture();
 
-                is_macos_architecture_equal && candidate_macos_tag <= &current_macos_tag
+                is_macos_architecture_equal && file_tag <= &current_tag
             })
             .max_by(|(_, left), (_, right)| left.cmp(right))
-            .map(|(tag, _)| tag.to_owned());
+            .map(|(file_key, _)| file_key.to_owned());
 
-        let Some(tag) = tag.or_else(|| self.tag_or_else()) else {
+        let Some(file_key) = file_key.or_else(|| self.file_key_or_else()) else {
             return Ok(None);
         };
 
-        Ok(Some(tag))
+        Ok(Some(file_key))
     }
 
     #[cfg(target_os = "linux")]
     #[expect(clippy::unnecessary_wraps)]
-    fn tag(&self, _context: &Context) -> anyhow::Result<Option<String>> {
-        let tag = cfg_select! {
+    fn file_key(&self, _context: &Context) -> anyhow::Result<Option<String>> {
+        let file_key = cfg_select! {
             target_arch = "aarch64" => "arm64_linux",
             target_arch = "x86_64" => "x86_64_linux",
         };
-        let tag = self.files.contains_key(tag).then(|| tag.to_owned());
+        let file_key = self
+            .files
+            .contains_key(file_key)
+            .then(|| file_key.to_owned());
 
-        let Some(tag) = tag.or_else(|| self.tag_or_else()) else {
+        let Some(file_key) = file_key.or_else(|| self.file_key_or_else()) else {
             return Ok(None);
         };
 
-        Ok(Some(tag))
+        Ok(Some(file_key))
     }
 
-    fn tag_or_else(&self) -> Option<String> {
-        let tag = "all".to_owned();
-        let tag = self.files.contains_key(&tag).then_some(tag)?;
+    fn file_key_or_else(&self) -> Option<String> {
+        let file_key = "all".to_owned();
+        let file_key = self.files.contains_key(&file_key).then_some(file_key)?;
 
-        Some(tag)
+        Some(file_key)
     }
 }

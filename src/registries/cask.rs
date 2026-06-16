@@ -118,9 +118,11 @@ impl RegistryExt for CaskRegistry {
 
         let bytes = resp.bytes().await?;
 
-        let raw_cask: RawCask = serde_json::from_slice(&bytes)?;
+        let mut raw_cask: RawCask = serde_json::from_slice(&bytes)?;
 
         self.save_json(raw_cask.id(), bytes).await?;
+
+        raw_cask = raw_cask.squash_variations(&self.context)?;
 
         let raw_dependencies = raw_cask
             .dependencies()

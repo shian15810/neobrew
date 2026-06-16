@@ -109,9 +109,11 @@ impl RegistryExt for FormulaRegistry {
 
         let bytes = resp.bytes().await?;
 
-        let raw_formula: RawFormula = serde_json::from_slice(&bytes)?;
+        let mut raw_formula: RawFormula = serde_json::from_slice(&bytes)?;
 
         self.save_json(raw_formula.id(), bytes).await?;
+
+        raw_formula = raw_formula.squash_variations(&self.context)?;
 
         let mut raw_dependencies = raw_formula
             .dependencies()

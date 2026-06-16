@@ -4,7 +4,7 @@ use serde::{Deserialize, de::IgnoredAny};
 use serde_with::DeserializeFromStr;
 
 use super::{super::PackageExt, RawPackageExt};
-use crate::util::macos::codename::Codename;
+use crate::{context::Context, util::macos::codename::Codename};
 
 #[derive(Deserialize)]
 pub(crate) struct RawFormula {
@@ -15,9 +15,12 @@ pub(crate) struct RawFormula {
     pub(in super::super) keg_only: bool,
 
     requirements: Vec<Requirement>,
+
     dependencies: Vec<String>,
     uses_from_macos: Vec<UseFromMacos>,
     uses_from_macos_bounds: Vec<UseFromMacosBound>,
+
+    variations: HashMap<String, Variation>,
 }
 
 impl RawFormula {
@@ -73,9 +76,9 @@ pub(in super::super) struct BottleStable {
 
 #[derive(Deserialize)]
 pub(in super::super) struct BottleStableFile {
-    pub(in super::super) cellar: BottleStableFileCellar,
     pub(in super::super) url: String,
     pub(in super::super) sha256: String,
+    pub(in super::super) cellar: BottleStableFileCellar,
 }
 
 #[derive(DeserializeFromStr)]
@@ -95,14 +98,14 @@ impl FromStr for BottleStableFileCellar {
     #[cfg(not(debug_assertions))]
     type Err = Infallible;
 
-    fn from_str(bottle_cellar: &str) -> Result<Self, Self::Err> {
-        let this = match bottle_cellar {
+    fn from_str(cellar: &str) -> Result<Self, Self::Err> {
+        let this = match cellar {
             "any" => Self::Any,
             "any_skip_relocation" => Self::AnySkipRelocator,
-            bottle_cellar_pstr => {
-                let bottle_cellar_path = PathBuf::from(bottle_cellar_pstr);
+            pstr => {
+                let path = PathBuf::from(pstr);
 
-                Self::Path(bottle_cellar_path)
+                Self::Path(path)
             },
         };
 
@@ -196,4 +199,105 @@ pub(crate) enum UseFromMacosDependencyType {
 pub(crate) struct UseFromMacosBound {
     #[serde(default)]
     pub(crate) since: Option<Codename>,
+}
+
+#[derive(Deserialize)]
+struct Variation {
+    keg_only: Option<bool>,
+
+    requirements: Option<Vec<Requirement>>,
+
+    dependencies: Option<Vec<String>>,
+}
+
+impl RawFormula {
+    pub(crate) fn squash_variations(mut self, context: &Context) -> anyhow::Result<Self> {
+        #[expect(clippy::collapsible_if)]
+        if let Some(variation_key) = self.variation_key(context)? {
+            if let Some(variation) = self.variations.remove(&variation_key) {
+                if let Some(keg_only) = variation.keg_only {
+                    self.keg_only = keg_only;
+                }
+
+                if let Some(requirements) = variation.requirements {
+                    self.requirements = requirements;
+                }
+
+                if let Some(dependencies) = variation.dependencies {
+                    self.dependencies = dependencies;
+                }
+            }
+        }
+
+        self.variations.clear();
+
+        self.variations.shrink_to_fit();
+
+        Ok(self)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn variation_key(&self, context: &Context) -> anyhow::Result<Option<String>> {
+        use crate::util::macos::tag::{Tag, TagError};
+
+        let current_tag = Tag::try_default(context)?;
+
+        #[cfg(debug_assertions)]
+        let variation_keys_tags = self
+            .variations
+            .keys()
+            .filter_map(|variation_key| {
+                let variation_tag = match variation_key.parse::<Tag>() {
+                    Ok(variation_tag) => variation_tag,
+                    Err(TagError::Unsupported) => return None,
+                    Err(TagError::Other(err)) => return Some(Err(err)),
+                };
+
+                Some(Ok((variation_key, variation_tag)))
+            })
+            .try_collect::<Vec<_>>()?;
+
+        #[cfg(not(debug_assertions))]
+        let variation_keys_tags = self
+            .variations
+            .keys()
+            .filter_map(|variation_key| {
+                let variation_tag = match variation_key.parse::<Tag>() {
+                    Ok(variation_tag) => variation_tag,
+                    Err(TagError::Unsupported) => return None,
+                    Err(TagError::Other(err)) => return Some(Err(err)),
+                };
+
+                Some(Ok((variation_key, variation_tag)))
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        let variation_key = variation_keys_tags
+            .into_iter()
+            .filter(|(_, variation_tag)| {
+                let is_macos_architecture_equal =
+                    variation_tag.architecture() == current_tag.architecture();
+
+                is_macos_architecture_equal && variation_tag <= &current_tag
+            })
+            .max_by(|(_, left), (_, right)| left.cmp(right))
+            .map(|(variation_key, _)| variation_key.to_owned());
+
+        Ok(variation_key)
+    }
+
+    #[cfg(target_os = "linux")]
+    #[expect(clippy::unnecessary_wraps)]
+    fn variation_key(&self, _context: &Context) -> anyhow::Result<Option<String>> {
+        let variation_key = cfg_select! {
+            target_arch = "aarch64" => "arm64_linux",
+            target_arch = "x86_64" => "x86_64_linux",
+        };
+        let variation_key = self
+            .variations
+            .contains_key(variation_key)
+            .then(|| variation_key.to_owned());
+
+        Ok(variation_key)
+    }
 }

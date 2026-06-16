@@ -139,7 +139,7 @@ impl Linker {
 
         let version_revision = prepared_formula.version_revision();
 
-        let keg_dir_path = context.homebrew_dirs.keg_dir(id, version_revision);
+        let keg_dir_path = context.homebrew_dirs.keg_dir(id, &version_revision);
 
         let opt_prefix_link_path = context.homebrew_dirs.opt_prefix_link(id);
 
@@ -163,7 +163,7 @@ impl Linker {
 
         let version_revision = prepared_formula.version_revision();
 
-        let keg_dir_path = context.homebrew_dirs.keg_dir(id, version_revision);
+        let keg_dir_path = context.homebrew_dirs.keg_dir(id, &version_revision);
 
         let prefix_dir_path = context.homebrew_dirs.prefix_dir();
 
@@ -276,7 +276,7 @@ impl Linker {
 
         let version_revision = prepared_formula.version_revision();
 
-        let keg_dir_path = context.homebrew_dirs.keg_dir(id, version_revision);
+        let keg_dir_path = context.homebrew_dirs.keg_dir(id, &version_revision);
 
         let opt_prefix_link_path = context.homebrew_dirs.opt_prefix_link(id);
 
@@ -301,7 +301,7 @@ impl Linker {
 
         let version_revision = prepared_formula.version_revision();
 
-        let keg_dir_path = context.homebrew_dirs.keg_dir(id, version_revision);
+        let keg_dir_path = context.homebrew_dirs.keg_dir(id, &version_revision);
 
         let linked_keg_prefix_link_path = context.homebrew_dirs.linked_keg_prefix_link(id);
 

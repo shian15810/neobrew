@@ -1,27 +1,23 @@
-use std::{
-    collections::HashMap,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
 };
 
 use super::{
     super::{
         PackageExt,
-        raw::cask::{Artifact, RawCask, Variation},
+        raw::cask::{Artifact, RawCask},
     },
     ResolvedPackageExt,
     formula::ResolvedFormula,
 };
 
 pub(crate) struct ResolvedCask {
-    pub(in super::super) token: String,
+    pub(in super::super) id: String,
     pub(in super::super) version: String,
     pub(in super::super) url: String,
     pub(in super::super) sha256: String,
     pub(in super::super) artifacts: Vec<Artifact>,
-    pub(in super::super) variations: HashMap<String, Variation>,
     pub(in super::super) is_compatible: AtomicBool,
     pub(in super::super) is_requested: AtomicBool,
 
@@ -38,12 +34,11 @@ impl From<(RawCask, Vec<Arc<Self>>, Vec<Arc<ResolvedFormula>>)> for ResolvedCask
         ),
     ) -> Self {
         Self {
-            token: raw_cask.token,
+            id: raw_cask.token,
             version: raw_cask.version,
             url: raw_cask.url,
             sha256: raw_cask.sha256,
             artifacts: raw_cask.artifacts,
-            variations: raw_cask.variations,
             is_compatible: AtomicBool::new(false),
             is_requested: AtomicBool::new(false),
 
@@ -55,7 +50,7 @@ impl From<(RawCask, Vec<Arc<Self>>, Vec<Arc<ResolvedFormula>>)> for ResolvedCask
 
 impl PackageExt for ResolvedCask {
     fn id(&self) -> &str {
-        &self.token
+        &self.id
     }
 
     fn version(&self) -> &str {
@@ -84,9 +79,13 @@ impl ResolvedCask {
 
     pub(crate) fn clear_dependencies(&mut self) {
         self.dependencies.clear();
+
+        self.dependencies.shrink_to_fit();
     }
 
     pub(crate) fn clear_formula_dependencies(&mut self) {
         self.formula_dependencies.clear();
+
+        self.formula_dependencies.shrink_to_fit();
     }
 }

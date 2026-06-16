@@ -7,7 +7,7 @@ use serde_repr::Deserialize_repr;
 use serde_with::{BoolFromInt, FromInto, serde_as};
 
 use super::{super::PackageExt, RawPackageExt};
-use crate::{ext::serde::true_on_absent, util::macos::codename::Codename};
+use crate::{context::Context, ext::serde::true_on_absent, util::macos::codename::Codename};
 
 #[derive(Deserialize)]
 pub(crate) struct RawCask {
@@ -16,9 +16,10 @@ pub(crate) struct RawCask {
     pub(in super::super) url: String,
     pub(in super::super) sha256: String,
     pub(in super::super) artifacts: Vec<Artifact>,
-    pub(in super::super) variations: HashMap<String, Variation>,
 
     depends_on: DependsOn,
+
+    variations: HashMap<String, Variation>,
 }
 
 impl PackageExt for RawCask {
@@ -210,7 +211,7 @@ pub(in super::super) enum ArtifactInstallerSource {
     },
 }
 
-#[allow(clippy::struct_excessive_bools)]
+#[expect(clippy::struct_excessive_bools)]
 #[derive(Deserialize)]
 pub(in super::super) struct ArtifactInstallerSourceScript {
     executable: String,
@@ -244,13 +245,6 @@ pub(in super::super) struct ArtifactGenerateCompletionsFromExecutableSourceOptio
 
 #[derive(Deserialize)]
 pub(in super::super) struct ArtifactStageOnlySource(pub(in super::super) (bool,));
-
-#[derive(Deserialize)]
-pub(in super::super) struct Variation<Artifacts = Option<Vec<Artifact>>> {
-    pub(in super::super) url: String,
-    pub(in super::super) sha256: String,
-    pub(in super::super) artifacts: Artifacts,
-}
 
 #[derive(Deserialize)]
 pub(crate) struct DependsOn {
@@ -311,5 +305,115 @@ impl From<DependsOnArchBits> for Bitness {
         match bits {
             DependsOnArchBits::SixtyFour => Self::X64,
         }
+    }
+}
+
+#[derive(Deserialize)]
+struct Variation {
+    version: Option<String>,
+    url: Option<String>,
+    sha256: Option<String>,
+    artifacts: Option<Vec<Artifact>>,
+
+    depends_on: Option<DependsOn>,
+}
+
+impl RawCask {
+    pub(crate) fn squash_variations(mut self, context: &Context) -> anyhow::Result<Self> {
+        #[expect(clippy::collapsible_if)]
+        if let Some(variation_key) = self.variation_key(context)? {
+            if let Some(variation) = self.variations.remove(&variation_key) {
+                if let Some(version) = variation.version {
+                    self.version = version;
+                }
+
+                if let Some(url) = variation.url {
+                    self.url = url;
+                }
+
+                if let Some(sha256) = variation.sha256 {
+                    self.sha256 = sha256;
+                }
+
+                if let Some(artifacts) = variation.artifacts {
+                    self.artifacts = artifacts;
+                }
+
+                if let Some(depends_on) = variation.depends_on {
+                    self.depends_on = depends_on;
+                }
+            }
+        }
+
+        self.variations.clear();
+
+        self.variations.shrink_to_fit();
+
+        Ok(self)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn variation_key(&self, context: &Context) -> anyhow::Result<Option<String>> {
+        use crate::util::macos::tag::{Tag, TagError};
+
+        let current_tag = Tag::try_default(context)?;
+
+        #[cfg(debug_assertions)]
+        let variation_keys_tags = self
+            .variations
+            .keys()
+            .filter_map(|variation_key| {
+                let variation_tag = match variation_key.parse::<Tag>() {
+                    Ok(variation_tag) => variation_tag,
+                    Err(TagError::Unsupported) => return None,
+                    Err(TagError::Other(err)) => return Some(Err(err)),
+                };
+
+                Some(Ok((variation_key, variation_tag)))
+            })
+            .try_collect::<Vec<_>>()?;
+
+        #[cfg(not(debug_assertions))]
+        let variation_keys_tags = self
+            .variations
+            .keys()
+            .filter_map(|variation_key| {
+                let variation_tag = match variation_key.parse::<Tag>() {
+                    Ok(variation_tag) => variation_tag,
+                    Err(TagError::Unsupported) => return None,
+                    Err(TagError::Other(err)) => return Some(Err(err)),
+                };
+
+                Some(Ok((variation_key, variation_tag)))
+            })
+            .collect::<anyhow::Result<Vec<_>>>()?;
+
+        let variation_key = variation_keys_tags
+            .into_iter()
+            .filter(|(_, variation_tag)| {
+                let is_macos_architecture_equal =
+                    variation_tag.architecture() == current_tag.architecture();
+
+                is_macos_architecture_equal && variation_tag <= &current_tag
+            })
+            .max_by(|(_, left), (_, right)| left.cmp(right))
+            .map(|(variation_key, _)| variation_key.to_owned());
+
+        Ok(variation_key)
+    }
+
+    #[cfg(target_os = "linux")]
+    #[expect(clippy::unnecessary_wraps)]
+    fn variation_key(&self, _context: &Context) -> anyhow::Result<Option<String>> {
+        let variation_key = cfg_select! {
+            target_arch = "aarch64" => "arm64_linux",
+            target_arch = "x86_64" => "x86_64_linux",
+        };
+        let variation_key = self
+            .variations
+            .contains_key(variation_key)
+            .then(|| variation_key.to_owned());
+
+        Ok(variation_key)
     }
 }

@@ -4,7 +4,7 @@ use super::{
 };
 
 pub(crate) struct InstalledFormula {
-    name: String,
+    id: String,
     version: String,
     is_requested: bool,
 }
@@ -12,7 +12,7 @@ pub(crate) struct InstalledFormula {
 impl From<PreparedFormula> for InstalledFormula {
     fn from(prepared_formula: PreparedFormula) -> Self {
         Self {
-            name: prepared_formula.name,
+            id: prepared_formula.id,
             version: prepared_formula.version,
             is_requested: prepared_formula.is_requested,
         }
@@ -21,7 +21,7 @@ impl From<PreparedFormula> for InstalledFormula {
 
 impl PackageExt for InstalledFormula {
     fn id(&self) -> &str {
-        &self.name
+        &self.id
     }
 
     fn version(&self) -> &str {

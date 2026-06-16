@@ -58,9 +58,7 @@ impl SensorOperator for Relocator {
             return false;
         };
 
-        let cellar_dir_path = context.homebrew_dirs.cellar_dir();
-
-        prepared_formula.should_relocate(&cellar_dir_path)
+        prepared_formula.should_relocate(context)
     }
 
     fn running_prefix(&self) -> Option<&'static str> {
@@ -152,7 +150,7 @@ impl Relocator {
 
         let version_revision = prepared_formula.version_revision();
 
-        let keg_dir_path = context.homebrew_dirs.keg_dir(id, version_revision);
+        let keg_dir_path = context.homebrew_dirs.keg_dir(id, &version_revision);
 
         self.patch_keg(&keg_dir_path, replacement_pairs).await?;
 
