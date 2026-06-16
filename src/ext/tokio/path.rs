@@ -1,12 +1,11 @@
 use std::{
     fs::FileType,
-    io::{self, ErrorKind},
     os::unix::fs::PermissionsExt as _,
     path::{Path, PathBuf},
 };
 
 use pathdiff::diff_paths;
-use tokio::fs;
+use tokio::{fs, io};
 
 use super::super::std::path::PathExt as _;
 
@@ -43,7 +42,7 @@ impl PathExt for Path {
     async fn realpath_or_none(&self) -> io::Result<Option<PathBuf>> {
         let path = match fs::canonicalize(self).await {
             Ok(path) => path,
-            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(err) => return Err(err),
         };
 
@@ -61,7 +60,7 @@ impl PathExt for Path {
     async fn is_dir_empty(&self) -> io::Result<bool> {
         let mut dir_entries = match fs::read_dir(self).await {
             Ok(dir_entries) => dir_entries,
-            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(true),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(true),
             Err(err) => return Err(err),
         };
 
@@ -87,7 +86,7 @@ impl PathExt for Path {
     async fn is_dir_exists_nofollow(&self) -> io::Result<bool> {
         let metadata = match fs::symlink_metadata(self).await {
             Ok(metadata) => metadata,
-            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(false),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(false),
             Err(err) => return Err(err),
         };
 
@@ -101,7 +100,7 @@ impl PathExt for Path {
     async fn is_file_exists_nofollow(&self) -> io::Result<bool> {
         let metadata = match fs::symlink_metadata(self).await {
             Ok(metadata) => metadata,
-            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(false),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(false),
             Err(err) => return Err(err),
         };
 
@@ -115,7 +114,7 @@ impl PathExt for Path {
     async fn is_link_exists_nofollow(&self) -> io::Result<bool> {
         let metadata = match fs::symlink_metadata(self).await {
             Ok(metadata) => metadata,
-            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(false),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(false),
             Err(err) => return Err(err),
         };
 

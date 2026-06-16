@@ -21,15 +21,12 @@ NEXTEST
 OBJC
 OBJCXX
 overcaptures
-Packageable
-peekable
 progressor
 Progressor
 pstr
 recv
 relocator
 Relocator
-Relocatory
 rescope
 rustdocflags
 RUSTDOCFLAGS

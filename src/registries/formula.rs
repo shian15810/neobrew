@@ -5,19 +5,41 @@ use async_recursion::async_recursion;
 use foyer::{Cache, CacheBuilder};
 use futures::future;
 
-use super::{Registrable, RegistrableJson};
+use super::{
+    RegistryExt,
+    RegistryJsonExt,
+    compatibility::{Compatibility, FormulaCompatibility as _},
+};
 use crate::{
     context::{Context, dirs::ProjectDirs as _},
-    package::{Packageable as _, raw::RawFormula, resolved::ResolvedFormula},
+    package::{
+        PackageExt as _,
+        raw::formula::RawFormula,
+        resolved::{ResolvedPackageExt as _, formula::ResolvedFormula},
+    },
 };
 
 pub(super) struct FormulaRegistry {
     store: Cache<Arc<str>, Arc<ResolvedFormula>>,
 
+    compatibility: Arc<Compatibility>,
+
     context: Arc<Context>,
 }
 
-impl Registrable for FormulaRegistry {
+impl FormulaRegistry {
+    pub(super) fn new(compatibility: Arc<Compatibility>, context: Arc<Context>) -> Self {
+        Self {
+            store: CacheBuilder::new(usize::MAX).build(),
+
+            compatibility,
+
+            context,
+        }
+    }
+}
+
+impl RegistryExt for FormulaRegistry {
     type ResolvedPackage = ResolvedFormula;
 
     const API_URL: &str = "https://formulae.brew.sh/api/formula/{}.json";
@@ -29,14 +51,6 @@ impl Registrable for FormulaRegistry {
     const TAP_MIGRATIONS_JWS_URL: &str =
         "https://formulae.brew.sh/api/formula_tap_migrations.jws.json";
 
-    fn new(context: Arc<Context>) -> Self {
-        Self {
-            store: CacheBuilder::new(usize::MAX).build(),
-
-            context,
-        }
-    }
-
     async fn resolve(self: Arc<Self>, package: Arc<str>) -> anyhow::Result<Arc<ResolvedFormula>> {
         let stack = Vec::new();
 
@@ -44,9 +58,7 @@ impl Registrable for FormulaRegistry {
 
         Ok(resolved_formula)
     }
-}
 
-impl FormulaRegistry {
     async fn resolve_with_stack(
         self: Arc<Self>,
         package: Arc<str>,
@@ -63,7 +75,7 @@ impl FormulaRegistry {
                 .collect::<Vec<_>>();
             let stack = stack.join(" -> ");
 
-            let err = anyhow!("Circular package dependency detected: {stack}");
+            let err = anyhow!("Circular formula dependency detected: {stack}");
 
             return Err(err);
         }
@@ -101,36 +113,50 @@ impl FormulaRegistry {
 
         self.save_json(raw_formula.id(), bytes).await?;
 
-        let raw_formula_dependencies = raw_formula
+        let mut raw_dependencies = raw_formula
             .dependencies()
             .iter()
-            .map(|raw_formula_dependency| Arc::from(raw_formula_dependency.as_str()))
+            .map(|raw_dependency| {
+                let raw_dependency = raw_dependency.as_str();
+
+                Arc::from(raw_dependency)
+            })
             .collect::<Vec<_>>();
 
-        let resolved_formula_dependencies_futs =
-            raw_formula_dependencies
-                .into_iter()
-                .map(async |raw_formula_dependency| {
-                    let this = Arc::clone(&self);
+        for (use_from_macos, bound) in raw_formula.uses_from_macos_bounds() {
+            if self.compatibility.is_use_from_macos_dependency(bound) {
+                for raw_dependency in use_from_macos.dependencies() {
+                    let raw_dependency = Arc::from(raw_dependency);
 
-                    let resolved_formula_dependency = this
-                        .resolve_with_stack(raw_formula_dependency, stack.clone())
-                        .await?;
+                    raw_dependencies.push(raw_dependency);
+                }
+            }
+        }
 
-                    anyhow::Ok(resolved_formula_dependency)
-                });
+        let resolved_dependencies_futs = raw_dependencies.into_iter().map(async |raw_dependency| {
+            let this = Arc::clone(&self);
 
-        let resolved_formula_dependencies =
-            future::try_join_all(resolved_formula_dependencies_futs).await?;
+            let resolved_dependency = this
+                .resolve_with_stack(raw_dependency, stack.clone())
+                .await?;
 
-        let resolved_formula = ResolvedFormula::from((raw_formula, resolved_formula_dependencies));
+            anyhow::Ok(resolved_dependency)
+        });
+
+        let dependencies = future::try_join_all(resolved_dependencies_futs).await?;
+
+        let is_compatible = self.compatibility.is_formula_compatible(&raw_formula)?;
+
+        let resolved_formula = ResolvedFormula::from((raw_formula, dependencies));
         let resolved_formula = Arc::new(resolved_formula);
+
+        resolved_formula.set_is_compatible(is_compatible);
 
         Ok(resolved_formula)
     }
 }
 
-impl RegistrableJson for FormulaRegistry {
+impl RegistryJsonExt for FormulaRegistry {
     fn json_path(&self, id: &str) -> PathBuf {
         let file_name = format!("{id}.json");
 

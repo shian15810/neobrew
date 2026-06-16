@@ -1,13 +1,13 @@
 use std::collections::HashMap;
 
 use os_info::Bitness;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_repr::Deserialize_repr;
 use serde_with::{BoolFromInt, FromInto, serde_as};
 
-use super::{super::Packageable, RawPackageable};
-use crate::{ext::serde::true_on_absent, util::macos};
+use super::{super::PackageExt, RawPackageExt};
+use crate::{ext::serde::true_on_absent, util::macos::codename::Codename};
 
 #[derive(Deserialize)]
 pub(crate) struct RawCask {
@@ -16,11 +16,12 @@ pub(crate) struct RawCask {
     pub(in super::super) url: String,
     pub(in super::super) sha256: String,
     pub(in super::super) artifacts: Vec<Artifact>,
-    pub(in super::super) depends_on: DependsOn,
     pub(in super::super) variations: HashMap<String, Variation>,
+
+    depends_on: DependsOn,
 }
 
-impl Packageable for RawCask {
+impl PackageExt for RawCask {
     fn id(&self) -> &str {
         &self.token
     }
@@ -30,7 +31,21 @@ impl Packageable for RawCask {
     }
 }
 
-impl RawPackageable for RawCask {}
+impl RawPackageExt for RawCask {}
+
+impl RawCask {
+    pub(crate) fn depends_on(&self) -> &DependsOn {
+        &self.depends_on
+    }
+
+    pub(crate) fn dependencies(&self) -> &[String] {
+        &self.depends_on.cask
+    }
+
+    pub(crate) fn formula_dependencies(&self) -> &[String] {
+        &self.depends_on.formula
+    }
+}
 
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -167,8 +182,8 @@ pub(in super::super) struct ArtifactPkgSourceOptions {
 }
 
 #[serde_as]
-#[derive(Deserialize)]
-pub(in super::super) struct ArtifactPkgSourceOptionsChoice {
+#[derive(Serialize, Deserialize)]
+pub(crate) struct ArtifactPkgSourceOptionsChoice {
     #[serde(rename = "choiceIdentifier")]
     identifier: String,
     #[serde(rename = "choiceAttribute")]
@@ -178,7 +193,7 @@ pub(in super::super) struct ArtifactPkgSourceOptionsChoice {
     attribute_setting: bool,
 }
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 enum ArtifactPkgSourceOptionsChoiceAttribute {
     #[serde(rename = "selected")]
     Selected,
@@ -231,6 +246,13 @@ pub(in super::super) struct ArtifactGenerateCompletionsFromExecutableSourceOptio
 pub(in super::super) struct ArtifactStageOnlySource(pub(in super::super) (bool,));
 
 #[derive(Deserialize)]
+pub(in super::super) struct Variation<Artifacts = Option<Vec<Artifact>>> {
+    pub(in super::super) url: String,
+    pub(in super::super) sha256: String,
+    pub(in super::super) artifacts: Artifacts,
+}
+
+#[derive(Deserialize)]
 pub(crate) struct DependsOn {
     #[serde(default)]
     formula: Vec<String>,
@@ -249,13 +271,13 @@ pub(crate) struct DependsOn {
 #[derive(Deserialize)]
 pub(crate) struct DependsOnMinimumMacos {
     #[serde(rename = ">=", default)]
-    pub(crate) codenames: Vec<macos::Codename>,
+    pub(crate) codenames: Vec<Codename>,
 }
 
 #[derive(Deserialize)]
 pub(crate) struct DependsOnMaximumMacos {
     #[serde(rename = "<=", default)]
-    pub(crate) codenames: Vec<macos::Codename>,
+    pub(crate) codenames: Vec<Codename>,
 }
 
 #[derive(Deserialize)]
@@ -290,11 +312,4 @@ impl From<DependsOnArchBits> for Bitness {
             DependsOnArchBits::SixtyFour => Self::X64,
         }
     }
-}
-
-#[derive(Deserialize)]
-pub(in super::super) struct Variation<Artifacts = Option<Vec<Artifact>>> {
-    pub(in super::super) url: String,
-    pub(in super::super) sha256: String,
-    pub(in super::super) artifacts: Artifacts,
 }

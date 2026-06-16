@@ -1,33 +1,10 @@
-mod cask;
-mod formula;
+pub(crate) mod cask;
+pub(crate) mod formula;
 
 use enum_dispatch::enum_dispatch;
 
-pub(super) use self::{
-    cask::{
-        Artifact,
-        ArtifactCommonSource,
-        ArtifactGenerateCompletionsFromExecutableSource,
-        ArtifactInstallerSource,
-        ArtifactPkgSource,
-        ArtifactPkgSourceOptionsChoice,
-        Variation,
-    },
-    formula::{Bottle, BottleStable, BottleStableFile, BottleStableFileCellar, Versions},
-};
-pub(crate) use self::{
-    cask::{
-        DependsOn,
-        DependsOnArch,
-        DependsOnArchBrand,
-        DependsOnLinux,
-        DependsOnMaximumMacos,
-        DependsOnMinimumMacos,
-        RawCask,
-    },
-    formula::RawFormula,
-};
-use super::Packageable;
+use self::{cask::RawCask, formula::RawFormula};
+use super::PackageExt;
 
 #[enum_dispatch]
 pub(crate) enum RawPackage {
@@ -36,4 +13,4 @@ pub(crate) enum RawPackage {
 }
 
 #[enum_dispatch(RawPackage)]
-trait RawPackageable: Packageable {}
+trait RawPackageExt: PackageExt {}

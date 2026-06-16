@@ -6,7 +6,7 @@ use serde_with::DeserializeFromStr;
 use thiserror::Error;
 
 use super::super::semver::Semver;
-use crate::context::INFO;
+use crate::context::Context;
 
 #[derive(PartialEq, Eq, PartialOrd, Ord, DeserializeFromStr)]
 pub(crate) enum Codename {
@@ -17,30 +17,7 @@ pub(crate) enum Codename {
     Sonoma,
     Sequoia,
     Tahoe,
-}
-
-impl Codename {
-    pub(crate) fn try_default() -> anyhow::Result<Self> {
-        let info = &INFO;
-
-        let version = info.version();
-
-        let &Version::Semantic(major, minor, patch) = version else {
-            let err = anyhow!(r#"Unsupported macOS version detected: "{version}""#);
-
-            return Err(err);
-        };
-
-        let semver = Semver {
-            major,
-            minor: Some(minor),
-            patch: Some(patch),
-        };
-
-        let this = Self::try_from(semver)?;
-
-        Ok(this)
-    }
+    GoldenGate,
 }
 
 impl TryFrom<Semver> for Codename {
@@ -48,6 +25,7 @@ impl TryFrom<Semver> for Codename {
 
     fn try_from(semver: Semver) -> Result<Self, Self::Error> {
         let this = match (semver.major, semver.minor, semver.patch) {
+            (27, ..) => Self::GoldenGate,
             (26, ..) => Self::Tahoe,
             (15, ..) => Self::Sequoia,
             (14, ..) => Self::Sonoma,
@@ -67,6 +45,7 @@ impl FromStr for Codename {
 
     fn from_str(codename: &str) -> Result<Self, Self::Err> {
         let this = match codename {
+            "golden_gate" | "27" => Self::GoldenGate,
             "tahoe" | "26" => Self::Tahoe,
             "sequoia" | "15" => Self::Sequoia,
             "sonoma" | "14" => Self::Sonoma,
@@ -81,16 +60,32 @@ impl FromStr for Codename {
     }
 }
 
+impl Codename {
+    pub(crate) fn try_default(context: &Context) -> anyhow::Result<Self> {
+        let version = context.info.version();
+
+        let &Version::Semantic(major, minor, patch) = version else {
+            let err = anyhow!(r#"Unsupported macOS version detected: "{version}""#);
+
+            return Err(err);
+        };
+
+        let semver = Semver {
+            major,
+            minor: Some(minor),
+            patch: Some(patch),
+        };
+
+        let this = Self::try_from(semver)?;
+
+        Ok(this)
+    }
+}
+
 #[derive(Debug, Error)]
 pub(crate) enum CodenameError {
     #[error("Unsupported macOS codename detected")]
     Unsupported,
-}
-
-impl CodenameError {
-    pub(super) fn unsupported_into_none(self) -> Option<anyhow::Error> {
-        match self {
-            Self::Unsupported => None,
-        }
-    }
+    #[error(transparent)]
+    Other(#[from] anyhow::Error),
 }

@@ -59,7 +59,7 @@ impl ProjectDirs for HomebrewDirs {
 
         let app_name = Self::APP_NAME.to_lowercase();
 
-        data_dir.join(format!("home/{app_name}"))
+        data_dir.join("home").join(app_name)
     }
 
     #[cfg(all(target_os = "linux", debug_assertions))]
@@ -77,12 +77,14 @@ impl HomebrewDirs {
 
         let app_name = Self::APP_NAME.to_lowercase();
 
-        home_dir.join(format!(".{app_name}"))
+        let dot_app_name = format!(".{app_name}");
+
+        home_dir.join(dot_app_name)
     }
 
     #[cfg(not(debug_assertions))]
     pub(crate) fn prefix_dir(&self) -> PathBuf {
-        use super::super::config::HomebrewEnvConfig;
+        use super::super::config::homebrew_env::HomebrewEnvConfig;
 
         PathBuf::from(HomebrewEnvConfig::DEFAULT_PREFIX)
     }
@@ -195,6 +197,21 @@ impl HomebrewDirs {
         prefix_dir.join("share/zsh/site-functions")
     }
 
+    #[expect(clippy::unused_self)]
+    fn root_dir(&self) -> PathBuf {
+        PathBuf::from("/")
+    }
+
+    #[cfg(all(target_os = "macos", debug_assertions))]
+    pub(crate) fn install_dir(&self) -> PathBuf {
+        self.data_dir()
+    }
+
+    #[cfg(all(target_os = "macos", not(debug_assertions)))]
+    pub(crate) fn install_dir(&self) -> PathBuf {
+        self.root_dir()
+    }
+
     #[cfg(all(target_os = "macos", debug_assertions))]
     pub(crate) fn app_dir(&self) -> PathBuf {
         let data_dir = self.data_dir();
@@ -204,7 +221,9 @@ impl HomebrewDirs {
 
     #[cfg(all(target_os = "macos", not(debug_assertions)))]
     pub(crate) fn app_dir(&self) -> PathBuf {
-        PathBuf::from("/Applications")
+        let root_dir = self.root_dir();
+
+        root_dir.join("Applications")
     }
 
     #[cfg(target_os = "macos")]

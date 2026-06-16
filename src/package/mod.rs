@@ -24,13 +24,13 @@ enum Package {
 }
 
 #[enum_dispatch(Package, RawPackage, ResolvedPackage, InstalledPackage)]
-pub(crate) trait Packageable {
+pub(crate) trait PackageExt {
     fn id(&self) -> &str;
 
     fn version(&self) -> &str;
 }
 
-impl<Package: Packageable> Packageable for Arc<Package> {
+impl<Package: PackageExt> PackageExt for Arc<Package> {
     fn id(&self) -> &str {
         Package::id(self)
     }

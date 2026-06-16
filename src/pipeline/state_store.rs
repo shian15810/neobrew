@@ -10,8 +10,8 @@ use tokio::sync::watch;
 use crate::{
     context::Context,
     ext::std::sync::OnceLockExt as _,
-    package::prepared::{Download, PreparedPackage},
-    util::ArchiveFormat,
+    package::prepared::{PreparedPackage, download::Download},
+    util::archive_format::ArchiveFormat,
 };
 
 #[derive(Clone)]
@@ -75,7 +75,7 @@ pub(crate) enum Stage {
     Progressed,
     Hashed,
     Written,
-    Poured,
+    Extracted,
     Relocated,
     Linked,
     Artifacted,
@@ -87,7 +87,7 @@ pub(super) struct Payloads {
     pub(super) progressed: OnceLock<ProgressedOutput>,
     pub(super) hashed: OnceLock<HashedOutput>,
     pub(super) written: OnceLock<WrittenOutput>,
-    pub(super) poured: OnceLock<PouredOutput>,
+    pub(super) extracted: OnceLock<ExtractedOutput>,
     pub(super) relocated: OnceLock<RelocatedOutput>,
     pub(super) linked: OnceLock<LinkedOutput>,
     pub(super) artifacted: OnceLock<ArtifactedOutput>,
@@ -149,8 +149,10 @@ impl Subscribe<HashedOutput> for Payloads {
     }
 }
 
+#[expect(clippy::struct_field_names)]
 #[derive(Clone)]
 pub(crate) struct WrittenOutput {
+    pub(super) dest_file_name: String,
     pub(super) dest_file_path: PathBuf,
     pub(super) dest_link_path: PathBuf,
 }
@@ -172,23 +174,23 @@ impl Subscribe<WrittenOutput> for Payloads {
 }
 
 #[derive(Clone)]
-pub(crate) struct PouredOutput {
+pub(crate) struct ExtractedOutput {
     pub(super) dest_dir_path: PathBuf,
 
     pub(super) archive_format: ArchiveFormat,
 }
 
-impl Publish<PouredOutput> for Payloads {
-    fn publish(&self, output: &PouredOutput) -> anyhow::Result<()> {
-        self.poured.try_set(output.clone())?;
+impl Publish<ExtractedOutput> for Payloads {
+    fn publish(&self, output: &ExtractedOutput) -> anyhow::Result<()> {
+        self.extracted.try_set(output.clone())?;
 
         Ok(())
     }
 }
 
-impl Subscribe<PouredOutput> for Payloads {
-    fn subscribe(&self) -> anyhow::Result<Option<&PouredOutput>> {
-        let payload = self.poured.get();
+impl Subscribe<ExtractedOutput> for Payloads {
+    fn subscribe(&self) -> anyhow::Result<Option<&ExtractedOutput>> {
+        let payload = self.extracted.get();
 
         Ok(payload)
     }

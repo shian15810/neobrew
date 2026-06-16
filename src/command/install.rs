@@ -6,22 +6,23 @@ use tokio::task::JoinSet;
 
 use super::Runner;
 use crate::{
-    compatibility::{Compatibility, Compatible as _},
     context::Context,
-    ext::core::result::ResultExt as _,
     package::{
-        Packageable as _,
-        prepared::{PreparedPackage, PreparedPackageable as _},
-        resolved::ResolvedPackage,
+        PackageExt as _,
+        prepared::{PreparedPackage, PreparedPackageExt as _},
     },
     pipeline::{
         Connector as _,
         Operator as _,
         Pipeline,
-        action_operator::{DmgPourer, Linker},
-        pull_connector::Pourer,
-        push_connector::{Hasher, Progressor, Writer},
-        sensor_operator::{Artifactor, Relocator},
+        action_operator::{
+            dmg_extractor::DmgExtractor,
+            linker::Linker,
+            pkg_extractor::PkgExtractor,
+        },
+        pull_connector::extractor::Extractor,
+        push_connector::{hasher::Hasher, progressor::Progressor, writer::Writer},
+        sensor_operator::{artifactor::Artifactor, relocator::Relocator},
     },
     registries::Registries,
 };
@@ -34,7 +35,7 @@ pub(super) struct Install {
 
 impl Runner for Install {
     async fn run_parallelly(self, context: Arc<Context>) -> anyhow::Result<()> {
-        let installation = Installation::prepare(self.packages, context)?;
+        let installation = Installation::prepare(self.packages, context);
 
         installation.start().await?;
 
@@ -47,25 +48,22 @@ struct Installation {
 
     multi_pb: MultiProgress,
 
-    compatibility: Compatibility,
-
     context: Arc<Context>,
 }
 
 impl Installation {
-    fn prepare(packages: Vec<String>, context: Arc<Context>) -> anyhow::Result<Arc<Self>> {
+    #[expect(clippy::let_and_return)]
+    fn prepare(packages: Vec<String>, context: Arc<Context>) -> Arc<Self> {
         let this = Self {
             packages,
 
             multi_pb: MultiProgress::new(),
 
-            compatibility: Compatibility::try_new()?,
-
             context,
         };
         let this = Arc::new(this);
 
-        Ok(this)
+        this
     }
 
     async fn start(self: Arc<Self>) -> anyhow::Result<()> {
@@ -79,9 +77,9 @@ impl Installation {
     }
 
     async fn run_many(self: Arc<Self>) -> anyhow::Result<()> {
-        let registries = Registries::new(Arc::clone(&self.context));
+        let registries = Registries::try_new(Arc::clone(&self.context)).await?;
 
-        let (resolved_packages, requested_package_ids) = registries.resolve(&self.packages).await?;
+        let resolved_packages = registries.resolve(&self.packages).await?;
 
         let max_id_length = resolved_packages
             .iter()
@@ -129,49 +127,20 @@ impl Installation {
             })
             .collect::<anyhow::Result<Vec<_>>>()?;
 
-        let (resolved_packages_pbs, resolved_packages_incompatible_pbs) = resolved_packages
-            .into_iter()
-            .zip(pbs)
-            .partition::<Vec<_>, _>(|(resolved_package, _)| match resolved_package {
-                ResolvedPackage::Formula(_) => true,
-                ResolvedPackage::Cask(resolved_cask) => {
-                    self.compatibility.check(resolved_cask.depends_on())
-                },
-            });
-
-        let (_, incompatible_pbs) = resolved_packages_incompatible_pbs
-            .into_iter()
-            .unzip::<_, _, Vec<_>, Vec<_>>();
-
-        for pb in incompatible_pbs {
-            pb.set_prefix("Incompatible");
-
-            pb.finish();
-        }
-
-        let (resolved_packages, pbs) = resolved_packages_pbs
-            .into_iter()
-            .unzip::<_, _, Vec<_>, Vec<_>>();
-
-        let are_requested = resolved_packages
-            .iter()
-            .map(|resolved_package| requested_package_ids.contains(resolved_package.id()))
-            .collect::<Vec<_>>();
-
         #[cfg(debug_assertions)]
         let prepared_packages = resolved_packages
             .into_iter()
-            .zip(are_requested)
-            .map(PreparedPackage::try_from)
-            .filter_map(Result::transpose_err)
+            .map(|resolved_package| {
+                PreparedPackage::try_from((resolved_package, Arc::as_ref(&self.context)))
+            })
             .try_collect::<Vec<_>>()?;
 
         #[cfg(not(debug_assertions))]
         let prepared_packages = resolved_packages
             .into_iter()
-            .zip(are_requested)
-            .map(PreparedPackage::try_from)
-            .filter_map(Result::transpose_err)
+            .map(|resolved_package| {
+                PreparedPackage::try_from((resolved_package, Arc::as_ref(&self.context)))
+            })
             .collect::<anyhow::Result<Vec<_>>>()?;
 
         let mut set = JoinSet::new();
@@ -206,6 +175,16 @@ impl Installation {
         prepared_package: PreparedPackage,
         pb: ProgressBar,
     ) -> anyhow::Result<()> {
+        let is_compatible = prepared_package.is_compatible();
+
+        if !is_compatible {
+            pb.set_prefix("Incompatible");
+
+            pb.finish();
+
+            return Ok(());
+        }
+
         let is_installed = prepared_package.is_installed(&self.context).await?;
 
         let is_up_to_date = prepared_package.is_up_to_date(&self.context).await?;
@@ -225,8 +204,12 @@ impl Installation {
         Pipeline::build(prepared_package, pb.clone(), Arc::clone(&self.context))
             .with_pb()
             .fanout(Hasher)
-            .fanout(Writer.fanout(DmgPourer))
-            .fanout(Pourer.fanout(Relocator.fanout(Linker)).fanout(Artifactor))
+            .fanout(Writer.fanout(DmgExtractor).fanout(PkgExtractor))
+            .fanout(
+                Extractor
+                    .fanout(Relocator.fanout(Linker))
+                    .fanout(Artifactor),
+            )
             .run_concurrently(stream)
             .await?;
 

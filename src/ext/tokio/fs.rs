@@ -1,4 +1,4 @@
-use std::{io::ErrorKind, path::Path};
+use std::path::Path;
 
 use tokio::{
     fs::{File, OpenOptions},
@@ -33,7 +33,7 @@ impl FileExt for File {
     async fn open_if_exists(path: impl AsRef<Path>) -> io::Result<Option<Self>> {
         let file = match Self::open(path).await {
             Ok(file) => file,
-            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(err) => return Err(err),
         };
 
@@ -43,7 +43,7 @@ impl FileExt for File {
     async fn open_write_if_exists(path: impl AsRef<Path>) -> io::Result<Option<Self>> {
         let file = match Self::open_write(path).await {
             Ok(file) => file,
-            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(err) => return Err(err),
         };
 
@@ -53,7 +53,7 @@ impl FileExt for File {
     async fn open_read_write_if_exists(path: impl AsRef<Path>) -> io::Result<Option<Self>> {
         let file = match Self::open_read_write(path).await {
             Ok(file) => file,
-            Err(err) if err.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(err) if err.kind() == io::ErrorKind::NotFound => return Ok(None),
             Err(err) => return Err(err),
         };
 

@@ -1,12 +1,18 @@
-use std::{collections::HashMap, iter, sync::Arc};
+use std::{
+    collections::HashMap,
+    sync::{
+        Arc,
+        atomic::{AtomicBool, Ordering},
+    },
+};
 
 use super::{
     super::{
-        Packageable,
-        raw::{Artifact, DependsOn, RawCask, Variation},
+        PackageExt,
+        raw::cask::{Artifact, RawCask, Variation},
     },
-    ResolvedPackageable,
-    ResolvedPackageableIter,
+    ResolvedPackageExt,
+    formula::ResolvedFormula,
 };
 
 pub(crate) struct ResolvedCask {
@@ -15,25 +21,39 @@ pub(crate) struct ResolvedCask {
     pub(in super::super) url: String,
     pub(in super::super) sha256: String,
     pub(in super::super) artifacts: Vec<Artifact>,
-    depends_on: DependsOn,
     pub(in super::super) variations: HashMap<String, Variation>,
+    pub(in super::super) is_compatible: AtomicBool,
+    pub(in super::super) is_requested: AtomicBool,
+
+    dependencies: Vec<Arc<Self>>,
+    formula_dependencies: Vec<Arc<ResolvedFormula>>,
 }
 
-impl From<RawCask> for ResolvedCask {
-    fn from(raw_cask: RawCask) -> Self {
+impl From<(RawCask, Vec<Arc<Self>>, Vec<Arc<ResolvedFormula>>)> for ResolvedCask {
+    fn from(
+        (raw_cask, dependencies, formula_dependencies): (
+            RawCask,
+            Vec<Arc<Self>>,
+            Vec<Arc<ResolvedFormula>>,
+        ),
+    ) -> Self {
         Self {
             token: raw_cask.token,
             version: raw_cask.version,
             url: raw_cask.url,
             sha256: raw_cask.sha256,
             artifacts: raw_cask.artifacts,
-            depends_on: raw_cask.depends_on,
             variations: raw_cask.variations,
+            is_compatible: AtomicBool::new(false),
+            is_requested: AtomicBool::new(false),
+
+            dependencies,
+            formula_dependencies,
         }
     }
 }
 
-impl Packageable for ResolvedCask {
+impl PackageExt for ResolvedCask {
     fn id(&self) -> &str {
         &self.token
     }
@@ -43,18 +63,30 @@ impl Packageable for ResolvedCask {
     }
 }
 
-impl ResolvedPackageable for ResolvedCask {}
+impl ResolvedPackageExt for ResolvedCask {
+    fn set_is_compatible(&self, is_compatible: bool) {
+        self.is_compatible.store(is_compatible, Ordering::Relaxed);
+    }
 
-impl ResolvedCask {
-    pub(crate) fn depends_on(&self) -> &DependsOn {
-        &self.depends_on
+    fn set_is_requested(&self, is_requested: bool) {
+        self.is_requested.store(is_requested, Ordering::Relaxed);
     }
 }
 
-impl ResolvedPackageableIter for ResolvedCask {
-    fn iter(self: &Arc<Self>) -> impl Iterator<Item = Arc<Self>> + use<> {
-        let this = Arc::clone(self);
+impl ResolvedCask {
+    pub(crate) fn dependencies(&self) -> &[Arc<Self>] {
+        &self.dependencies
+    }
 
-        iter::once(this)
+    pub(crate) fn formula_dependencies(&self) -> &[Arc<ResolvedFormula>] {
+        &self.formula_dependencies
+    }
+
+    pub(crate) fn clear_dependencies(&mut self) {
+        self.dependencies.clear();
+    }
+
+    pub(crate) fn clear_formula_dependencies(&mut self) {
+        self.formula_dependencies.clear();
     }
 }

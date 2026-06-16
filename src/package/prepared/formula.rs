@@ -3,19 +3,19 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::Context as _;
+use anyhow::{Context as _, anyhow};
 use bytes::Bytes;
 use futures::stream::BoxStream;
 use tokio::fs;
 
 use super::{
     super::{
-        Packageable,
-        raw::{BottleStable, BottleStableFile, BottleStableFileCellar},
-        resolved::ResolvedFormula,
+        PackageExt,
+        raw::formula::{BottleStable, BottleStableFile, BottleStableFileCellar},
+        resolved::formula::ResolvedFormula,
     },
-    PreparedPackageable,
-    download::{Download, Downloadable as _},
+    PreparedPackageExt,
+    download::{Download, DownloadExt as _},
 };
 use crate::{context::Context, ext::tokio::path::PathExt as _};
 
@@ -29,24 +29,29 @@ pub(crate) struct PreparedFormula<Dl = ()> {
     bottle_url: String,
     bottle_sha256: String,
     keg_only: bool,
+    is_compatible: bool,
     pub(in super::super) is_requested: bool,
 
     download: Dl,
 }
 
-impl TryFrom<(ResolvedFormula, bool)> for PreparedFormula {
-    type Error = Option<anyhow::Error>;
+impl TryFrom<(ResolvedFormula, &Context)> for PreparedFormula {
+    type Error = anyhow::Error;
 
     fn try_from(
-        (resolved_formula, is_requested): (ResolvedFormula, bool),
+        (resolved_formula, context): (ResolvedFormula, &Context),
     ) -> Result<Self, Self::Error> {
         let version_revision = resolved_formula.version_revision();
         let version_revision = version_revision.into_owned();
 
         let bottle_rebuild = resolved_formula.bottle.stable.rebuild;
 
-        let Some((bottle_tag, bottle)) = resolved_formula.bottle.stable.entry()? else {
-            return Err(None);
+        let Some((bottle_tag, bottle)) = resolved_formula.bottle.stable.entry(context)? else {
+            let id = resolved_formula.name;
+
+            let err = anyhow!(r#"Formula "{id}" has no bottle to download"#);
+
+            return Err(err);
         };
 
         let this = Self {
@@ -59,7 +64,8 @@ impl TryFrom<(ResolvedFormula, bool)> for PreparedFormula {
             bottle_url: bottle.url,
             bottle_sha256: bottle.sha256,
             keg_only: resolved_formula.keg_only,
-            is_requested,
+            is_compatible: resolved_formula.is_compatible.into_inner(),
+            is_requested: resolved_formula.is_requested.into_inner(),
 
             download: (),
         };
@@ -80,6 +86,7 @@ impl<Dl> From<(PreparedFormula<()>, Dl)> for PreparedFormula<Dl> {
             bottle_url: this.bottle_url,
             bottle_sha256: this.bottle_sha256,
             keg_only: this.keg_only,
+            is_compatible: this.is_compatible,
             is_requested: this.is_requested,
 
             download,
@@ -103,7 +110,7 @@ impl PreparedFormula<()> {
     }
 }
 
-impl<Dl> Packageable for PreparedFormula<Dl> {
+impl<Dl> PackageExt for PreparedFormula<Dl> {
     fn id(&self) -> &str {
         &self.name
     }
@@ -113,15 +120,11 @@ impl<Dl> Packageable for PreparedFormula<Dl> {
     }
 }
 
-impl<Dl> PreparedPackageable for PreparedFormula<Dl> {
+impl<Dl> PreparedPackageExt for PreparedFormula<Dl> {
     type Download = Dl;
 
-    fn download(&self) -> &Self::Download {
-        &self.download
-    }
-
-    fn pour_dir_path(&self, context: &Context) -> PathBuf {
-        context.homebrew_dirs.cellar_dir()
+    fn is_compatible(&self) -> bool {
+        self.is_compatible
     }
 
     async fn is_installed(&self, context: &Context) -> anyhow::Result<bool> {
@@ -166,6 +169,14 @@ impl<Dl> PreparedPackageable for PreparedFormula<Dl> {
         }
 
         Ok(false)
+    }
+
+    fn download(&self) -> &Self::Download {
+        &self.download
+    }
+
+    fn extract_dir_path(&self, context: &Context) -> PathBuf {
+        context.homebrew_dirs.cellar_dir()
     }
 }
 
@@ -221,8 +232,8 @@ impl ResolvedFormula {
 }
 
 impl BottleStable {
-    fn entry(mut self) -> anyhow::Result<Option<(String, BottleStableFile)>> {
-        let Some(tag) = self.tag()? else {
+    fn entry(mut self, context: &Context) -> anyhow::Result<Option<(String, BottleStableFile)>> {
+        let Some(tag) = self.tag(context)? else {
             return Ok(None);
         };
 
@@ -235,25 +246,39 @@ impl BottleStable {
     }
 
     #[cfg(target_os = "macos")]
-    fn tag(&self) -> anyhow::Result<Option<String>> {
-        use crate::{ext::core::result::ResultExt as _, util::macos};
+    fn tag(&self, context: &Context) -> anyhow::Result<Option<String>> {
+        use crate::util::macos::tag::{Tag, TagError};
 
-        let current_macos_tag = macos::Tag::try_default()?;
+        let current_macos_tag = Tag::try_default(context)?;
 
         #[cfg(debug_assertions)]
         let tagged_candidate_macos_tags = self
             .files
             .keys()
-            .map(|tag| tag.parse::<macos::Tag>().map(|macos_tag| (tag, macos_tag)))
-            .filter_map(Result::transpose_err)
+            .filter_map(|tag| {
+                let macos_tag = match tag.parse::<Tag>() {
+                    Ok(macos_tag) => macos_tag,
+                    Err(TagError::Unsupported) => return None,
+                    Err(TagError::Other(err)) => return Some(Err(err)),
+                };
+
+                Some(Ok((tag, macos_tag)))
+            })
             .try_collect::<Vec<_>>()?;
 
         #[cfg(not(debug_assertions))]
         let tagged_candidate_macos_tags = self
             .files
             .keys()
-            .map(|tag| tag.parse::<macos::Tag>().map(|macos_tag| (tag, macos_tag)))
-            .filter_map(Result::transpose_err)
+            .filter_map(|tag| {
+                let macos_tag = match tag.parse::<Tag>() {
+                    Ok(macos_tag) => macos_tag,
+                    Err(TagError::Unsupported) => return None,
+                    Err(TagError::Other(err)) => return Some(Err(err)),
+                };
+
+                Some(Ok((tag, macos_tag)))
+            })
             .collect::<anyhow::Result<Vec<_>>>()?;
 
         let tag = tagged_candidate_macos_tags
@@ -276,7 +301,7 @@ impl BottleStable {
 
     #[cfg(target_os = "linux")]
     #[expect(clippy::unnecessary_wraps)]
-    fn tag(&self) -> anyhow::Result<Option<String>> {
+    fn tag(&self, _context: &Context) -> anyhow::Result<Option<String>> {
         let tag = cfg_select! {
             target_arch = "aarch64" => "arm64_linux",
             target_arch = "x86_64" => "x86_64_linux",

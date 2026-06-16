@@ -1,12 +1,14 @@
-use std::sync::Arc;
+use std::sync::{
+    Arc,
+    atomic::{AtomicBool, Ordering},
+};
 
 use super::{
     super::{
-        Packageable,
-        raw::{Bottle, RawFormula, Versions},
+        PackageExt,
+        raw::formula::{Bottle, RawFormula, Versions},
     },
-    ResolvedPackageable,
-    ResolvedPackageableIter,
+    ResolvedPackageExt,
 };
 
 pub(crate) struct ResolvedFormula {
@@ -14,24 +16,30 @@ pub(crate) struct ResolvedFormula {
     pub(in super::super) versions: Versions,
     pub(in super::super) revision: u64,
     pub(in super::super) bottle: Bottle,
-    dependencies: Vec<Arc<Self>>,
     pub(in super::super) keg_only: bool,
+    pub(in super::super) is_compatible: AtomicBool,
+    pub(in super::super) is_requested: AtomicBool,
+
+    dependencies: Vec<Arc<Self>>,
 }
 
 impl From<(RawFormula, Vec<Arc<Self>>)> for ResolvedFormula {
-    fn from((raw_formula, this_dependencies): (RawFormula, Vec<Arc<Self>>)) -> Self {
+    fn from((raw_formula, dependencies): (RawFormula, Vec<Arc<Self>>)) -> Self {
         Self {
             name: raw_formula.name,
             versions: raw_formula.versions,
             revision: raw_formula.revision,
             bottle: raw_formula.bottle,
-            dependencies: this_dependencies,
             keg_only: raw_formula.keg_only,
+            is_compatible: AtomicBool::new(false),
+            is_requested: AtomicBool::new(false),
+
+            dependencies,
         }
     }
 }
 
-impl Packageable for ResolvedFormula {
+impl PackageExt for ResolvedFormula {
     fn id(&self) -> &str {
         &self.name
     }
@@ -41,38 +49,22 @@ impl Packageable for ResolvedFormula {
     }
 }
 
-impl ResolvedPackageable for ResolvedFormula {}
+impl ResolvedPackageExt for ResolvedFormula {
+    fn set_is_compatible(&self, is_compatible: bool) {
+        self.is_compatible.store(is_compatible, Ordering::Relaxed);
+    }
+
+    fn set_is_requested(&self, is_requested: bool) {
+        self.is_requested.store(is_requested, Ordering::Relaxed);
+    }
+}
 
 impl ResolvedFormula {
-    pub(crate) fn dependencies_mut(&mut self) -> &mut Vec<Arc<Self>> {
-        &mut self.dependencies
+    pub(crate) fn dependencies(&self) -> &[Arc<Self>] {
+        &self.dependencies
     }
-}
 
-impl ResolvedPackageableIter for ResolvedFormula {
-    fn iter(self: &Arc<Self>) -> impl Iterator<Item = Arc<Self>> + use<> {
-        let this = Arc::clone(self);
-
-        ResolvedFormulaIter {
-            stack: vec![this],
-        }
-    }
-}
-
-struct ResolvedFormulaIter {
-    stack: Vec<Arc<ResolvedFormula>>,
-}
-
-impl Iterator for ResolvedFormulaIter {
-    type Item = Arc<ResolvedFormula>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let resolved_formula = self.stack.pop()?;
-
-        let resolved_formula_dependencies = resolved_formula.dependencies.iter().cloned();
-
-        self.stack.extend(resolved_formula_dependencies);
-
-        Some(resolved_formula)
+    pub(crate) fn clear_dependencies(&mut self) {
+        self.dependencies.clear();
     }
 }

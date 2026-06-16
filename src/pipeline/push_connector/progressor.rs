@@ -8,7 +8,7 @@ use super::{
     super::state_store::{ProgressedOutput, Stage},
     PushConnector,
 };
-use crate::package::prepared::{Download, PreparedPackage, PreparedPackageable as _};
+use crate::package::prepared::{PreparedPackage, PreparedPackageExt as _, download::Download};
 
 pub(crate) struct Progressor {
     pb: ProgressBar,
@@ -40,17 +40,18 @@ impl Progressor {
 
         let mut message = String::new();
 
-        match max_id_length {
-            Some(max_id_length) => write!(message, "{id:<max_id_length$}")?,
-            None => message.push_str(id),
-        }
+        let max_id_length = max_id_length.unwrap_or(23).min(23);
+
+        write!(message, "{id:<max_id_length$.max_id_length$}")?;
 
         message.push(' ');
 
-        match max_version_length {
-            Some(max_version_length) => write!(message, "{version:<max_version_length$}")?,
-            None => message.push_str(version),
-        }
+        let max_version_length = max_version_length.unwrap_or(10).min(10);
+
+        write!(
+            message,
+            "{version:<max_version_length$.max_version_length$}"
+        )?;
 
         pb.set_style(style);
 

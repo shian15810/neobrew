@@ -16,15 +16,15 @@ use bytes::Bytes;
 use futures::stream::StreamExt as _;
 
 use super::{
-    super::state_store::{PouredOutput, RelocatedOutput, Stage},
+    super::state_store::{ExtractedOutput, RelocatedOutput, Stage},
     SensorOperator,
 };
 use crate::{
     context::Context,
     ext::tokio::path::PathExt as _,
     package::{
-        Packageable as _,
-        prepared::{Download, PreparedFormula, PreparedPackage},
+        PackageExt as _,
+        prepared::{PreparedPackage, download::Download, formula::PreparedFormula},
     },
 };
 
@@ -35,13 +35,13 @@ pub(crate) struct Relocator;
 
 #[async_trait]
 impl SensorOperator for Relocator {
-    type Payload = PouredOutput;
+    type Payload = ExtractedOutput;
     type State = ReplacementPairs;
     type Staging = PathBuf;
     type Output = RelocatedOutput;
 
     fn poke_stage(&self) -> Stage {
-        Stage::Poured
+        Stage::Extracted
     }
 
     fn should_run(
@@ -202,7 +202,7 @@ impl Relocator {
     }
 }
 
-trait Relocatory {
+trait RelocatorExt {
     async fn patch_file(
         &self,
         dest_file_path: &Path,

@@ -27,7 +27,10 @@ path = "src/main.rs"
 anyhow = "1.0.102"
 arwen = "0.0.5"
 astral-tokio-tar = "0.6.2"
-async-compression = { version = "0.4.42", features = ["gzip", "tokio"] }
+async-compression = {
+    version = "0.4.42",
+    features = ["bzip2", "gzip", "tokio", "xz", "zstd"]
+}
 async-recursion = "1.1.1"
 async-trait = "0.1.89"
 async-walkdir = "2.1.0"
@@ -37,7 +40,6 @@ bytes = "1.11.1"
 clap = { version = "4.6.1", features = ["cargo"] }
 clap-verbosity-flag = { version = "3.0.4", features = ["serde", "tracing"] }
 console-subscriber = "0.5.0"
-either = "1.16.0"
 enum_dispatch = "0.3.13"
 envy = "0.4.2"
 etcetera = "0.11.0"
@@ -199,3 +201,6 @@ variant_size_differences = "warn"
 missing_crate_level_docs = "warn"
 private_doc_tests = "warn"
 unescaped_backticks = "warn"
+
+[patch.crates-io]
+apple-codesign = { git = "https://github.com/indygreg/apple-platform-rs.git" }

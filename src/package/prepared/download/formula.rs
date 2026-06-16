@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::Context as _;
 use base16ct::HexDisplay;
@@ -6,23 +6,27 @@ use bytes::Bytes;
 use futures::stream::{BoxStream, StreamExt as _, TryStreamExt as _};
 use oci_client::{Reference, manifest::OciDescriptor, secrets::RegistryAuth};
 use sha2::{Digest as _, Sha256};
+use url::Url;
 
 use super::{
-    super::{super::Packageable as _, formula::PreparedFormula},
-    DownloadableInner,
+    super::{super::PackageExt as _, formula::PreparedFormula},
+    DownloadInnerExt,
 };
 use crate::{
     context::{Context, dirs::ProjectDirs as _},
-    util::ArchiveFormat,
+    util::archive_format::ArchiveFormat,
 };
 
-impl DownloadableInner for PreparedFormula {
+impl DownloadInnerExt for PreparedFormula {
     fn url(&self) -> &str {
         self.bottle_url()
     }
 
     #[expect(clippy::unused_async_trait_impl)]
-    async fn file_path_link_path(&self, context: &Context) -> anyhow::Result<(PathBuf, PathBuf)> {
+    async fn file_name_file_path_link_path(
+        &self,
+        context: &Context,
+    ) -> anyhow::Result<(String, PathBuf, PathBuf)> {
         let id = self.id();
 
         let version_revision = self.version_revision();
@@ -36,6 +40,12 @@ impl DownloadableInner for PreparedFormula {
         let url_hash = Sha256::digest(url);
         let url_hash = HexDisplay(&url_hash);
         let url_hash = format!("{url_hash:x}");
+
+        let url = Url::parse(url)?;
+
+        let mut url_name = url.path_segments().context("Invalid URL")?;
+        let url_name = url_name.next_back().context("Empty path segments")?;
+        let url_name = url_name.to_owned();
 
         let cache_dir_path = context.homebrew_dirs.cache_dir();
 
@@ -51,15 +61,15 @@ impl DownloadableInner for PreparedFormula {
 
         let link_path = cache_dir_path.join(link_name);
 
-        Ok((file_path, link_path))
+        Ok((url_name, file_path, link_path))
     }
 
     fn expected_sha256(&self) -> &str {
         self.bottle_sha256()
     }
 
-    fn archive_format(&self, _link_path: &Path) -> anyhow::Result<Option<ArchiveFormat>> {
-        let archive_format = ArchiveFormat::TarGz;
+    fn archive_format(&self, _file_name: &str) -> anyhow::Result<Option<ArchiveFormat>> {
+        let archive_format = ArchiveFormat::TarGzip;
 
         Ok(Some(archive_format))
     }
@@ -74,12 +84,11 @@ impl DownloadableInner for PreparedFormula {
 
         let url = self.bottle_url();
 
-        let repository = format!("https://{registry}/v2/");
-        let repository = url
-            .strip_prefix(&repository)
-            .context("Invalid OCI repository URL")?;
+        let url_prefix = format!("https://{registry}/v2/");
 
-        let (repository, _) = repository
+        let url_postfix = url.strip_prefix(&url_prefix).context("Invalid OCI URL")?;
+
+        let (repository, _) = url_postfix
             .split_once("/blobs/")
             .context("Invalid OCI blob URL")?;
 

@@ -1,4 +1,4 @@
-mod pourer;
+pub(crate) mod extractor;
 
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -14,7 +14,6 @@ use tokio::{
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_util::{io::StreamReader, sync::PollSender, task::AbortOnDropHandle};
 
-pub(crate) use self::pourer::Pourer;
 use super::{
     Connector,
     state_committer::StateCommitter,
@@ -22,7 +21,7 @@ use super::{
 };
 use crate::{
     context::Context,
-    package::prepared::{Download, PreparedPackage},
+    package::prepared::{PreparedPackage, download::Download},
 };
 
 pub(crate) struct _PullConnectorMarker;

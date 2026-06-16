@@ -8,6 +8,9 @@ cpio
 koly
 KOLY
 libexec
+lzma
+Lzma
+mpkg
 relpath
 relpstr
 relpstrs
@@ -15,5 +18,7 @@ sgml
 sysexits
 Sysexits
 tftpboot
+tlzma
+tzst
 UDTO
 untap

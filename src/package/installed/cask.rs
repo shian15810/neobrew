@@ -1,6 +1,6 @@
 use super::{
-    super::{Packageable, prepared::PreparedCask},
-    InstalledPackageable,
+    super::{PackageExt, prepared::cask::PreparedCask},
+    InstalledPackageExt,
 };
 
 pub(crate) struct InstalledCask {
@@ -19,7 +19,7 @@ impl From<PreparedCask> for InstalledCask {
     }
 }
 
-impl Packageable for InstalledCask {
+impl PackageExt for InstalledCask {
     fn id(&self) -> &str {
         &self.token
     }
@@ -29,4 +29,4 @@ impl Packageable for InstalledCask {
     }
 }
 
-impl InstalledPackageable for InstalledCask {}
+impl InstalledPackageExt for InstalledCask {}

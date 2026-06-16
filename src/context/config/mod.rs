@@ -1,6 +1,6 @@
 mod cli;
 mod global_env;
-mod homebrew_env;
+pub(super) mod homebrew_env;
 mod neobrew_env;
 
 use clap::{ArgMatches, ColorChoice};
@@ -16,9 +16,12 @@ use figment::{
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_with::{DisplayFromStr, serde_as};
 
-#[cfg_attr(not(debug_assertions), visibility::make(pub(super)))]
-use self::homebrew_env::HomebrewEnvConfig;
-use self::{cli::CliConfig, global_env::GlobalEnvConfig, neobrew_env::NeobrewEnvConfig};
+use self::{
+    cli::CliConfig,
+    global_env::GlobalEnvConfig,
+    homebrew_env::HomebrewEnvConfig,
+    neobrew_env::NeobrewEnvConfig,
+};
 
 #[serde_as]
 #[derive(Serialize, Deserialize)]

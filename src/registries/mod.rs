@@ -1,4 +1,5 @@
 mod cask;
+mod compatibility;
 mod formula;
 
 use std::{collections::HashSet, path::PathBuf, sync::Arc};
@@ -12,59 +13,59 @@ use tokio::{
     io::AsyncWriteExt as _,
 };
 
-use self::{cask::CaskRegistry, formula::FormulaRegistry};
+use self::{
+    cask::CaskRegistry,
+    compatibility::{Compatibility, CompatibilityExt as _},
+    formula::FormulaRegistry,
+};
 use crate::{
     context::Context,
     ext::{std::path::PathExt as _, tokio::fs::FileExt as _},
-    package::{Packageable as _, resolved::ResolvedPackage},
+    package::{
+        PackageExt as _,
+        resolved::{ResolvedPackage, ResolvedPackageExt as _},
+    },
 };
 
 pub(crate) struct Registries {
     formula_registry: Arc<FormulaRegistry>,
     cask_registry: Arc<CaskRegistry>,
-
-    context: Arc<Context>,
 }
 
 impl Registries {
-    pub(crate) fn new(context: Arc<Context>) -> Self {
-        let formula_registry = FormulaRegistry::new(Arc::clone(&context));
+    pub(crate) async fn try_new(context: Arc<Context>) -> anyhow::Result<Self> {
+        let compatibility = Compatibility::try_new(&context).await?;
+        let compatibility = Arc::new(compatibility);
+
+        let formula_registry =
+            FormulaRegistry::new(Arc::clone(&compatibility), Arc::clone(&context));
         let formula_registry = Arc::new(formula_registry);
 
-        let cask_registry = CaskRegistry::new(Arc::clone(&context));
+        let cask_registry =
+            CaskRegistry::new(Arc::clone(&formula_registry), compatibility, context);
         let cask_registry = Arc::new(cask_registry);
 
-        Self {
+        let this = Self {
             formula_registry,
             cask_registry,
+        };
 
-            context,
-        }
+        Ok(this)
     }
 
-    pub(crate) async fn resolve(
-        self,
-        packages: &[String],
-    ) -> anyhow::Result<(Vec<ResolvedPackage>, HashSet<String>)> {
-        let mut requested_package_ids = HashSet::new();
-
+    pub(crate) async fn resolve(self, packages: &[String]) -> anyhow::Result<Vec<ResolvedPackage>> {
         let mut resolved_package_ids = HashSet::new();
 
         let resolved_packages = self.resolve_many(packages).await?;
+
+        for resolved_package in &resolved_packages {
+            resolved_package.set_is_requested(true);
+        }
+
+        #[expect(clippy::redundant_closure_for_method_calls)]
         let mut resolved_packages = resolved_packages
             .into_iter()
-            .flat_map(|resolved_package| {
-                let mut resolved_package_iter = resolved_package.iter().peekable();
-
-                if let Some(resolved_package) = resolved_package_iter.peek() {
-                    let id = resolved_package.id();
-                    let id = id.to_owned();
-
-                    requested_package_ids.insert(id);
-                }
-
-                resolved_package_iter
-            })
+            .flat_map(|resolved_package| resolved_package.into_iter())
             .filter(|resolved_package| {
                 let id = resolved_package.id();
                 let id = id.to_owned();
@@ -73,18 +74,11 @@ impl Registries {
             })
             .collect::<Vec<_>>();
 
-        for resolved_package in &mut resolved_packages {
-            #[expect(clippy::collapsible_if)]
-            if let ResolvedPackage::Formula(resolved_formula) = resolved_package {
-                if let Some(resolved_formula) = Arc::get_mut(resolved_formula) {
-                    resolved_formula.dependencies_mut().clear();
-                }
-            }
-        }
+        Self::clear_dependencies(&mut resolved_packages);
 
         resolved_packages.sort_by(|left, right| left.id().cmp(right.id()));
 
-        Ok((resolved_packages, requested_package_ids))
+        Ok(resolved_packages)
     }
 
     async fn resolve_many(self, packages: &[String]) -> anyhow::Result<Vec<ResolvedPackage>> {
@@ -138,6 +132,46 @@ impl Registries {
 
         Ok(resolved_package)
     }
+
+    fn clear_dependencies(resolved_packages: &mut [ResolvedPackage]) {
+        let dependency_count = resolved_packages
+            .iter_mut()
+            .filter_map(|resolved_package| match resolved_package {
+                ResolvedPackage::Formula(resolved_formula) => {
+                    let resolved_formula = Arc::get_mut(resolved_formula)?;
+
+                    if !resolved_formula.dependencies().is_empty() {
+                        resolved_formula.clear_dependencies();
+
+                        return Some(());
+                    }
+
+                    None
+                },
+                ResolvedPackage::Cask(resolved_cask) => {
+                    let resolved_cask = Arc::get_mut(resolved_cask)?;
+
+                    if !resolved_cask.dependencies().is_empty() {
+                        resolved_cask.clear_dependencies();
+
+                        return Some(());
+                    }
+
+                    if !resolved_cask.formula_dependencies().is_empty() {
+                        resolved_cask.clear_formula_dependencies();
+
+                        return Some(());
+                    }
+
+                    None
+                },
+            })
+            .count();
+
+        if dependency_count > 0 {
+            Self::clear_dependencies(resolved_packages);
+        }
+    }
 }
 
 enum Registry {
@@ -145,7 +179,7 @@ enum Registry {
     Cask(Arc<CaskRegistry>),
 }
 
-trait Registrable {
+trait RegistryExt: RegistryJsonExt {
     type ResolvedPackage;
 
     const API_URL: &str;
@@ -156,15 +190,25 @@ trait Registrable {
     const TAP_MIGRATIONS_URL: &str;
     const TAP_MIGRATIONS_JWS_URL: &str;
 
-    fn new(context: Arc<Context>) -> Self;
-
     async fn resolve(
         self: Arc<Self>,
         package: Arc<str>,
     ) -> anyhow::Result<Arc<Self::ResolvedPackage>>;
+
+    async fn resolve_with_stack(
+        self: Arc<Self>,
+        package: Arc<str>,
+        stack: Vec<Arc<str>>,
+    ) -> anyhow::Result<Arc<Self::ResolvedPackage>>;
+
+    async fn fetch_with_stack(
+        self: Arc<Self>,
+        package: Arc<str>,
+        stack: Vec<Arc<str>>,
+    ) -> anyhow::Result<Arc<Self::ResolvedPackage>>;
 }
 
-trait RegistrableJson {
+trait RegistryJsonExt {
     fn json_path(&self, id: &str) -> PathBuf;
 
     async fn save_json(&self, id: &str, bytes: Bytes) -> anyhow::Result<()> {

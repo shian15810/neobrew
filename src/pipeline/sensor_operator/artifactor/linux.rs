@@ -1,15 +1,31 @@
 use std::path::PathBuf;
 
-use super::{Artifactor, Artifactory, ReplacementPairs};
+use super::{Artifactor, ArtifactorExt, ReplacementPairs};
 use crate::{
     context::Context,
     package::{
-        Packageable as _,
-        prepared::{Download, PreparedCask},
+        PackageExt as _,
+        prepared::{cask::PreparedCask, download::Download},
     },
 };
 
-impl Artifactory for Artifactor {
+impl ArtifactorExt for Artifactor {
+    #[expect(clippy::unused_async_trait_impl)]
+    async fn install(
+        &self,
+        prepared_cask: &PreparedCask<Download>,
+        _replacement_pairs: &ReplacementPairs,
+        context: &Context,
+    ) -> anyhow::Result<PathBuf> {
+        let id = prepared_cask.id();
+
+        let version = prepared_cask.version();
+
+        let staged_dir_path = context.homebrew_dirs.staged_dir(id, version);
+
+        Ok(staged_dir_path)
+    }
+
     #[expect(clippy::unused_async_trait_impl)]
     async fn relocate(
         &self,

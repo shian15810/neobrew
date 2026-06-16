@@ -1,20 +1,45 @@
 use std::path::{Path, PathBuf};
 
-use anyhow::Context as _;
+use anyhow::{Context as _, anyhow};
 use futures::future;
-use tokio::fs;
+use tempfile::NamedTempFile;
+use tokio::{fs, process::Command};
 
-use super::{Artifactor, Artifactory, ReplacementPairs};
+use super::{Artifactor, ArtifactorExt, ReplacementPairs};
 use crate::{
     context::Context,
     ext::{std::path::PathExt as _, tokio::path::PathExt as _},
     package::{
-        Packageable as _,
-        prepared::{CommonStanza, Download, PreparedCask, Stanzas},
+        PackageExt as _,
+        prepared::{
+            cask::PreparedCask,
+            cask_stanza::{CommonStanza, PkgStanza, Stanzas},
+            download::Download,
+        },
     },
 };
 
-impl Artifactory for Artifactor {
+impl ArtifactorExt for Artifactor {
+    async fn install(
+        &self,
+        prepared_cask: &PreparedCask<Download>,
+        replacement_pairs: &ReplacementPairs,
+        context: &Context,
+    ) -> anyhow::Result<PathBuf> {
+        let id = prepared_cask.id();
+
+        let version = prepared_cask.version();
+
+        let staged_dir_path = context.homebrew_dirs.staged_dir(id, version);
+
+        let pkg_stanzas = &prepared_cask.stanzas().pkg;
+
+        self.install_pkg(pkg_stanzas, &staged_dir_path, replacement_pairs, context)
+            .await?;
+
+        Ok(staged_dir_path)
+    }
+
     async fn relocate(
         &self,
         prepared_cask: &PreparedCask<Download>,
@@ -57,6 +82,84 @@ impl Artifactory for Artifactor {
 }
 
 impl Artifactor {
+    async fn install_pkg(
+        &self,
+        pkg_stanzas: &[PkgStanza],
+        staged_dir_path: &Path,
+        replacement_pairs: &ReplacementPairs,
+        context: &Context,
+    ) -> anyhow::Result<()> {
+        if pkg_stanzas.is_empty() {
+            return Ok(());
+        }
+
+        let dest_dir_path = context.homebrew_dirs.install_dir();
+
+        fs::create_dir_all(&dest_dir_path).await?;
+
+        let pkg_stanza_futs = pkg_stanzas.iter().map(async |pkg_stanza| {
+            let pkg_source_pstr = &pkg_stanza.source;
+
+            let pkg_source_path = self.resolve_source(pkg_source_pstr, replacement_pairs);
+
+            let pkg_file_path = staged_dir_path.join(pkg_source_path);
+
+            let mut installer = Command::new("installer");
+
+            installer
+                .arg("-pkg")
+                .arg(pkg_file_path)
+                .arg("-target")
+                .arg(&dest_dir_path);
+
+            if pkg_stanza.allow_untrusted {
+                installer.arg("-allowUntrusted");
+            }
+
+            let choices_file = if pkg_stanza.choices.is_empty() {
+                None
+            } else {
+                let choices_file = NamedTempFile::new_in(staged_dir_path)?;
+
+                let choices_file_path = choices_file.path();
+
+                plist::to_file_xml(choices_file_path, &pkg_stanza.choices)?;
+
+                installer
+                    .arg("-applyChoiceChangesXML")
+                    .arg(choices_file_path);
+
+                Some(choices_file)
+            };
+
+            let installer = installer.output().await?;
+
+            if let Some(choices_file) = choices_file {
+                choices_file.close()?;
+            }
+
+            if !installer.status.success() {
+                let stdout = String::from_utf8_lossy(&installer.stdout);
+
+                if stdout == "installer: Must be run as root to install this package.\n" {
+                    return Ok(());
+                }
+
+                let stderr = String::from_utf8_lossy(&installer.stderr);
+
+                let err = anyhow!("{stdout}{stderr}");
+
+                return Err(err);
+            }
+
+            anyhow::Ok(())
+        });
+
+        future::try_join_all(pkg_stanza_futs).await?;
+
+        Ok(())
+    }
+
     async fn relocate_commons(
         &self,
         stanzas: &Stanzas,
@@ -64,7 +167,7 @@ impl Artifactor {
         replacement_pairs: &ReplacementPairs,
         context: &Context,
     ) -> anyhow::Result<()> {
-        let common_stanzas = vec![
+        let common_stanzas_list = [
             &stanzas.app,
             &stanzas.suite,
             &stanzas.colorpicker,
@@ -86,7 +189,7 @@ impl Artifactor {
 
         let homebrew_dirs = &context.homebrew_dirs;
 
-        let dest_dir_paths = vec![
+        let dest_dir_paths = [
             Some(homebrew_dirs.app_dir()),
             Some(homebrew_dirs.app_dir()),
             Some(homebrew_dirs.colorpicker_dir()),
@@ -106,34 +209,33 @@ impl Artifactor {
             None,
         ];
 
-        let common_stanza_futs =
-            common_stanzas
-                .into_iter()
-                .zip(&dest_dir_paths)
-                .map(|(stanzas, dest_dir_path)| {
-                    self.relocate_common(
-                        stanzas,
-                        staged_dir_path,
-                        dest_dir_path.as_deref(),
-                        replacement_pairs,
-                        context,
-                    )
-                });
+        let common_stanzas_futs = common_stanzas_list
+            .into_iter()
+            .zip(dest_dir_paths.iter())
+            .map(|(common_stanzas, dest_dir_path)| {
+                self.relocate_common(
+                    common_stanzas,
+                    staged_dir_path,
+                    dest_dir_path.as_deref(),
+                    replacement_pairs,
+                    context,
+                )
+            });
 
-        future::try_join_all(common_stanza_futs).await?;
+        future::try_join_all(common_stanzas_futs).await?;
 
         Ok(())
     }
 
     async fn relocate_common(
         &self,
-        stanzas: &[CommonStanza],
+        common_stanzas: &[CommonStanza],
         staged_dir_path: &Path,
         dest_dir_path: Option<&Path>,
         replacement_pairs: &ReplacementPairs,
         context: &Context,
     ) -> anyhow::Result<()> {
-        if stanzas.is_empty() {
+        if common_stanzas.is_empty() {
             return Ok(());
         }
 
@@ -141,37 +243,37 @@ impl Artifactor {
             fs::create_dir_all(dest_dir_path).await?;
         }
 
-        let stanza_futs = stanzas.iter().map(async |stanza| {
-            let stanza_source_pstr = &stanza.source;
+        let common_stanza_futs = common_stanzas.iter().map(async |common_stanza| {
+            let common_source_pstr = &common_stanza.source;
 
-            let stanza_source_path = self.resolve_source(stanza_source_pstr, replacement_pairs);
+            let common_source_path = self.resolve_source(common_source_pstr, replacement_pairs);
 
-            let src_item_path = staged_dir_path.join(stanza_source_path);
+            let src_item_path = staged_dir_path.join(common_source_path);
 
-            let stanza_target_pstr = &stanza.target;
+            let common_target_pstr = &common_stanza.target;
 
-            let stanza_target_path =
-                self.resolve_target(stanza_target_pstr, replacement_pairs, context);
+            let common_target_path =
+                self.resolve_target(common_target_pstr, replacement_pairs, context);
 
-            let dest_item_path = if stanza_target_path.is_relative() {
+            let dest_item_path = if common_target_path.is_relative() {
                 dest_dir_path
-                    .map(|dest_dir_path| dest_dir_path.join(&stanza_target_path))
-                    .unwrap_or(stanza_target_path)
+                    .map(|dest_dir_path| dest_dir_path.join(&common_target_path))
+                    .unwrap_or(common_target_path)
             } else {
-                stanza_target_path
+                common_target_path
             };
 
-            let stanza_rename_pstr = &stanza.rename;
+            let common_rename_pstr = &common_stanza.rename;
 
-            let dest_item_path = match stanza_rename_pstr {
-                Some(stanza_rename_pstr) => {
-                    let stanza_rename_path =
-                        self.resolve_target(stanza_rename_pstr, replacement_pairs, context);
+            let dest_item_path = match common_rename_pstr {
+                Some(common_rename_pstr) => {
+                    let common_rename_path =
+                        self.resolve_target(common_rename_pstr, replacement_pairs, context);
 
-                    if stanza_rename_path.is_relative() {
-                        dest_item_path.with_file_name(stanza_rename_path)
+                    if common_rename_path.is_relative() {
+                        dest_item_path.with_file_name(common_rename_path)
                     } else {
-                        stanza_rename_path
+                        common_rename_path
                     }
                 },
                 None => dest_item_path,
@@ -179,7 +281,9 @@ impl Artifactor {
 
             let dest_item_base_path = dest_item_path.base()?;
 
-            fs::create_dir_all(dest_item_base_path).await?;
+            if Some(dest_item_base_path) != dest_dir_path {
+                fs::create_dir_all(dest_item_base_path).await?;
+            }
 
             if dest_item_path.is_dir_exists_nofollow().await? {
                 fs::remove_dir_all(&dest_item_path).await?;
@@ -202,7 +306,7 @@ impl Artifactor {
             anyhow::Ok(())
         });
 
-        future::try_join_all(stanza_futs).await?;
+        future::try_join_all(common_stanza_futs).await?;
 
         Ok(())
     }
@@ -214,7 +318,7 @@ impl Artifactor {
         replacement_pairs: &ReplacementPairs,
         context: &Context,
     ) -> anyhow::Result<()> {
-        let common_stanzas = vec![
+        let common_stanzas_list = [
             &stanzas.binary,
             &stanzas.manpage,
             &stanzas.bash_completion,
@@ -224,7 +328,7 @@ impl Artifactor {
 
         let homebrew_dirs = &context.homebrew_dirs;
 
-        let dest_dir_paths = vec![
+        let dest_dir_paths = [
             homebrew_dirs.bin_dir(),
             homebrew_dirs.man_dir(),
             homebrew_dirs.bash_completion_dir(),
@@ -234,13 +338,13 @@ impl Artifactor {
 
         let permissions_modes = [Some(0o111), None, None, None, None];
 
-        let common_stanza_futs = common_stanzas
+        let common_stanzas_futs = common_stanzas_list
             .into_iter()
-            .zip(&dest_dir_paths)
+            .zip(dest_dir_paths.iter())
             .zip(permissions_modes)
-            .map(|((stanzas, dest_dir_path), permissions_mode)| {
+            .map(|((common_stanzas, dest_dir_path), permissions_mode)| {
                 self.link_common(
-                    stanzas,
+                    common_stanzas,
                     staged_dir_path,
                     dest_dir_path,
                     permissions_mode,
@@ -249,55 +353,55 @@ impl Artifactor {
                 )
             });
 
-        future::try_join_all(common_stanza_futs).await?;
+        future::try_join_all(common_stanzas_futs).await?;
 
         Ok(())
     }
 
     async fn link_common(
         &self,
-        stanzas: &[CommonStanza],
+        common_stanzas: &[CommonStanza],
         staged_dir_path: &Path,
         dest_dir_path: &Path,
         permissions_mode: Option<u32>,
         replacement_pairs: &ReplacementPairs,
         context: &Context,
     ) -> anyhow::Result<()> {
-        if stanzas.is_empty() {
+        if common_stanzas.is_empty() {
             return Ok(());
         }
 
         fs::create_dir_all(dest_dir_path).await?;
 
-        let stanza_futs = stanzas.iter().map(async |stanza| {
-            let stanza_source_pstr = &stanza.source;
+        let common_stanza_futs = common_stanzas.iter().map(async |common_stanza| {
+            let common_source_pstr = &common_stanza.source;
 
-            let stanza_source_path = self.resolve_source(stanza_source_pstr, replacement_pairs);
+            let common_source_path = self.resolve_source(common_source_pstr, replacement_pairs);
 
-            let src_item_path = staged_dir_path.join(stanza_source_path);
+            let src_item_path = staged_dir_path.join(common_source_path);
 
-            let stanza_target_pstr = &stanza.target;
+            let common_target_pstr = &common_stanza.target;
 
-            let stanza_target_path =
-                self.resolve_target(stanza_target_pstr, replacement_pairs, context);
+            let common_target_path =
+                self.resolve_target(common_target_pstr, replacement_pairs, context);
 
-            let dest_link_path = if stanza_target_path.is_relative() {
-                dest_dir_path.join(stanza_target_path)
+            let dest_link_path = if common_target_path.is_relative() {
+                dest_dir_path.join(common_target_path)
             } else {
-                stanza_target_path
+                common_target_path
             };
 
-            let stanza_rename_pstr = &stanza.rename;
+            let common_rename_pstr = &common_stanza.rename;
 
-            let dest_link_path = match stanza_rename_pstr {
-                Some(stanza_rename_pstr) => {
-                    let stanza_rename_path =
-                        self.resolve_target(stanza_rename_pstr, replacement_pairs, context);
+            let dest_link_path = match common_rename_pstr {
+                Some(common_rename_pstr) => {
+                    let common_rename_path =
+                        self.resolve_target(common_rename_pstr, replacement_pairs, context);
 
-                    if stanza_rename_path.is_relative() {
-                        dest_link_path.with_file_name(stanza_rename_path)
+                    if common_rename_path.is_relative() {
+                        dest_link_path.with_file_name(common_rename_path)
                     } else {
-                        stanza_rename_path
+                        common_rename_path
                     }
                 },
                 None => dest_link_path,
@@ -305,7 +409,9 @@ impl Artifactor {
 
             let dest_link_base_path = dest_link_path.base()?;
 
-            fs::create_dir_all(dest_link_base_path).await?;
+            if dest_link_base_path != dest_dir_path {
+                fs::create_dir_all(dest_link_base_path).await?;
+            }
 
             src_item_path
                 .create_relative_link_atomically_at(dest_link_path)
@@ -318,7 +424,7 @@ impl Artifactor {
             anyhow::Ok(())
         });
 
-        future::try_join_all(stanza_futs).await?;
+        future::try_join_all(common_stanza_futs).await?;
 
         Ok(())
     }

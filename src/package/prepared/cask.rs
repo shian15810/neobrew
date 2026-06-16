@@ -6,13 +6,13 @@ use tokio::fs;
 
 use super::{
     super::{
-        Packageable,
-        raw::{Artifact, Variation},
-        resolved::ResolvedCask,
+        PackageExt,
+        raw::cask::{Artifact, Variation},
+        resolved::cask::ResolvedCask,
     },
-    PreparedPackageable,
+    PreparedPackageExt,
     cask_stanza::Stanzas,
-    download::{Download, Downloadable as _},
+    download::{Download, DownloadExt as _},
 };
 use crate::{context::Context, ext::tokio::path::PathExt as _};
 
@@ -23,20 +23,27 @@ pub(crate) struct PreparedCask<Dl = ()> {
     variation_url: String,
     variation_sha256: String,
     variation_stanzas: Stanzas,
+    is_compatible: bool,
     pub(in super::super) is_requested: bool,
 
     download: Dl,
 }
 
-impl TryFrom<(ResolvedCask, bool)> for PreparedCask {
-    type Error = Option<anyhow::Error>;
+impl TryFrom<(ResolvedCask, &Context)> for PreparedCask {
+    type Error = anyhow::Error;
 
-    fn try_from((resolved_cask, is_requested): (ResolvedCask, bool)) -> Result<Self, Self::Error> {
+    fn try_from(
+        (mut resolved_cask, context): (ResolvedCask, &Context),
+    ) -> Result<Self, Self::Error> {
         let token = resolved_cask.token.clone();
 
         let version = resolved_cask.version.clone();
 
-        let (variation_tag, variation) = resolved_cask.variation_entry()?;
+        let is_compatible = *resolved_cask.is_compatible.get_mut();
+
+        let is_requested = *resolved_cask.is_requested.get_mut();
+
+        let (variation_tag, variation) = resolved_cask.variation_entry(context)?;
 
         let this = Self {
             token,
@@ -45,6 +52,7 @@ impl TryFrom<(ResolvedCask, bool)> for PreparedCask {
             variation_url: variation.url,
             variation_sha256: variation.sha256,
             variation_stanzas: Stanzas::from(variation.artifacts),
+            is_compatible,
             is_requested,
 
             download: (),
@@ -63,6 +71,7 @@ impl<Dl> From<(PreparedCask<()>, Dl)> for PreparedCask<Dl> {
             variation_url: this.variation_url,
             variation_sha256: this.variation_sha256,
             variation_stanzas: this.variation_stanzas,
+            is_compatible: this.is_compatible,
             is_requested: this.is_requested,
 
             download,
@@ -86,7 +95,7 @@ impl PreparedCask<()> {
     }
 }
 
-impl<Dl> Packageable for PreparedCask<Dl> {
+impl<Dl> PackageExt for PreparedCask<Dl> {
     fn id(&self) -> &str {
         &self.token
     }
@@ -96,19 +105,11 @@ impl<Dl> Packageable for PreparedCask<Dl> {
     }
 }
 
-impl<Dl> PreparedPackageable for PreparedCask<Dl> {
+impl<Dl> PreparedPackageExt for PreparedCask<Dl> {
     type Download = Dl;
 
-    fn download(&self) -> &Self::Download {
-        &self.download
-    }
-
-    fn pour_dir_path(&self, context: &Context) -> PathBuf {
-        let id = self.id();
-
-        let version = self.version();
-
-        context.homebrew_dirs.staged_dir(id, version)
+    fn is_compatible(&self) -> bool {
+        self.is_compatible
     }
 
     async fn is_installed(&self, context: &Context) -> anyhow::Result<bool> {
@@ -154,6 +155,18 @@ impl<Dl> PreparedPackageable for PreparedCask<Dl> {
 
         Ok(false)
     }
+
+    fn download(&self) -> &Self::Download {
+        &self.download
+    }
+
+    fn extract_dir_path(&self, context: &Context) -> PathBuf {
+        let id = self.id();
+
+        let version = self.version();
+
+        context.homebrew_dirs.staged_dir(id, version)
+    }
 }
 
 impl<Dl> PreparedCask<Dl> {
@@ -171,9 +184,12 @@ impl<Dl> PreparedCask<Dl> {
 }
 
 impl ResolvedCask {
-    fn variation_entry(mut self) -> anyhow::Result<(Option<String>, Variation<Vec<Artifact>>)> {
+    fn variation_entry(
+        mut self,
+        context: &Context,
+    ) -> anyhow::Result<(Option<String>, Variation<Vec<Artifact>>)> {
         #[expect(clippy::collapsible_if)]
-        if let Some(tag) = self.variation_tag()? {
+        if let Some(tag) = self.variation_tag(context)? {
             if let Some((tag, variation)) = self.variations.remove_entry(&tag) {
                 let variation = variation.unwrap_artifacts_or(self.artifacts);
 
@@ -195,25 +211,39 @@ impl ResolvedCask {
     }
 
     #[cfg(target_os = "macos")]
-    fn variation_tag(&self) -> anyhow::Result<Option<String>> {
-        use crate::{ext::core::result::ResultExt as _, util::macos};
+    fn variation_tag(&self, context: &Context) -> anyhow::Result<Option<String>> {
+        use crate::util::macos::tag::{Tag, TagError};
 
-        let current_macos_tag = macos::Tag::try_default()?;
+        let current_macos_tag = Tag::try_default(context)?;
 
         #[cfg(debug_assertions)]
         let tagged_candidate_macos_tags = self
             .variations
             .keys()
-            .map(|tag| tag.parse::<macos::Tag>().map(|macos_tag| (tag, macos_tag)))
-            .filter_map(Result::transpose_err)
+            .filter_map(|tag| {
+                let macos_tag = match tag.parse::<Tag>() {
+                    Ok(macos_tag) => macos_tag,
+                    Err(TagError::Unsupported) => return None,
+                    Err(TagError::Other(err)) => return Some(Err(err)),
+                };
+
+                Some(Ok((tag, macos_tag)))
+            })
             .try_collect::<Vec<_>>()?;
 
         #[cfg(not(debug_assertions))]
         let tagged_candidate_macos_tags = self
             .variations
             .keys()
-            .map(|tag| tag.parse::<macos::Tag>().map(|macos_tag| (tag, macos_tag)))
-            .filter_map(Result::transpose_err)
+            .filter_map(|tag| {
+                let macos_tag = match tag.parse::<Tag>() {
+                    Ok(macos_tag) => macos_tag,
+                    Err(TagError::Unsupported) => return None,
+                    Err(TagError::Other(err)) => return Some(Err(err)),
+                };
+
+                Some(Ok((tag, macos_tag)))
+            })
             .collect::<anyhow::Result<Vec<_>>>()?;
 
         let tag = tagged_candidate_macos_tags
@@ -236,7 +266,7 @@ impl ResolvedCask {
 
     #[cfg(target_os = "linux")]
     #[expect(clippy::unnecessary_wraps)]
-    fn variation_tag(&self) -> anyhow::Result<Option<String>> {
+    fn variation_tag(&self, _context: &Context) -> anyhow::Result<Option<String>> {
         let tag = cfg_select! {
             target_arch = "aarch64" => "arm64_linux",
             target_arch = "x86_64" => "x86_64_linux",
