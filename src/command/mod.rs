@@ -99,7 +99,7 @@ impl Commands {
 
                 proc_exit::Code::SUCCESS.ok()
             },
-            Self::External(args) => {
+            Self::External(brew_args) => {
                 let mut brew_cmd = Command::new("brew");
 
                 brew_cmd
@@ -126,7 +126,7 @@ impl Commands {
                     ColorChoice::Auto => {},
                 }
 
-                brew_cmd.args(args);
+                brew_cmd.args(brew_args);
 
                 let brew_status = brew_cmd.status().await.to_sysexits()?;
 

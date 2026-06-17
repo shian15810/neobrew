@@ -13,6 +13,7 @@ diskutil
 fseventsd
 linux
 linuxbrew
+linuxkernel
 mdimporter
 Mdimporter
 mkbom
@@ -37,4 +38,7 @@ timemachine
 tombi
 Tombi
 trixie
+typer
+Typer
+TYPER
 ventura

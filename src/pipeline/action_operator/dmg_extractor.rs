@@ -204,8 +204,8 @@ impl DmgExtractor {
 
         let mut hdiutil_child = hdiutil_cmd.spawn()?;
 
-        if let Some(mut hdiutil_stdin) = hdiutil_child.stdin.take() {
-            hdiutil_stdin.write_all(b"qn\n").await?;
+        if let Some(mut stdin) = hdiutil_child.stdin.take() {
+            stdin.write_all(b"qn\n").await?;
         }
 
         let hdiutil_output = hdiutil_child.wait_with_output().await?;

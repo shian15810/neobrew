@@ -40,13 +40,15 @@ impl Progressor {
 
         let mut message = String::new();
 
-        let max_id_length = max_id_length.unwrap_or(23).min(23);
+        let max_id_length = max_id_length.unwrap_or(23);
+        let max_id_length = max_id_length.min(23);
 
         write!(message, "{id:<max_id_length$.max_id_length$}")?;
 
         message.push(' ');
 
-        let max_version_length = max_version_length.unwrap_or(10).min(10);
+        let max_version_length = max_version_length.unwrap_or(10);
+        let max_version_length = max_version_length.min(10);
 
         write!(
             message,

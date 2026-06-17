@@ -21,9 +21,9 @@ const MAX_CONCURRENCY: usize = 1 << 4;
 const BUFFER_MULTIPLIER: usize = 1 << 4;
 
 static AVAILABLE_PARALLELISM: LazyLock<usize> = LazyLock::new(|| {
-    thread::available_parallelism()
-        .unwrap_or(NonZeroUsize::MIN)
-        .get()
+    let available_parallelism = thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
+
+    available_parallelism.get()
 });
 
 static CONCURRENCY_LIMIT: LazyLock<usize> =

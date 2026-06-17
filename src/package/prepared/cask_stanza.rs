@@ -1,7 +1,9 @@
 use super::super::raw::cask::{
     Artifact,
     ArtifactCommonSource,
-    ArtifactGenerateCompletionsFromExecutableSource,
+    ArtifactCompletionsSource,
+    ArtifactCompletionsSourceOptionsFormat,
+    ArtifactCompletionsSourceOptionsShell,
     ArtifactInstallerSource,
     ArtifactPkgSource,
     ArtifactPkgSourceOptionsChoice,
@@ -12,13 +14,13 @@ pub(crate) struct Stanzas {
     pub(crate) app: Vec<CommonStanza>,
     pub(crate) suite: Vec<CommonStanza>,
     pub(crate) pkg: Vec<PkgStanza>,
-    pub(crate) installer: Vec<ArtifactInstallerSource>,
+    pub(crate) installer: Vec<InstallerStanza>,
     pub(crate) binary: Vec<CommonStanza>,
     pub(crate) manpage: Vec<CommonStanza>,
     pub(crate) bash_completion: Vec<CommonStanza>,
     pub(crate) fish_completion: Vec<CommonStanza>,
     pub(crate) zsh_completion: Vec<CommonStanza>,
-    generate_completions_from_executable: Vec<GenerateCompletionsFromExecutableStanza>,
+    pub(crate) completions: Vec<CompletionsStanza>,
     pub(crate) colorpicker: Vec<CommonStanza>,
     pub(crate) dictionary: Vec<CommonStanza>,
     pub(crate) font: Vec<CommonStanza>,
@@ -34,7 +36,7 @@ pub(crate) struct Stanzas {
     pub(crate) vst_plugin: Vec<CommonStanza>,
     pub(crate) vst3_plugin: Vec<CommonStanza>,
     pub(crate) artifact: Vec<CommonStanza>,
-    stage_only: bool,
+    pub(crate) stage_only: bool,
 }
 
 impl From<Vec<Artifact>> for Stanzas {
@@ -112,16 +114,12 @@ impl From<Vec<Artifact>> for Stanzas {
 
                     this.zsh_completion.push(zsh_completion_stanza);
                 },
-                Artifact::GenerateCompletionsFromExecutable {
-                    generate_completions_from_executable,
+                Artifact::Completions {
+                    completions,
                 } => {
-                    let generate_completions_from_executable_stanza =
-                        GenerateCompletionsFromExecutableStanza::from(
-                            generate_completions_from_executable,
-                        );
+                    let completions_stanza = CompletionsStanza::from(completions);
 
-                    this.generate_completions_from_executable
-                        .push(generate_completions_from_executable_stanza);
+                    this.completions.push(completions_stanza);
                 },
                 Artifact::Colorpicker {
                     colorpicker,
@@ -280,7 +278,7 @@ impl From<(ArtifactCommonSource, String)> for CommonStanza {
 pub(crate) struct PkgStanza {
     pub(crate) source: String,
     pub(crate) allow_untrusted: bool,
-    pub(crate) choices: Vec<ArtifactPkgSourceOptionsChoice>,
+    pub(crate) choices: Vec<PkgStanzaChoice>,
 }
 
 impl From<ArtifactPkgSource> for PkgStanza {
@@ -300,28 +298,39 @@ impl From<ArtifactPkgSource> for PkgStanza {
     }
 }
 
-struct GenerateCompletionsFromExecutableStanza {
-    command: String,
-    subcommand: String,
-    base_name: Option<String>,
-    shell_parameter_format: Option<String>,
-    shells: Vec<String>,
+type PkgStanzaChoice = ArtifactPkgSourceOptionsChoice;
+
+pub(crate) type InstallerStanza = ArtifactInstallerSource;
+
+pub(crate) struct CompletionsStanza {
+    pub(crate) command: String,
+    pub(crate) subcommand: Option<String>,
+    pub(crate) name: Option<String>,
+    pub(crate) format: Option<CompletionsStanzaFormat>,
+    pub(crate) shells: Vec<CompletionsStanzaShell>,
 }
 
-impl From<ArtifactGenerateCompletionsFromExecutableSource>
-    for GenerateCompletionsFromExecutableStanza
-{
-    fn from(
-        generate_completions_from_executable: ArtifactGenerateCompletionsFromExecutableSource,
-    ) -> Self {
-        Self {
-            command: generate_completions_from_executable.0,
-            subcommand: generate_completions_from_executable.1,
-            base_name: generate_completions_from_executable.2.base_name,
-            shell_parameter_format: generate_completions_from_executable
-                .2
-                .shell_parameter_format,
-            shells: generate_completions_from_executable.2.shells,
+impl From<ArtifactCompletionsSource> for CompletionsStanza {
+    fn from(completions: ArtifactCompletionsSource) -> Self {
+        match completions {
+            ArtifactCompletionsSource::WithSubcommand(command, subcommand, options) => Self {
+                command,
+                subcommand: Some(subcommand),
+                name: options.name,
+                format: options.format,
+                shells: options.shells,
+            },
+            ArtifactCompletionsSource::WithoutSubcommand(command, options) => Self {
+                command,
+                subcommand: None,
+                name: options.name,
+                format: options.format,
+                shells: options.shells,
+            },
         }
     }
 }
+
+pub(crate) type CompletionsStanzaFormat = ArtifactCompletionsSourceOptionsFormat;
+
+pub(crate) type CompletionsStanzaShell = ArtifactCompletionsSourceOptionsShell;

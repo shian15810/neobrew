@@ -1,7 +1,4 @@
-use std::{
-    path::{Path, PathBuf},
-    process::Stdio,
-};
+use std::{path::Path, process::Stdio};
 
 use anyhow::{Context as _, anyhow};
 use futures::future;
@@ -12,153 +9,139 @@ use super::{Artifactor, ArtifactorExt, ReplacementPairs};
 use crate::{
     context::Context,
     ext::{std::path::PathExt as _, tokio::path::PathExt as _},
-    package::{
-        PackageExt as _,
-        prepared::{
-            cask::PreparedCask,
-            cask_stanza::{CommonStanza, PkgStanza, Stanzas},
-            download::Download,
-        },
-        raw::cask::ArtifactInstallerSource,
-    },
+    package::prepared::cask_stanza::{CommonStanza, InstallerStanza, PkgStanza, Stanzas},
 };
 
 impl ArtifactorExt for Artifactor {
     async fn install(
         &self,
-        prepared_cask: &PreparedCask<Download>,
+        stanzas: &Stanzas,
+        staged_dir_path: &Path,
         replacement_pairs: &ReplacementPairs,
         context: &Context,
-    ) -> anyhow::Result<PathBuf> {
-        let id = prepared_cask.id();
+    ) -> anyhow::Result<()> {
+        self.install_installer(
+            &stanzas.installer,
+            staged_dir_path,
+            replacement_pairs,
+            context,
+        )
+        .await?;
 
-        let version = prepared_cask.version();
-
-        let staged_dir_path = context.homebrew_dirs.staged_dir(id, version);
-
-        let installer_stanzas = &prepared_cask.stanzas().installer;
-
-        self.install_installer(installer_stanzas, &staged_dir_path, replacement_pairs)
+        self.install_pkg(&stanzas.pkg, staged_dir_path, replacement_pairs, context)
             .await?;
 
-        let pkg_stanzas = &prepared_cask.stanzas().pkg;
-
-        self.install_pkg(pkg_stanzas, &staged_dir_path, replacement_pairs, context)
-            .await?;
-
-        Ok(staged_dir_path)
+        Ok(())
     }
 
     async fn relocate(
         &self,
-        prepared_cask: &PreparedCask<Download>,
+        stanzas: &Stanzas,
+        staged_dir_path: &Path,
         replacement_pairs: &ReplacementPairs,
         context: &Context,
-    ) -> anyhow::Result<PathBuf> {
-        let id = prepared_cask.id();
-
-        let version = prepared_cask.version();
-
-        let staged_dir_path = context.homebrew_dirs.staged_dir(id, version);
-
-        let stanzas = prepared_cask.stanzas();
-
-        self.relocate_commons(stanzas, &staged_dir_path, replacement_pairs, context)
+    ) -> anyhow::Result<()> {
+        self.relocate_commons(stanzas, staged_dir_path, replacement_pairs, context)
             .await?;
 
-        Ok(staged_dir_path)
+        Ok(())
     }
 
     async fn link(
         &self,
-        prepared_cask: &PreparedCask<Download>,
+        stanzas: &Stanzas,
+        staged_dir_path: &Path,
         replacement_pairs: &ReplacementPairs,
         context: &Context,
-    ) -> anyhow::Result<PathBuf> {
-        let id = prepared_cask.id();
-
-        let version = prepared_cask.version();
-
-        let staged_dir_path = context.homebrew_dirs.staged_dir(id, version);
-
-        let stanzas = &prepared_cask.stanzas();
-
-        self.link_commons(stanzas, &staged_dir_path, replacement_pairs, context)
+    ) -> anyhow::Result<()> {
+        self.link_commons(stanzas, staged_dir_path, replacement_pairs, context)
             .await?;
 
-        Ok(staged_dir_path)
+        Ok(())
     }
 }
 
 impl Artifactor {
     async fn install_installer(
         &self,
-        installer_stanzas: &[ArtifactInstallerSource],
+        installer_stanzas: &[InstallerStanza],
         staged_dir_path: &Path,
         replacement_pairs: &ReplacementPairs,
+        context: &Context,
     ) -> anyhow::Result<()> {
         if installer_stanzas.is_empty() {
             return Ok(());
         }
 
         for installer_stanza in installer_stanzas {
-            let ArtifactInstallerSource::Script {
+            let InstallerStanza::Script {
                 script,
             } = installer_stanza
             else {
-                return Ok(());
+                continue;
             };
 
             if script.sudo {
-                return Ok(());
+                continue;
             }
 
-            let installer_source_pstr = &script.executable;
+            let script_executable_pstr = &script.executable;
 
-            let installer_source_path =
-                self.resolve_source(installer_source_pstr, replacement_pairs);
+            let script_executable_path =
+                self.resolve_source(script_executable_pstr, replacement_pairs);
 
-            let installer_file_path = if installer_source_path.is_relative() {
-                let installer_file_path = staged_dir_path.join(&installer_source_path);
+            let script_executable = if script_executable_path.is_relative() {
+                let script_executable = staged_dir_path.join(&script_executable_path);
 
-                if installer_file_path.try_exists_follow().await.unwrap_or(false) {
-                    installer_file_path.add_permissions_mode(0o111).await?;
+                let is_script_executable_exists =
+                    script_executable.try_exists_follow().await.unwrap_or(false);
 
-                    installer_file_path
+                if is_script_executable_exists {
+                    script_executable.add_permissions_mode(0o111).await?;
+
+                    script_executable
                 } else {
-                    installer_source_path
+                    script_executable_path
                 }
             } else {
-                installer_source_path
+                script_executable_path
             };
 
-            let mut installer_cmd = Command::new(installer_file_path);
+            let mut script_cmd = Command::new(script_executable);
 
-            installer_cmd.args(&script.args);
+            script_cmd.current_dir(staged_dir_path);
 
-            let installer_output = if script.input.is_empty() {
-                installer_cmd.output().await?
+            let script_args = script
+                .args
+                .iter()
+                .map(|script_arg| self.resolve_target(script_arg, replacement_pairs, context))
+                .collect::<Vec<_>>();
+
+            script_cmd.args(script_args);
+
+            let script_output = if script.input.is_empty() {
+                script_cmd.output().await?
             } else {
-                installer_cmd
+                script_cmd
                     .stdin(Stdio::piped())
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped());
 
-                let mut installer_child = installer_cmd.spawn()?;
+                let mut script_child = script_cmd.spawn()?;
 
-                if let Some(mut installer_stdin) = installer_child.stdin.take() {
-                    for input in &script.input {
-                        installer_stdin.write_all(input.as_bytes()).await?;
+                if let Some(mut stdin) = script_child.stdin.take() {
+                    for script_input in &script.input {
+                        stdin.write_all(script_input.as_bytes()).await?;
                     }
                 }
 
-                installer_child.wait_with_output().await?
+                script_child.wait_with_output().await?
             };
 
-            if script.must_succeed && !installer_output.status.success() {
-                let stdout = String::from_utf8_lossy(&installer_output.stdout);
+            if script.must_succeed && !script_output.status.success() {
+                let stdout = String::from_utf8_lossy(&script_output.stdout);
 
-                let stderr = String::from_utf8_lossy(&installer_output.stderr);
+                let stderr = String::from_utf8_lossy(&script_output.stderr);
 
                 let err = anyhow!("{stdout}{stderr}");
 
@@ -189,13 +172,15 @@ impl Artifactor {
 
             let pkg_source_path = self.resolve_source(pkg_source_pstr, replacement_pairs);
 
-            let pkg_file_path = staged_dir_path.join(pkg_source_path);
+            let src_file_path = staged_dir_path.join(pkg_source_path);
 
             let mut installer_cmd = Command::new("installer");
 
+            installer_cmd.current_dir(staged_dir_path);
+
             installer_cmd
                 .arg("-pkg")
-                .arg(pkg_file_path)
+                .arg(src_file_path)
                 .arg("-target")
                 .arg(&dest_dir_path);
 
@@ -229,7 +214,7 @@ impl Artifactor {
                 let stdout = String::from_utf8_lossy(&installer_output.stdout);
 
                 if stdout == "installer: Must be run as root to install this package.\n" {
-                    return Ok(());
+                    continue;
                 }
 
                 let stderr = String::from_utf8_lossy(&installer_output.stderr);

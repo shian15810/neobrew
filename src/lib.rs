@@ -4,7 +4,6 @@
         const_precise_live_drops,
         const_trait_impl,
         iterator_try_collect,
-        never_type,
         trait_alias,
         type_changing_struct_update,
     )

@@ -1,22 +1,33 @@
-use std::str::FromStr;
-
 use anyhow::anyhow;
 use os_info::Version;
 use serde_with::DeserializeFromStr;
+use strum::EnumString;
 use thiserror::Error;
 
 use super::super::semver::Semver;
 use crate::context::Context;
 
-#[derive(PartialEq, Eq, PartialOrd, Ord, DeserializeFromStr)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, EnumString, DeserializeFromStr)]
+#[strum(
+    parse_err_fn = CodenameError::unsupported,
+    parse_err_ty = CodenameError
+)]
 pub(crate) enum Codename {
+    #[strum(to_string = "catalina", serialize = "10.15")]
     Catalina,
+    #[strum(to_string = "big_sur", serialize = "11")]
     BigSur,
+    #[strum(to_string = "monterey", serialize = "12")]
     Monterey,
+    #[strum(to_string = "ventura", serialize = "13")]
     Ventura,
+    #[strum(to_string = "sonoma", serialize = "14")]
     Sonoma,
+    #[strum(to_string = "sequoia", serialize = "15")]
     Sequoia,
+    #[strum(to_string = "tahoe", serialize = "26")]
     Tahoe,
+    #[strum(to_string = "golden_gate", serialize = "27")]
     GoldenGate,
 }
 
@@ -33,26 +44,6 @@ impl TryFrom<Semver> for Codename {
             (12, ..) => Self::Monterey,
             (11, ..) => Self::BigSur,
             (10, Some(15), _) => Self::Catalina,
-            _ => return Err(CodenameError::Unsupported),
-        };
-
-        Ok(this)
-    }
-}
-
-impl FromStr for Codename {
-    type Err = CodenameError;
-
-    fn from_str(codename: &str) -> Result<Self, Self::Err> {
-        let this = match codename {
-            "golden_gate" | "27" => Self::GoldenGate,
-            "tahoe" | "26" => Self::Tahoe,
-            "sequoia" | "15" => Self::Sequoia,
-            "sonoma" | "14" => Self::Sonoma,
-            "ventura" | "13" => Self::Ventura,
-            "monterey" | "12" => Self::Monterey,
-            "big_sur" | "11" => Self::BigSur,
-            "catalina" | "10.15" => Self::Catalina,
             _ => return Err(CodenameError::Unsupported),
         };
 
@@ -88,4 +79,22 @@ pub(crate) enum CodenameError {
     Unsupported,
     #[error(transparent)]
     Other(#[from] anyhow::Error),
+}
+
+impl CodenameError {
+    fn unsupported(_: &str) -> Self {
+        Self::Unsupported
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn compare_codename() {
+        assert!(Codename::GoldenGate > Codename::Catalina);
+
+        assert!(Codename::Sonoma > Codename::Ventura);
+    }
 }

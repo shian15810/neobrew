@@ -4,7 +4,8 @@ use os_info::Bitness;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use serde_repr::Deserialize_repr;
-use serde_with::{BoolFromInt, FromInto, serde_as};
+use serde_with::{BoolFromInt, DeserializeFromStr, FromInto, serde_as};
+use strum::{AsRefStr, Display, EnumString};
 
 use super::{super::PackageExt, RawPackageExt};
 use crate::{context::Context, ext::serde::true_on_absent, util::macos::codename::Codename};
@@ -85,8 +86,9 @@ pub(in super::super) enum Artifact {
         zsh_completion: ArtifactCommonSource,
         target: String,
     },
-    GenerateCompletionsFromExecutable {
-        generate_completions_from_executable: ArtifactGenerateCompletionsFromExecutableSource,
+    Completions {
+        #[serde(rename = "generate_completions_from_executable")]
+        completions: ArtifactCompletionsSource,
     },
     Colorpicker {
         colorpicker: ArtifactCommonSource,
@@ -230,17 +232,51 @@ pub(crate) struct ArtifactInstallerSourceScript {
 }
 
 #[derive(Deserialize)]
-pub(in super::super) struct ArtifactGenerateCompletionsFromExecutableSource(
-    pub(in super::super) String,
-    pub(in super::super) String,
-    pub(in super::super) ArtifactGenerateCompletionsFromExecutableSourceOptions,
-);
+#[serde(untagged)]
+pub(in super::super) enum ArtifactCompletionsSource {
+    WithSubcommand(String, String, ArtifactCompletionsSourceOptions),
+    WithoutSubcommand(String, ArtifactCompletionsSourceOptions),
+}
 
 #[derive(Deserialize)]
-pub(in super::super) struct ArtifactGenerateCompletionsFromExecutableSourceOptions {
-    pub(in super::super) base_name: Option<String>,
-    pub(in super::super) shell_parameter_format: Option<String>,
-    pub(in super::super) shells: Vec<String>,
+pub(in super::super) struct ArtifactCompletionsSourceOptions {
+    #[serde(rename = "base_name")]
+    pub(in super::super) name: Option<String>,
+    #[serde(rename = "shell_parameter_format")]
+    pub(in super::super) format: Option<ArtifactCompletionsSourceOptionsFormat>,
+    pub(in super::super) shells: Vec<ArtifactCompletionsSourceOptionsShell>,
+}
+
+#[derive(Debug, EnumString, DeserializeFromStr)]
+pub(crate) enum ArtifactCompletionsSourceOptionsFormat {
+    #[strum(to_string = "arg")]
+    Arg,
+    #[strum(to_string = "clap")]
+    Clap,
+    #[strum(to_string = "click")]
+    Click,
+    #[strum(to_string = "cobra")]
+    Cobra,
+    #[strum(to_string = "flag")]
+    Flag,
+    #[strum(to_string = "none")]
+    None,
+    #[strum(to_string = "typer")]
+    Typer,
+    #[strum(default)]
+    Other(String),
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Display, AsRefStr, EnumString, DeserializeFromStr)]
+pub(crate) enum ArtifactCompletionsSourceOptionsShell {
+    #[strum(to_string = "bash")]
+    Bash,
+    #[strum(to_string = "fish")]
+    Fish,
+    #[strum(to_string = "zsh")]
+    Zsh,
+    #[strum(to_string = "pwsh")]
+    Pwsh,
 }
 
 #[derive(Deserialize)]
@@ -274,8 +310,9 @@ pub(crate) struct DependsOnMaximumMacos {
     pub(crate) codenames: Vec<Codename>,
 }
 
+#[expect(clippy::empty_structs_with_brackets)]
 #[derive(Deserialize)]
-pub(crate) struct DependsOnLinux;
+pub(crate) struct DependsOnLinux {}
 
 #[serde_as]
 #[derive(Deserialize)]
@@ -415,5 +452,32 @@ impl RawCask {
             .then(|| variation_key.to_owned());
 
         Ok(variation_key)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::assert_matches;
+
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn deserialize_artifact_completions_source_options_format() {
+        let json = json!("clap");
+
+        let format: ArtifactCompletionsSourceOptionsFormat = serde_json::from_value(json).unwrap();
+
+        assert_matches!(format, ArtifactCompletionsSourceOptionsFormat::Clap);
+
+        let json = json!("--autocomplete=init:");
+
+        let format: ArtifactCompletionsSourceOptionsFormat = serde_json::from_value(json).unwrap();
+
+        assert_matches!(
+            format,
+            ArtifactCompletionsSourceOptionsFormat::Other(other) if other == "--autocomplete=init:",
+        );
     }
 }

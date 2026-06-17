@@ -1,7 +1,8 @@
-use std::{collections::HashMap, path::PathBuf, str::FromStr};
+use std::{collections::HashMap, path::PathBuf};
 
 use serde::{Deserialize, de::IgnoredAny};
 use serde_with::DeserializeFromStr;
+use strum::EnumString;
 
 use super::{super::PackageExt, RawPackageExt};
 use crate::{context::Context, util::macos::codename::Codename};
@@ -81,36 +82,14 @@ pub(in super::super) struct BottleStableFile {
     pub(in super::super) cellar: BottleStableFileCellar,
 }
 
-#[derive(DeserializeFromStr)]
+#[derive(Debug, EnumString, DeserializeFromStr)]
 pub(in super::super) enum BottleStableFileCellar {
+    #[strum(to_string = ":any")]
     Any,
+    #[strum(to_string = ":any_skip_relocation")]
     AnySkipRelocator,
+    #[strum(default)]
     Path(PathBuf),
-}
-
-#[cfg(not(debug_assertions))]
-use std::convert::Infallible;
-
-impl FromStr for BottleStableFileCellar {
-    #[cfg(debug_assertions)]
-    type Err = !;
-
-    #[cfg(not(debug_assertions))]
-    type Err = Infallible;
-
-    fn from_str(cellar: &str) -> Result<Self, Self::Err> {
-        let this = match cellar {
-            "any" => Self::Any,
-            "any_skip_relocation" => Self::AnySkipRelocator,
-            pstr => {
-                let path = PathBuf::from(pstr);
-
-                Self::Path(path)
-            },
-        };
-
-        Ok(this)
-    }
 }
 
 #[derive(Deserialize)]
@@ -121,35 +100,20 @@ pub(crate) struct Requirement {
     pub(crate) specs: Vec<RequirementSpec>,
 }
 
-#[derive(DeserializeFromStr)]
+#[derive(Debug, EnumString, DeserializeFromStr)]
 pub(crate) enum RequirementName {
+    #[strum(to_string = "xcode")]
     MinimumXcode,
+    #[strum(to_string = "macos")]
     MinimumMacos,
+    #[strum(to_string = "maximum_macos")]
     MaximumMacos,
+    #[strum(to_string = "linux")]
     Linux,
+    #[strum(to_string = "arch")]
     Arch,
+    #[strum(default)]
     Unsupported(String),
-}
-
-impl FromStr for RequirementName {
-    #[cfg(debug_assertions)]
-    type Err = !;
-
-    #[cfg(not(debug_assertions))]
-    type Err = Infallible;
-
-    fn from_str(requirement_name: &str) -> Result<Self, Self::Err> {
-        let this = match requirement_name {
-            "xcode" => Self::MinimumXcode,
-            "macos" => Self::MinimumMacos,
-            "maximum_macos" => Self::MaximumMacos,
-            "linux" => Self::Linux,
-            "arch" => Self::Arch,
-            unsupported => Self::Unsupported(unsupported.to_owned()),
-        };
-
-        Ok(this)
-    }
 }
 
 #[derive(PartialEq, Eq, Deserialize)]
@@ -299,5 +263,62 @@ impl RawFormula {
             .then(|| variation_key.to_owned());
 
         Ok(variation_key)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::assert_matches;
+
+    use serde_json::json;
+
+    use super::*;
+
+    #[test]
+    fn deserialize_bottle_stable_file_cellar() {
+        let json = json!(":any");
+
+        let cellar: BottleStableFileCellar = serde_json::from_value(json).unwrap();
+
+        assert_matches!(cellar, BottleStableFileCellar::Any);
+
+        let json = json!(":any_skip_relocation");
+
+        let cellar: BottleStableFileCellar = serde_json::from_value(json).unwrap();
+
+        assert_matches!(cellar, BottleStableFileCellar::AnySkipRelocator);
+
+        let json = json!("/usr/local/Cellar");
+
+        let cellar: BottleStableFileCellar = serde_json::from_value(json).unwrap();
+
+        assert_matches!(
+            cellar,
+            BottleStableFileCellar::Path(path) if path == *"/usr/local/Cellar",
+        );
+    }
+
+    #[test]
+    fn deserialize_requirement_name() {
+        let json = json!("xcode");
+
+        let name: RequirementName = serde_json::from_value(json).unwrap();
+
+        assert_matches!(name, RequirementName::MinimumXcode);
+
+        let json = json!("arch");
+
+        let name: RequirementName = serde_json::from_value(json).unwrap();
+
+        assert_matches!(name, RequirementName::Arch);
+
+        let json = json!("linuxkernel");
+
+        let name: RequirementName = serde_json::from_value(json).unwrap();
+
+        assert_matches!(
+            name,
+            RequirementName::Unsupported(unsupported) if unsupported == "linuxkernel",
+        );
     }
 }
