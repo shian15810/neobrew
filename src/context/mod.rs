@@ -21,9 +21,9 @@ const MAX_CONCURRENCY: usize = 1 << 4;
 const BUFFER_MULTIPLIER: usize = 1 << 4;
 
 static AVAILABLE_PARALLELISM: LazyLock<usize> = LazyLock::new(|| {
-    thread::available_parallelism()
-        .unwrap_or(NonZeroUsize::MIN)
-        .get()
+    let available_parallelism = thread::available_parallelism().unwrap_or(NonZeroUsize::MIN);
+
+    available_parallelism.get()
 });
 
 static CONCURRENCY_LIMIT: LazyLock<usize> =
@@ -54,14 +54,11 @@ pub struct Context {
 impl Context {
     #[expect(clippy::missing_errors_doc)]
     pub fn load(matches: &ArgMatches) -> Result<Self, proc_exit::Exit> {
-        let config = Config::load(matches);
-        let config = config.with_code(proc_exit::sysexits::CONFIG_ERR)?;
+        let config = Config::load(matches).with_code(proc_exit::sysexits::CONFIG_ERR)?;
 
-        let homebrew_dirs = HomebrewDirs::load();
-        let homebrew_dirs = homebrew_dirs.with_code(proc_exit::sysexits::OS_ERR)?;
+        let homebrew_dirs = HomebrewDirs::load().with_code(proc_exit::sysexits::OS_ERR)?;
 
-        let neobrew_dirs = NeobrewDirs::load();
-        let neobrew_dirs = neobrew_dirs.with_code(proc_exit::sysexits::OS_ERR)?;
+        let neobrew_dirs = NeobrewDirs::load().with_code(proc_exit::sysexits::OS_ERR)?;
 
         let this = Self {
             info: &INFO,

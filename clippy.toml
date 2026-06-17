@@ -6,10 +6,11 @@ allow-expect-in-consts = false
 allow-large-stack-frames-in-tests = false
 allow-mixed-uninlined-format-args = false
 allow-unwrap-in-consts = false
+allow-unwrap-in-tests = true
 avoid-breaking-exported-api = false
 upper-case-acronyms-aggressive = true
 
-absolute-paths-allowed-crates = ["build_rs", "infer", "proc_exit"]
+absolute-paths-allowed-crates = ["build_rs", "proc_exit"]
 allowed-idents-below-min-chars = ["e", ".."]
 disallowed-macros = [
     "core::panic",

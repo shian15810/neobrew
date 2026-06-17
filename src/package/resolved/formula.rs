@@ -12,7 +12,7 @@ use super::{
 };
 
 pub(crate) struct ResolvedFormula {
-    pub(in super::super) name: String,
+    pub(in super::super) id: String,
     pub(in super::super) versions: Versions,
     pub(in super::super) revision: u64,
     pub(in super::super) bottle: Bottle,
@@ -26,7 +26,7 @@ pub(crate) struct ResolvedFormula {
 impl From<(RawFormula, Vec<Arc<Self>>)> for ResolvedFormula {
     fn from((raw_formula, dependencies): (RawFormula, Vec<Arc<Self>>)) -> Self {
         Self {
-            name: raw_formula.name,
+            id: raw_formula.name,
             versions: raw_formula.versions,
             revision: raw_formula.revision,
             bottle: raw_formula.bottle,
@@ -41,7 +41,7 @@ impl From<(RawFormula, Vec<Arc<Self>>)> for ResolvedFormula {
 
 impl PackageExt for ResolvedFormula {
     fn id(&self) -> &str {
-        &self.name
+        &self.id
     }
 
     fn version(&self) -> &str {
@@ -66,5 +66,7 @@ impl ResolvedFormula {
 
     pub(crate) fn clear_dependencies(&mut self) {
         self.dependencies.clear();
+
+        self.dependencies.shrink_to_fit();
     }
 }

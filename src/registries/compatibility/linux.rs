@@ -35,15 +35,15 @@ impl FormulaCompatibilityInner for Compatibility {
     }
 
     fn check_requirement_minimum_macos(&self, version: Option<&str>) -> anyhow::Result<bool> {
-        let is_compatible = version.is_some();
+        let is_minimum_macos_compatible = version.is_some();
 
-        Ok(is_compatible)
+        Ok(is_minimum_macos_compatible)
     }
 
     fn check_requirement_maximum_macos(&self, version: Option<&str>) -> anyhow::Result<bool> {
-        let is_compatible = version.is_some();
+        let is_maximum_macos_compatible = version.is_some();
 
-        Ok(is_compatible)
+        Ok(is_maximum_macos_compatible)
     }
 }
 

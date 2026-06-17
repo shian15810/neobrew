@@ -154,11 +154,16 @@ impl DmgExtractor {
             .map(|mount_point| self.eject(mount_point));
 
         let eject_mount_point_res = future::join_all(eject_mount_point_futs).await;
-        let eject_mount_point_res = eject_mount_point_res
-            .into_iter()
-            .collect::<anyhow::Result<Vec<_>>>();
 
-        copy_mount_point_res.and(eject_mount_point_res)?;
+        #[cfg(debug_assertions)]
+        copy_mount_point_res.and(eject_mount_point_res.into_iter().try_collect::<Vec<_>>())?;
+
+        #[cfg(not(debug_assertions))]
+        copy_mount_point_res.and(
+            eject_mount_point_res
+                .into_iter()
+                .collect::<anyhow::Result<Vec<_>>>(),
+        )?;
 
         Ok(())
     }
@@ -181,9 +186,9 @@ impl DmgExtractor {
         src_file_path: &Path,
         src_dir_path: &Path,
     ) -> anyhow::Result<Vec<PathBuf>> {
-        let mut hdiutil = Command::new("hdiutil");
+        let mut hdiutil_cmd = Command::new("hdiutil");
 
-        hdiutil
+        hdiutil_cmd
             .arg("attach")
             .arg("-plist")
             .arg("-nobrowse")
@@ -192,30 +197,30 @@ impl DmgExtractor {
             .arg(src_dir_path)
             .arg(src_file_path);
 
-        hdiutil
+        hdiutil_cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
 
-        let mut hdiutil = hdiutil.spawn()?;
+        let mut hdiutil_child = hdiutil_cmd.spawn()?;
 
-        if let Some(mut stdin) = hdiutil.stdin.take() {
+        if let Some(mut stdin) = hdiutil_child.stdin.take() {
             stdin.write_all(b"qn\n").await?;
         }
 
-        let hdiutil = hdiutil.wait_with_output().await?;
+        let hdiutil_output = hdiutil_child.wait_with_output().await?;
 
-        if !hdiutil.status.success() {
-            let stdout = String::from_utf8_lossy(&hdiutil.stdout);
+        if !hdiutil_output.status.success() {
+            let stdout = String::from_utf8_lossy(&hdiutil_output.stdout);
 
-            let stderr = String::from_utf8_lossy(&hdiutil.stderr);
+            let stderr = String::from_utf8_lossy(&hdiutil_output.stderr);
 
             let err = anyhow!("{stdout}{stderr}");
 
             return Err(err);
         }
 
-        let mount_points = self.mount_points(&hdiutil.stdout)?;
+        let mount_points = self.mount_points(&hdiutil_output.stdout)?;
 
         Ok(mount_points)
     }
@@ -231,9 +236,9 @@ impl DmgExtractor {
 
         let cdr_path = src_dir_path.join(dmg_file_stem).with_added_extension("cdr");
 
-        let mut hdiutil_convert = Command::new("hdiutil");
+        let mut hdiutil_convert_cmd = Command::new("hdiutil");
 
-        hdiutil_convert
+        hdiutil_convert_cmd
             .arg("convert")
             .arg("-quiet")
             .arg("-format")
@@ -242,21 +247,21 @@ impl DmgExtractor {
             .arg(&cdr_path)
             .arg(src_file_path);
 
-        let hdiutil_convert = hdiutil_convert.output().await?;
+        let hdiutil_convert_output = hdiutil_convert_cmd.output().await?;
 
-        if !hdiutil_convert.status.success() {
-            let stdout = String::from_utf8_lossy(&hdiutil_convert.stdout);
+        if !hdiutil_convert_output.status.success() {
+            let stdout = String::from_utf8_lossy(&hdiutil_convert_output.stdout);
 
-            let stderr = String::from_utf8_lossy(&hdiutil_convert.stderr);
+            let stderr = String::from_utf8_lossy(&hdiutil_convert_output.stderr);
 
             let err = anyhow!("{stdout}{stderr}");
 
             return Err(err);
         }
 
-        let mut hdiutil_attach = Command::new("hdiutil");
+        let mut hdiutil_attach_cmd = Command::new("hdiutil");
 
-        hdiutil_attach
+        hdiutil_attach_cmd
             .arg("attach")
             .arg("-plist")
             .arg("-nobrowse")
@@ -265,19 +270,19 @@ impl DmgExtractor {
             .arg(src_dir_path)
             .arg(cdr_path);
 
-        let hdiutil_attach = hdiutil_attach.output().await?;
+        let hdiutil_attach_output = hdiutil_attach_cmd.output().await?;
 
-        if !hdiutil_attach.status.success() {
-            let stdout = String::from_utf8_lossy(&hdiutil_attach.stdout);
+        if !hdiutil_attach_output.status.success() {
+            let stdout = String::from_utf8_lossy(&hdiutil_attach_output.stdout);
 
-            let stderr = String::from_utf8_lossy(&hdiutil_attach.stderr);
+            let stderr = String::from_utf8_lossy(&hdiutil_attach_output.stderr);
 
             let err = anyhow!("{stdout}{stderr}");
 
             return Err(err);
         }
 
-        let mount_points = self.mount_points(&hdiutil_attach.stdout)?;
+        let mount_points = self.mount_points(&hdiutil_attach_output.stdout)?;
 
         Ok(mount_points)
     }
@@ -328,46 +333,46 @@ impl DmgExtractor {
 
         let bom_file_path = bom_file.path();
 
-        let mut mkbom = Command::new("mkbom");
+        let mut mkbom_cmd = Command::new("mkbom");
 
-        mkbom
+        mkbom_cmd
             .arg("-s")
             .arg("-i")
             .arg(list_file_path)
             .arg("--")
             .arg(bom_file_path);
 
-        let mkbom = mkbom.output().await?;
+        let mkbom_output = mkbom_cmd.output().await?;
 
         list_file.close()?;
 
-        if !mkbom.status.success() {
-            let stdout = String::from_utf8_lossy(&mkbom.stdout);
+        if !mkbom_output.status.success() {
+            let stdout = String::from_utf8_lossy(&mkbom_output.stdout);
 
-            let stderr = String::from_utf8_lossy(&mkbom.stderr);
+            let stderr = String::from_utf8_lossy(&mkbom_output.stderr);
 
             let err = anyhow!("{stdout}{stderr}");
 
             return Err(err);
         }
 
-        let mut ditto = Command::new("ditto");
+        let mut ditto_cmd = Command::new("ditto");
 
-        ditto
+        ditto_cmd
             .arg("--bom")
             .arg(bom_file_path)
             .arg("--")
             .arg(mount_point)
             .arg(dest_dir_path);
 
-        let ditto = ditto.output().await?;
+        let ditto_output = ditto_cmd.output().await?;
 
         bom_file.close()?;
 
-        if !ditto.status.success() {
-            let stdout = String::from_utf8_lossy(&ditto.stdout);
+        if !ditto_output.status.success() {
+            let stdout = String::from_utf8_lossy(&ditto_output.stdout);
 
-            let stderr = String::from_utf8_lossy(&ditto.stderr);
+            let stderr = String::from_utf8_lossy(&ditto_output.stderr);
 
             let err = anyhow!("{stdout}{stderr}");
 
@@ -475,9 +480,8 @@ impl DmgExtractor {
         let dir_path = dir_path.clean();
 
         let dir_pstr = dir_path.to_string_lossy();
-        let dir_pstr = dir_pstr.as_ref();
 
-        let is_system_dir_link = Self::SYSTEM_DIRS.contains(&dir_pstr);
+        let is_system_dir_link = Self::SYSTEM_DIRS.contains(&dir_pstr.as_ref());
 
         Ok(is_system_dir_link)
     }
@@ -496,7 +500,7 @@ impl DmgExtractor {
     }
 
     async fn eject(&self, mount_point: &Path) -> anyhow::Result<()> {
-        if !mount_point.try_exists()? {
+        if !mount_point.try_exists_follow().await? {
             return Ok(());
         }
 
@@ -508,23 +512,23 @@ impl DmgExtractor {
     }
 
     async fn eject_apfs_hfs(&self, mount_point: &Path) -> anyhow::Result<()> {
-        let mut diskutil_info = Command::new("diskutil");
+        let mut diskutil_info_cmd = Command::new("diskutil");
 
-        diskutil_info.arg("info").arg("-plist").arg(mount_point);
+        diskutil_info_cmd.arg("info").arg("-plist").arg(mount_point);
 
-        let diskutil_info = diskutil_info.output().await?;
+        let diskutil_info_output = diskutil_info_cmd.output().await?;
 
-        if !diskutil_info.status.success() {
-            let stdout = String::from_utf8_lossy(&diskutil_info.stdout);
+        if !diskutil_info_output.status.success() {
+            let stdout = String::from_utf8_lossy(&diskutil_info_output.stdout);
 
-            let stderr = String::from_utf8_lossy(&diskutil_info.stderr);
+            let stderr = String::from_utf8_lossy(&diskutil_info_output.stderr);
 
             let err = anyhow!("{stdout}{stderr}");
 
             return Err(err);
         }
 
-        let plist = plist::from_bytes::<Value>(&diskutil_info.stdout)?;
+        let plist = plist::from_bytes::<Value>(&diskutil_info_output.stdout)?;
 
         let apfs_physical_stores = plist
             .as_dictionary()
@@ -548,16 +552,16 @@ impl DmgExtractor {
         };
 
         let eject_path_futs = eject_paths.into_iter().map(async |eject_path| {
-            let mut diskutil_eject = Command::new("diskutil");
+            let mut diskutil_eject_cmd = Command::new("diskutil");
 
-            diskutil_eject.arg("eject").arg(eject_path);
+            diskutil_eject_cmd.arg("eject").arg(eject_path);
 
-            let diskutil_eject = diskutil_eject.output().await?;
+            let diskutil_eject_output = diskutil_eject_cmd.output().await?;
 
-            if !diskutil_eject.status.success() {
-                let stdout = String::from_utf8_lossy(&diskutil_eject.stdout);
+            if !diskutil_eject_output.status.success() {
+                let stdout = String::from_utf8_lossy(&diskutil_eject_output.stdout);
 
-                let stderr = String::from_utf8_lossy(&diskutil_eject.stderr);
+                let stderr = String::from_utf8_lossy(&diskutil_eject_output.stderr);
 
                 let err = anyhow!("{stdout}{stderr}");
 
@@ -568,26 +572,29 @@ impl DmgExtractor {
         });
 
         let eject_path_res = future::join_all(eject_path_futs).await;
-        let eject_path_res = eject_path_res
-            .into_iter()
-            .collect::<anyhow::Result<Vec<_>>>();
 
-        eject_path_res?;
+        #[cfg(debug_assertions)]
+        eject_path_res.into_iter().try_collect::<Vec<_>>()?;
+
+        #[cfg(not(debug_assertions))]
+        eject_path_res
+            .into_iter()
+            .collect::<anyhow::Result<Vec<_>>>()?;
 
         Ok(())
     }
 
     async fn eject_force(&self, mount_point: &Path) -> anyhow::Result<()> {
-        let mut diskutil = Command::new("diskutil");
+        let mut diskutil_cmd = Command::new("diskutil");
 
-        diskutil.arg("unmount").arg("force").arg(mount_point);
+        diskutil_cmd.arg("unmount").arg("force").arg(mount_point);
 
-        let diskutil = diskutil.output().await?;
+        let diskutil_output = diskutil_cmd.output().await?;
 
-        if !diskutil.status.success() {
-            let stdout = String::from_utf8_lossy(&diskutil.stdout);
+        if !diskutil_output.status.success() {
+            let stdout = String::from_utf8_lossy(&diskutil_output.stdout);
 
-            let stderr = String::from_utf8_lossy(&diskutil.stderr);
+            let stderr = String::from_utf8_lossy(&diskutil_output.stderr);
 
             let err = anyhow!("{stdout}{stderr}");
 

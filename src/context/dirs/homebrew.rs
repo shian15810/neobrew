@@ -185,16 +185,54 @@ impl HomebrewDirs {
         prefix_dir.join("etc/bash_completion.d")
     }
 
+    pub(crate) fn bash_completion_file(&self, name: &str) -> PathBuf {
+        let bash_completion_dir = self.bash_completion_dir();
+
+        let bash_completion_file_name = name;
+
+        bash_completion_dir.join(bash_completion_file_name)
+    }
+
     pub(crate) fn fish_completion_dir(&self) -> PathBuf {
         let prefix_dir = self.prefix_dir();
 
         prefix_dir.join("share/fish/vendor_completions.d")
     }
 
+    pub(crate) fn fish_completion_file(&self, name: &str) -> PathBuf {
+        let fish_completion_dir = self.fish_completion_dir();
+
+        let fish_completion_file_name = format!("{name}.fish");
+
+        fish_completion_dir.join(fish_completion_file_name)
+    }
+
     pub(crate) fn zsh_completion_dir(&self) -> PathBuf {
         let prefix_dir = self.prefix_dir();
 
         prefix_dir.join("share/zsh/site-functions")
+    }
+
+    pub(crate) fn zsh_completion_file(&self, name: &str) -> PathBuf {
+        let zsh_completion_dir = self.zsh_completion_dir();
+
+        let zsh_completion_file_name = format!("_{name}");
+
+        zsh_completion_dir.join(zsh_completion_file_name)
+    }
+
+    fn pwsh_completion_dir(&self) -> PathBuf {
+        let prefix_dir = self.prefix_dir();
+
+        prefix_dir.join("share/pwsh/completions")
+    }
+
+    pub(crate) fn pwsh_completion_file(&self, name: &str) -> PathBuf {
+        let pwsh_completion_dir = self.pwsh_completion_dir();
+
+        let pwsh_completion_file_name = format!("_{name}.ps1");
+
+        pwsh_completion_dir.join(pwsh_completion_file_name)
     }
 
     #[expect(clippy::unused_self)]

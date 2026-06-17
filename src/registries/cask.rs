@@ -118,28 +118,22 @@ impl RegistryExt for CaskRegistry {
 
         let bytes = resp.bytes().await?;
 
-        let raw_cask: RawCask = serde_json::from_slice(&bytes)?;
+        let mut raw_cask: RawCask = serde_json::from_slice(&bytes)?;
 
         self.save_json(raw_cask.id(), bytes).await?;
+
+        raw_cask = raw_cask.squash_variations(&self.context)?;
 
         let raw_dependencies = raw_cask
             .dependencies()
             .iter()
-            .map(|raw_dependency| {
-                let raw_dependency = raw_dependency.as_str();
-
-                Arc::from(raw_dependency)
-            })
+            .map(|raw_dependency| Arc::from(raw_dependency.as_str()))
             .collect::<Vec<_>>();
 
         let raw_formula_dependencies = raw_cask
             .formula_dependencies()
             .iter()
-            .map(|raw_formula_dependency| {
-                let raw_formula_dependency = raw_formula_dependency.as_str();
-
-                Arc::from(raw_formula_dependency)
-            })
+            .map(|raw_formula_dependency| Arc::from(raw_formula_dependency.as_str()))
             .collect::<Vec<_>>();
 
         let resolved_dependencies_futs = raw_dependencies.into_iter().map(async |raw_dependency| {
@@ -173,12 +167,12 @@ impl RegistryExt for CaskRegistry {
         let (dependencies, formula_dependencies) =
             futures::try_join!(resolved_dependencies_fut, resolved_formula_dependencies_fut)?;
 
-        let is_compatible = self.compatibility.is_cask_compatible(&raw_cask);
+        let is_cask_compatible = self.compatibility.is_cask_compatible(&raw_cask);
 
         let resolved_cask = ResolvedCask::from((raw_cask, dependencies, formula_dependencies));
         let resolved_cask = Arc::new(resolved_cask);
 
-        resolved_cask.set_is_compatible(is_compatible);
+        resolved_cask.set_is_compatible(is_cask_compatible);
 
         Ok(resolved_cask)
     }

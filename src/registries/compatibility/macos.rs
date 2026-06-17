@@ -45,9 +45,9 @@ impl FormulaCompatibilityInner for Compatibility {
 
         let minimum_xcode = version.parse::<Xcode>()?;
 
-        let is_compatible = self.xcode >= minimum_xcode;
+        let is_minimum_xcode_compatible = self.xcode >= minimum_xcode;
 
-        Ok(is_compatible)
+        Ok(is_minimum_xcode_compatible)
     }
 
     fn check_requirement_minimum_macos(&self, version: Option<&str>) -> anyhow::Result<bool> {
@@ -57,9 +57,9 @@ impl FormulaCompatibilityInner for Compatibility {
 
         let minimum_codename = version.parse::<Codename>()?;
 
-        let is_compatible = self.codename >= minimum_codename;
+        let is_minimum_macos_compatible = self.codename >= minimum_codename;
 
-        Ok(is_compatible)
+        Ok(is_minimum_macos_compatible)
     }
 
     fn check_requirement_maximum_macos(&self, version: Option<&str>) -> anyhow::Result<bool> {
@@ -69,9 +69,9 @@ impl FormulaCompatibilityInner for Compatibility {
 
         let maximum_codename = version.parse::<Codename>()?;
 
-        let is_compatible = self.codename <= maximum_codename;
+        let is_maximum_macos_compatible = self.codename <= maximum_codename;
 
-        Ok(is_compatible)
+        Ok(is_maximum_macos_compatible)
     }
 }
 

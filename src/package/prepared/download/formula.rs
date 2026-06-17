@@ -8,10 +8,7 @@ use oci_client::{Reference, manifest::OciDescriptor, secrets::RegistryAuth};
 use sha2::{Digest as _, Sha256};
 use url::Url;
 
-use super::{
-    super::{super::PackageExt as _, formula::PreparedFormula},
-    DownloadInnerExt,
-};
+use super::{super::formula::PreparedFormula, DownloadInnerExt};
 use crate::{
     context::{Context, dirs::ProjectDirs as _},
     util::archive_format::ArchiveFormat,
@@ -19,7 +16,7 @@ use crate::{
 
 impl DownloadInnerExt for PreparedFormula {
     fn url(&self) -> &str {
-        self.bottle_url()
+        &self.url
     }
 
     #[expect(clippy::unused_async_trait_impl)]
@@ -27,15 +24,15 @@ impl DownloadInnerExt for PreparedFormula {
         &self,
         context: &Context,
     ) -> anyhow::Result<(String, PathBuf, PathBuf)> {
-        let id = self.id();
+        let id = &self.id;
 
-        let version_revision = self.version_revision();
+        let version_revision = &self.version_revision();
 
-        let bottle_rebuild = self.bottle_rebuild();
+        let rebuild = self.rebuild;
 
-        let bottle_tag = self.bottle_tag();
+        let bottle = &self.bottle;
 
-        let url = self.bottle_url();
+        let url = &self.url;
 
         let url_hash = Sha256::digest(url);
         let url_hash = HexDisplay(&url_hash);
@@ -49,10 +46,10 @@ impl DownloadInnerExt for PreparedFormula {
 
         let cache_dir_path = context.homebrew_dirs.cache_dir();
 
-        let file_name = format!("{url_hash}--{id}--{version_revision}.{bottle_tag}.bottle");
-        let file_name = match bottle_rebuild {
+        let file_name = format!("{url_hash}--{id}--{version_revision}.{bottle}.bottle");
+        let file_name = match rebuild {
             0 => format!("{file_name}.tar.gz"),
-            bottle_rebuild => format!("{file_name}.{bottle_rebuild}.tar.gz"),
+            rebuild => format!("{file_name}.{rebuild}.tar.gz"),
         };
 
         let file_path = cache_dir_path.join("downloads").join(file_name);
@@ -65,7 +62,7 @@ impl DownloadInnerExt for PreparedFormula {
     }
 
     fn expected_sha256(&self) -> &str {
-        self.bottle_sha256()
+        &self.sha256
     }
 
     fn archive_format(&self, _file_name: &str) -> anyhow::Result<Option<ArchiveFormat>> {
@@ -82,7 +79,7 @@ impl DownloadInnerExt for PreparedFormula {
 
         let registry = OCI_REGISTRY_URL;
 
-        let url = self.bottle_url();
+        let url = &self.url;
 
         let url_prefix = format!("https://{registry}/v2/");
 
@@ -92,7 +89,7 @@ impl DownloadInnerExt for PreparedFormula {
             .split_once("/blobs/")
             .context("Invalid OCI blob URL")?;
 
-        let sha256 = self.bottle_sha256();
+        let sha256 = &self.sha256;
 
         let digest = format!("sha256:{sha256}");
 

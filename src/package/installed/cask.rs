@@ -4,7 +4,7 @@ use super::{
 };
 
 pub(crate) struct InstalledCask {
-    token: String,
+    id: String,
     version: String,
     is_requested: bool,
 }
@@ -12,7 +12,7 @@ pub(crate) struct InstalledCask {
 impl From<PreparedCask> for InstalledCask {
     fn from(prepared_cask: PreparedCask) -> Self {
         Self {
-            token: prepared_cask.token,
+            id: prepared_cask.id,
             version: prepared_cask.version,
             is_requested: prepared_cask.is_requested,
         }
@@ -21,7 +21,7 @@ impl From<PreparedCask> for InstalledCask {
 
 impl PackageExt for InstalledCask {
     fn id(&self) -> &str {
-        &self.token
+        &self.id
     }
 
     fn version(&self) -> &str {

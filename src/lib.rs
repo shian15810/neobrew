@@ -4,7 +4,6 @@
         const_precise_live_drops,
         const_trait_impl,
         iterator_try_collect,
-        never_type,
         trait_alias,
         type_changing_struct_update,
     )
@@ -55,8 +54,7 @@ use self::{command::Cli, context::Context};
 
 #[expect(clippy::missing_errors_doc)]
 pub async fn run(matches: &ArgMatches, context: Context) -> proc_exit::ExitResult {
-    let cli = Cli::from_arg_matches(matches);
-    let cli = cli.with_code(proc_exit::sysexits::USAGE_ERR)?;
+    let cli = Cli::from_arg_matches(matches).with_code(proc_exit::sysexits::USAGE_ERR)?;
 
     cli.run(context).await?;
 

@@ -5,12 +5,8 @@ use base16ct::HexDisplay;
 use bytes::Bytes;
 use futures::stream::{BoxStream, StreamExt as _, TryStreamExt as _};
 use sha2::{Digest as _, Sha256};
-use url::Url;
 
-use super::{
-    super::{super::PackageExt as _, cask::PreparedCask},
-    DownloadInnerExt,
-};
+use super::{super::cask::PreparedCask, DownloadInnerExt};
 use crate::{
     context::{Context, dirs::ProjectDirs as _},
     ext::std::path::PathExt as _,
@@ -19,28 +15,25 @@ use crate::{
 
 impl DownloadInnerExt for PreparedCask {
     fn url(&self) -> &str {
-        self.variation_url()
+        &self.url
     }
 
     async fn file_name_file_path_link_path(
         &self,
         context: &Context,
     ) -> anyhow::Result<(String, PathBuf, PathBuf)> {
-        let version = self.version();
+        let version = &self.version;
 
-        let url = self.variation_url();
+        let url = &self.url;
 
         let resp = context.client.get(url).send().await?;
         let resp = resp.error_for_status()?;
 
         let url = resp.url();
-        let url = url.as_str();
 
-        let url_hash = Sha256::digest(url);
+        let url_hash = Sha256::digest(url.as_str());
         let url_hash = HexDisplay(&url_hash);
         let url_hash = format!("{url_hash:x}");
-
-        let url = Url::parse(url)?;
 
         let mut url_name = url.path_segments().context("Invalid URL")?;
         let url_name = url_name.next_back().context("Empty path segments")?;
@@ -73,7 +66,7 @@ impl DownloadInnerExt for PreparedCask {
     }
 
     fn expected_sha256(&self) -> &str {
-        self.variation_sha256()
+        &self.sha256
     }
 
     fn archive_format(&self, file_name: &str) -> anyhow::Result<Option<ArchiveFormat>> {
@@ -90,7 +83,7 @@ impl DownloadInnerExt for PreparedCask {
         &self,
         context: &Context,
     ) -> anyhow::Result<(BoxStream<'static, anyhow::Result<Bytes>>, Option<u64>)> {
-        let url = self.variation_url();
+        let url = &self.url;
 
         let resp = context.client.get(url).send().await?;
         let resp = resp.error_for_status()?;

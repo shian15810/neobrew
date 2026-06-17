@@ -113,8 +113,9 @@ where
             if !should_run {
                 while rx.recv().await.is_some() {}
 
-                let output = self.on_skip_run(prepared_package).await;
-                let output = state_committer.finalize(output, &session)?;
+                let output_res = self.on_skip_run(prepared_package).await;
+
+                let output = state_committer.finalize(output_res, &session)?;
 
                 return Ok(output);
             }
@@ -138,9 +139,10 @@ where
                     .await?;
             }
 
-            let output = self.on_final_run(staging, prepared_package).await;
-            let output = output.map(Some);
-            let output = state_committer.finalize(output, &session)?;
+            let output_res = self.on_final_run(staging, prepared_package).await;
+            let output_res = output_res.map(Some);
+
+            let output = state_committer.finalize(output_res, &session)?;
 
             anyhow::Ok(output)
         });

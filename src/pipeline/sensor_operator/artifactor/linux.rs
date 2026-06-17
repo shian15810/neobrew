@@ -1,60 +1,39 @@
-use std::path::PathBuf;
+use std::path::Path;
 
 use super::{Artifactor, ArtifactorExt, ReplacementPairs};
-use crate::{
-    context::Context,
-    package::{
-        PackageExt as _,
-        prepared::{cask::PreparedCask, download::Download},
-    },
-};
+use crate::{context::Context, package::prepared::cask_stanza::Stanzas};
 
 impl ArtifactorExt for Artifactor {
     #[expect(clippy::unused_async_trait_impl)]
     async fn install(
         &self,
-        prepared_cask: &PreparedCask<Download>,
+        _stanzas: &Stanzas,
+        _staged_dir_path: &Path,
         _replacement_pairs: &ReplacementPairs,
-        context: &Context,
-    ) -> anyhow::Result<PathBuf> {
-        let id = prepared_cask.id();
-
-        let version = prepared_cask.version();
-
-        let staged_dir_path = context.homebrew_dirs.staged_dir(id, version);
-
-        Ok(staged_dir_path)
+        _context: &Context,
+    ) -> anyhow::Result<()> {
+        Ok(())
     }
 
     #[expect(clippy::unused_async_trait_impl)]
     async fn relocate(
         &self,
-        prepared_cask: &PreparedCask<Download>,
+        _stanzas: &Stanzas,
+        _staged_dir_path: &Path,
         _replacement_pairs: &ReplacementPairs,
-        context: &Context,
-    ) -> anyhow::Result<PathBuf> {
-        let id = prepared_cask.id();
-
-        let version = prepared_cask.version();
-
-        let staged_dir_path = context.homebrew_dirs.staged_dir(id, version);
-
-        Ok(staged_dir_path)
+        _context: &Context,
+    ) -> anyhow::Result<()> {
+        Ok(())
     }
 
     #[expect(clippy::unused_async_trait_impl)]
     async fn link(
         &self,
-        prepared_cask: &PreparedCask<Download>,
+        _stanzas: &Stanzas,
+        _staged_dir_path: &Path,
         _replacement_pairs: &ReplacementPairs,
-        context: &Context,
-    ) -> anyhow::Result<PathBuf> {
-        let id = prepared_cask.id();
-
-        let version = prepared_cask.version();
-
-        let staged_dir_path = context.homebrew_dirs.staged_dir(id, version);
-
-        Ok(staged_dir_path)
+        _context: &Context,
+    ) -> anyhow::Result<()> {
+        Ok(())
     }
 }
