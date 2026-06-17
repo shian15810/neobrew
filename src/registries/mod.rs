@@ -83,8 +83,7 @@ impl Registries {
 
     async fn resolve_many(self, packages: &[String]) -> anyhow::Result<Vec<ResolvedPackage>> {
         let resolved_packages_fut = packages.iter().map(async |package| {
-            let package = package.as_ref();
-            let package = Arc::from(package);
+            let package = Arc::from(package.as_ref());
 
             let resolved_package = self.resolve_one(package).await?;
 

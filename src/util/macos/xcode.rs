@@ -55,23 +55,23 @@ impl FromStr for Xcode {
 
 impl Xcode {
     pub(crate) async fn try_default() -> anyhow::Result<Self> {
-        let mut xcodebuild = Command::new("xcodebuild");
+        let mut xcodebuild_cmd = Command::new("xcodebuild");
 
-        xcodebuild.arg("-version");
+        xcodebuild_cmd.arg("-version");
 
-        let xcodebuild = xcodebuild.output().await?;
+        let xcodebuild_output = xcodebuild_cmd.output().await?;
 
-        if !xcodebuild.status.success() {
-            let stdout = String::from_utf8_lossy(&xcodebuild.stdout);
+        if !xcodebuild_output.status.success() {
+            let stdout = String::from_utf8_lossy(&xcodebuild_output.stdout);
 
-            let stderr = String::from_utf8_lossy(&xcodebuild.stderr);
+            let stderr = String::from_utf8_lossy(&xcodebuild_output.stderr);
 
             let err = anyhow!("{stdout}{stderr}");
 
             return Err(err);
         }
 
-        let stdout = String::from_utf8_lossy(&xcodebuild.stdout);
+        let stdout = String::from_utf8_lossy(&xcodebuild_output.stdout);
 
         let this = stdout.parse::<Self>()?;
 

@@ -117,8 +117,9 @@ where
             };
 
             if !should_run {
-                let output = self.on_skip_run();
-                let output = state_committer.finalize(output, &session)?;
+                let output_res = self.on_skip_run();
+
+                let output = state_committer.finalize(output_res, &session)?;
 
                 return Ok(output);
             }
@@ -131,9 +132,10 @@ where
 
             let staging = self.execute(&state, prepared_package, context).await?;
 
-            let output = self.on_final_run(staging);
-            let output = output.map(Some);
-            let output = state_committer.finalize(output, &session)?;
+            let output_res = self.on_final_run(staging);
+            let output_res = output_res.map(Some);
+
+            let output = state_committer.finalize(output_res, &session)?;
 
             anyhow::Ok(output)
         });

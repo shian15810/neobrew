@@ -41,9 +41,8 @@ impl TryFrom<&Path> for ArchiveFormat {
         };
 
         let compound_extension = compound_extension.to_string_lossy();
-        let compound_extension = compound_extension.as_ref();
 
-        let archive_format = match compound_extension {
+        let archive_format = match compound_extension.as_ref() {
             "dmg" => Self::Dmg,
             "pkg" | "mpkg" => Self::Pkg,
             "tar" => Self::Tar,

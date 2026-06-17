@@ -5,7 +5,6 @@ use base16ct::HexDisplay;
 use bytes::Bytes;
 use futures::stream::{BoxStream, StreamExt as _, TryStreamExt as _};
 use sha2::{Digest as _, Sha256};
-use url::Url;
 
 use super::{super::cask::PreparedCask, DownloadInnerExt};
 use crate::{
@@ -31,13 +30,10 @@ impl DownloadInnerExt for PreparedCask {
         let resp = resp.error_for_status()?;
 
         let url = resp.url();
-        let url = url.as_str();
 
-        let url_hash = Sha256::digest(url);
+        let url_hash = Sha256::digest(url.as_str());
         let url_hash = HexDisplay(&url_hash);
         let url_hash = format!("{url_hash:x}");
-
-        let url = Url::parse(url)?;
 
         let mut url_name = url.path_segments().context("Invalid URL")?;
         let url_name = url_name.next_back().context("Empty path segments")?;

@@ -172,7 +172,7 @@ impl Linker {
         let keg_link_dir_name_futs = KEG_LINK_DIR_NAMES.iter().map(async |keg_link_dir_name| {
             let keg_link_dir_path = keg_dir_path.join(keg_link_dir_name);
 
-            if !keg_link_dir_path.try_exists()? {
+            if !keg_link_dir_path.try_exists_follow().await? {
                 return Ok(());
             }
 

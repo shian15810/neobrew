@@ -202,7 +202,7 @@ enum ArtifactPkgSourceOptionsChoiceAttribute {
 
 #[derive(Deserialize)]
 #[serde(untagged)]
-pub(in super::super) enum ArtifactInstallerSource {
+pub(crate) enum ArtifactInstallerSource {
     Manual {
         manual: String,
     },
@@ -213,20 +213,20 @@ pub(in super::super) enum ArtifactInstallerSource {
 
 #[expect(clippy::struct_excessive_bools)]
 #[derive(Deserialize)]
-pub(in super::super) struct ArtifactInstallerSourceScript {
-    executable: String,
+pub(crate) struct ArtifactInstallerSourceScript {
     #[serde(default)]
-    args: Vec<String>,
+    pub(crate) sudo: bool,
+    pub(crate) executable: String,
     #[serde(default)]
-    input: Vec<String>,
-    #[serde(default = "true_on_absent")]
-    must_succeed: bool,
-    #[serde(default = "true_on_absent")]
-    print_stderr: bool,
+    pub(crate) args: Vec<String>,
     #[serde(default = "true_on_absent")]
     print_stdout: bool,
+    #[serde(default = "true_on_absent")]
+    print_stderr: bool,
     #[serde(default)]
-    sudo: bool,
+    pub(crate) input: Vec<String>,
+    #[serde(default = "true_on_absent")]
+    pub(crate) must_succeed: bool,
 }
 
 #[derive(Deserialize)]

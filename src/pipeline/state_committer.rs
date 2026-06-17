@@ -12,7 +12,7 @@ pub(super) struct StateCommitter {
 impl StateCommitter {
     pub(super) fn finalize<Output>(
         self,
-        output: anyhow::Result<Option<Output>>,
+        output_res: anyhow::Result<Option<Output>>,
         session: &Session,
     ) -> anyhow::Result<Option<Output>>
     where
@@ -22,7 +22,7 @@ impl StateCommitter {
 
         let pb = &session.pb;
 
-        let output = match output {
+        let output = match output_res {
             Ok(output) => {
                 if let Some(passed_prefix) = self.passed_prefix {
                     pb.set_prefix(passed_prefix);

@@ -40,9 +40,9 @@ pub(super) trait FormulaCompatibility: FormulaCompatibilityInner {
     fn is_formula_compatible(&self, raw_formula: &RawFormula) -> anyhow::Result<bool> {
         let requirements = raw_formula.requirements();
 
-        let is_compatible = self.check_requirements(requirements)?;
+        let is_formula_compatible = self.check_requirements(requirements)?;
 
-        Ok(is_compatible)
+        Ok(is_formula_compatible)
     }
 
     fn is_use_from_macos_dependency(&self, bound: &UseFromMacosBound) -> bool;
@@ -51,7 +51,7 @@ pub(super) trait FormulaCompatibility: FormulaCompatibilityInner {
 trait FormulaCompatibilityInner {
     fn check_requirements(&self, requirements: &[Requirement]) -> anyhow::Result<bool> {
         #[cfg(debug_assertions)]
-        let are_compatible = requirements
+        let are_requirements_compatible = requirements
             .iter()
             .filter(|requirement| {
                 requirement.contexts.is_empty()
@@ -61,7 +61,7 @@ trait FormulaCompatibilityInner {
             .try_collect::<Vec<_>>()?;
 
         #[cfg(not(debug_assertions))]
-        let are_compatible = requirements
+        let are_requirements_compatible = requirements
             .iter()
             .filter(|requirement| {
                 requirement.contexts.is_empty()
@@ -70,17 +70,17 @@ trait FormulaCompatibilityInner {
             .map(|requirement| self.check_requirement(requirement))
             .collect::<anyhow::Result<Vec<_>>>()?;
 
-        let is_compatible = are_compatible
+        let is_every_requirement_compatible = are_requirements_compatible
             .into_iter()
-            .all(|is_compatible| is_compatible);
+            .all(|is_requirement_compatible| is_requirement_compatible);
 
-        Ok(is_compatible)
+        Ok(is_every_requirement_compatible)
     }
 
     fn check_requirement(&self, requirement: &Requirement) -> anyhow::Result<bool> {
         let version = requirement.version.as_deref();
 
-        let is_compatible = match requirement.name {
+        let is_requirement_compatible = match requirement.name {
             RequirementName::MinimumXcode => self.check_requirement_minimum_xcode(version)?,
             RequirementName::MinimumMacos => self.check_requirement_minimum_macos(version)?,
             RequirementName::MaximumMacos => self.check_requirement_maximum_macos(version)?,
@@ -89,7 +89,7 @@ trait FormulaCompatibilityInner {
             RequirementName::Unsupported(_) => true,
         };
 
-        Ok(is_compatible)
+        Ok(is_requirement_compatible)
     }
 
     fn check_requirement_minimum_xcode(&self, version: Option<&str>) -> anyhow::Result<bool>;
@@ -132,7 +132,9 @@ trait CaskCompatibilityInner {
             return false;
         }
 
-        if !self.check_depends_on_arch(&depends_on.arches) {
+        let arches = &depends_on.arches;
+
+        if !self.check_depends_on_arches(arches) {
             return false;
         }
 
@@ -156,7 +158,7 @@ trait CaskCompatibilityInner {
         linux.is_some()
     }
 
-    fn check_depends_on_arch(&self, arches: &[DependsOnArch]) -> bool {
+    fn check_depends_on_arches(&self, arches: &[DependsOnArch]) -> bool {
         if arches.is_empty() {
             return true;
         }

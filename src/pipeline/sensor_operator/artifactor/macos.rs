@@ -1,9 +1,12 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    process::Stdio,
+};
 
 use anyhow::{Context as _, anyhow};
 use futures::future;
 use tempfile::NamedTempFile;
-use tokio::{fs, process::Command};
+use tokio::{fs, io::AsyncWriteExt as _, process::Command};
 
 use super::{Artifactor, ArtifactorExt, ReplacementPairs};
 use crate::{
@@ -16,6 +19,7 @@ use crate::{
             cask_stanza::{CommonStanza, PkgStanza, Stanzas},
             download::Download,
         },
+        raw::cask::ArtifactInstallerSource,
     },
 };
 
@@ -31,6 +35,11 @@ impl ArtifactorExt for Artifactor {
         let version = prepared_cask.version();
 
         let staged_dir_path = context.homebrew_dirs.staged_dir(id, version);
+
+        let installer_stanzas = &prepared_cask.stanzas().installer;
+
+        self.install_installer(installer_stanzas, &staged_dir_path, replacement_pairs)
+            .await?;
 
         let pkg_stanzas = &prepared_cask.stanzas().pkg;
 
@@ -82,6 +91,84 @@ impl ArtifactorExt for Artifactor {
 }
 
 impl Artifactor {
+    async fn install_installer(
+        &self,
+        installer_stanzas: &[ArtifactInstallerSource],
+        staged_dir_path: &Path,
+        replacement_pairs: &ReplacementPairs,
+    ) -> anyhow::Result<()> {
+        if installer_stanzas.is_empty() {
+            return Ok(());
+        }
+
+        for installer_stanza in installer_stanzas {
+            let ArtifactInstallerSource::Script {
+                script,
+            } = installer_stanza
+            else {
+                return Ok(());
+            };
+
+            if script.sudo {
+                return Ok(());
+            }
+
+            let installer_source_pstr = &script.executable;
+
+            let installer_source_path =
+                self.resolve_source(installer_source_pstr, replacement_pairs);
+
+            let installer_file_path = if installer_source_path.is_relative() {
+                let installer_file_path = staged_dir_path.join(&installer_source_path);
+
+                if installer_file_path.try_exists_follow().await.unwrap_or(false) {
+                    installer_file_path.add_permissions_mode(0o111).await?;
+
+                    installer_file_path
+                } else {
+                    installer_source_path
+                }
+            } else {
+                installer_source_path
+            };
+
+            let mut installer_cmd = Command::new(installer_file_path);
+
+            installer_cmd.args(&script.args);
+
+            let installer_output = if script.input.is_empty() {
+                installer_cmd.output().await?
+            } else {
+                installer_cmd
+                    .stdin(Stdio::piped())
+                    .stdout(Stdio::piped())
+                    .stderr(Stdio::piped());
+
+                let mut installer_child = installer_cmd.spawn()?;
+
+                if let Some(mut installer_stdin) = installer_child.stdin.take() {
+                    for input in &script.input {
+                        installer_stdin.write_all(input.as_bytes()).await?;
+                    }
+                }
+
+                installer_child.wait_with_output().await?
+            };
+
+            if script.must_succeed && !installer_output.status.success() {
+                let stdout = String::from_utf8_lossy(&installer_output.stdout);
+
+                let stderr = String::from_utf8_lossy(&installer_output.stderr);
+
+                let err = anyhow!("{stdout}{stderr}");
+
+                return Err(err);
+            }
+        }
+
+        Ok(())
+    }
+
     async fn install_pkg(
         &self,
         pkg_stanzas: &[PkgStanza],
@@ -97,23 +184,23 @@ impl Artifactor {
 
         fs::create_dir_all(&dest_dir_path).await?;
 
-        let pkg_stanza_futs = pkg_stanzas.iter().map(async |pkg_stanza| {
+        for pkg_stanza in pkg_stanzas {
             let pkg_source_pstr = &pkg_stanza.source;
 
             let pkg_source_path = self.resolve_source(pkg_source_pstr, replacement_pairs);
 
             let pkg_file_path = staged_dir_path.join(pkg_source_path);
 
-            let mut installer = Command::new("installer");
+            let mut installer_cmd = Command::new("installer");
 
-            installer
+            installer_cmd
                 .arg("-pkg")
                 .arg(pkg_file_path)
                 .arg("-target")
                 .arg(&dest_dir_path);
 
             if pkg_stanza.allow_untrusted {
-                installer.arg("-allowUntrusted");
+                installer_cmd.arg("-allowUntrusted");
             }
 
             let choices_file = if pkg_stanza.choices.is_empty() {
@@ -125,37 +212,33 @@ impl Artifactor {
 
                 plist::to_file_xml(choices_file_path, &pkg_stanza.choices)?;
 
-                installer
+                installer_cmd
                     .arg("-applyChoiceChangesXML")
                     .arg(choices_file_path);
 
                 Some(choices_file)
             };
 
-            let installer = installer.output().await?;
+            let installer_output = installer_cmd.output().await?;
 
             if let Some(choices_file) = choices_file {
                 choices_file.close()?;
             }
 
-            if !installer.status.success() {
-                let stdout = String::from_utf8_lossy(&installer.stdout);
+            if !installer_output.status.success() {
+                let stdout = String::from_utf8_lossy(&installer_output.stdout);
 
                 if stdout == "installer: Must be run as root to install this package.\n" {
                     return Ok(());
                 }
 
-                let stderr = String::from_utf8_lossy(&installer.stderr);
+                let stderr = String::from_utf8_lossy(&installer_output.stderr);
 
                 let err = anyhow!("{stdout}{stderr}");
 
                 return Err(err);
             }
-
-            anyhow::Ok(())
-        });
-
-        future::try_join_all(pkg_stanza_futs).await?;
+        }
 
         Ok(())
     }

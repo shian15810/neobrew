@@ -12,7 +12,7 @@ pub(crate) struct Stanzas {
     pub(crate) app: Vec<CommonStanza>,
     pub(crate) suite: Vec<CommonStanza>,
     pub(crate) pkg: Vec<PkgStanza>,
-    installer: Vec<ArtifactInstallerSource>,
+    pub(crate) installer: Vec<ArtifactInstallerSource>,
     pub(crate) binary: Vec<CommonStanza>,
     pub(crate) manpage: Vec<CommonStanza>,
     pub(crate) bash_completion: Vec<CommonStanza>,

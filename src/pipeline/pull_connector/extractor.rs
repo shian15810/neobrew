@@ -89,8 +89,7 @@ impl Extractor {
                 let mut created_dir_paths = HashSet::new();
 
                 while let Some(mut entry_reader) = zip_reader.next_with_entry().await? {
-                    let src_file_pstr = entry_reader.reader().entry().filename();
-                    let src_file_pstr = src_file_pstr.as_str()?;
+                    let src_file_pstr = entry_reader.reader().entry().filename().as_str()?;
 
                     let src_file_path = Path::new(src_file_pstr);
 

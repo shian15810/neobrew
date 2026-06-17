@@ -92,44 +92,45 @@ impl Commands {
             Self::Internal(internal) => {
                 let context = Arc::new(context);
 
-                let result = internal.run_parallelly(context).await;
-
-                result.with_code(proc_exit::sysexits::SOFTWARE_ERR)?;
+                internal
+                    .run_parallelly(context)
+                    .await
+                    .with_code(proc_exit::sysexits::SOFTWARE_ERR)?;
 
                 proc_exit::Code::SUCCESS.ok()
             },
             Self::External(args) => {
-                let mut brew = Command::new("brew");
+                let mut brew_cmd = Command::new("brew");
 
-                brew.args(args)
+                brew_cmd
                     .env("HOMEBREW_NO_ANALYTICS", "1")
                     .env("HOMEBREW_NO_ENV_HINTS", "1");
 
                 match context.config.verbosity_filter {
                     VerbosityFilter::Debug => {
-                        brew.env("HOMEBREW_DEBUG", "1");
+                        brew_cmd.env("HOMEBREW_DEBUG", "1");
                     },
                     VerbosityFilter::Info => {
-                        brew.env("HOMEBREW_VERBOSE", "1");
+                        brew_cmd.env("HOMEBREW_VERBOSE", "1");
                     },
                     _ => {},
                 }
 
                 match context.config.color_choice {
                     ColorChoice::Never => {
-                        brew.env("HOMEBREW_NO_COLOR", "1");
+                        brew_cmd.env("HOMEBREW_NO_COLOR", "1");
                     },
                     ColorChoice::Always => {
-                        brew.env("HOMEBREW_COLOR", "1");
+                        brew_cmd.env("HOMEBREW_COLOR", "1");
                     },
                     ColorChoice::Auto => {},
                 }
 
-                let brew = brew.status().await;
+                brew_cmd.args(args);
 
-                let exit_status = brew.to_sysexits()?;
+                let brew_status = brew_cmd.status().await.to_sysexits()?;
 
-                proc_exit::Code::from_status(exit_status).ok()?;
+                proc_exit::Code::from_status(brew_status).ok()?;
 
                 proc_exit::Code::SUCCESS.ok()
             },

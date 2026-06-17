@@ -18,6 +18,8 @@ pub(crate) trait PathExt {
 
     async fn is_dir_empty(&self) -> io::Result<bool>;
 
+    async fn try_exists_follow(&self) -> io::Result<bool>;
+
     async fn add_permissions_mode(&self, mode: u32) -> io::Result<()>;
 
     async fn is_dir_exists_nofollow(&self) -> io::Result<bool>;
@@ -69,6 +71,12 @@ impl PathExt for Path {
         let is_none = dir_entry.is_none();
 
         Ok(is_none)
+    }
+
+    async fn try_exists_follow(&self) -> io::Result<bool> {
+        let exists = fs::try_exists(self).await?;
+
+        Ok(exists)
     }
 
     async fn add_permissions_mode(&self, mode: u32) -> io::Result<()> {
@@ -129,15 +137,13 @@ impl PathExt for Path {
         &self,
         link_path: impl AsRef<Self>,
     ) -> io::Result<()> {
-        let link_path = link_path.as_ref();
-
-        let link_base_path = link_path.base();
+        let link_base_path = link_path.as_ref().base();
         let link_base_path = link_base_path.map_err(io::Error::other)?;
 
         let link_diff_path = diff_paths(self, link_base_path)
             .ok_or_else(|| io::Error::other("Failed to diff paths"))?;
 
-        let link_tmp_path = link_path.with_added_extension("tmp");
+        let link_tmp_path = link_path.as_ref().with_added_extension("tmp");
 
         fs::symlink(link_diff_path, &link_tmp_path).await?;
 

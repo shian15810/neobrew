@@ -184,10 +184,12 @@ impl Artifactor {
 
     #[expect(clippy::unused_self)]
     fn replace_pstr(&self, pstr: &str, replacement_pairs: &ReplacementPairs) -> PathBuf {
+        let pstr = pstr.to_owned();
+
         let pstr = match pstr.strip_prefix("~/") {
             Some(suffix_pstr) => format!("/$HOME/{suffix_pstr}"),
             None if pstr == "~" => "/$HOME".to_owned(),
-            None => pstr.to_owned(),
+            None => pstr,
         };
 
         #[cfg(target_os = "macos")]

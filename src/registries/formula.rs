@@ -118,11 +118,7 @@ impl RegistryExt for FormulaRegistry {
         let mut raw_dependencies = raw_formula
             .dependencies()
             .iter()
-            .map(|raw_dependency| {
-                let raw_dependency = raw_dependency.as_str();
-
-                Arc::from(raw_dependency)
-            })
+            .map(|raw_dependency| Arc::from(raw_dependency.as_str()))
             .collect::<Vec<_>>();
 
         for (use_from_macos, bound) in raw_formula.uses_from_macos_bounds() {
@@ -147,12 +143,12 @@ impl RegistryExt for FormulaRegistry {
 
         let dependencies = future::try_join_all(resolved_dependencies_futs).await?;
 
-        let is_compatible = self.compatibility.is_formula_compatible(&raw_formula)?;
+        let is_formula_compatible = self.compatibility.is_formula_compatible(&raw_formula)?;
 
         let resolved_formula = ResolvedFormula::from((raw_formula, dependencies));
         let resolved_formula = Arc::new(resolved_formula);
 
-        resolved_formula.set_is_compatible(is_compatible);
+        resolved_formula.set_is_compatible(is_formula_compatible);
 
         Ok(resolved_formula)
     }
